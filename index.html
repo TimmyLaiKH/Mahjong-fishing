@@ -391,7 +391,7 @@ canvas {
       <tr><td>清幺九</td><td>由同花色幺九牌構成的小小胡</td><td>10</td><td class="tile-example">🀇🀇🀇🀐🀐🀐🀁🀁🀁🀘🀘🀘🀙🀙</td></tr>
       <tr><td>九子連環</td><td>門清狀態，特殊清一色組合</td><td>10</td><td class="tile-example">🀇🀇🀇🀈🀉🀊🀋🀌🀍🀎🀏🀏🀏🀇</td></tr>
       <tr><td>大四喜</td><td>四組風牌刻子加一小</td><td>13</td><td class="tile-example">🀀🀀🀀🀁🀁🀁🀂🀂🀂🀃🀃🀃🀐🀐</td></tr>
-      <tr><td>十三幺</td><td>十三種特定幺九及字牌加其中一小</td><td>13</td><td class="tile-example">🀇🀏🀙🀡🀐🀘🀀🀁🀂🀂🀃🀆🀅🀄</td></tr>
+      <tr><td>十三幺</td><td>十三種特定幺九及字牌加其中一小</td><td>13</td><td class="tile-example">🀇🀏🀙🀡🀡🀐🀘🀀🀁🀂🀃🀆🀅🀄</td></tr>
     </tbody>
   </table>
   <button id="closePatternsBtn">關閉</button>
@@ -436,16 +436,25 @@ let aiAssistEnabled = true;
 let hintsEnabled = true;
 let isSelfDrawnWin = false;
 let scaleFactor = 1;
+const TARGET_ASPECT_RATIO = 16 / 9;
 
 function calculateScaleFactor() {
-  const baseWidth = 1920;
-  const baseHeight = 1080;
-  
-  // Calculate scaling factor based on both width and height
+  const currentRatio = window.innerWidth / window.innerHeight;
+  let baseWidth, baseHeight;
+
+  if (currentRatio > TARGET_ASPECT_RATIO) {
+    // Letterbox on the sides
+    baseHeight = 1080;
+    baseWidth = baseHeight * TARGET_ASPECT_RATIO;
+  } else {
+    // Letterbox on the top/bottom
+    baseWidth = 1920;
+    baseHeight = baseWidth / TARGET_ASPECT_RATIO;
+  }
+
   const scaleX = window.innerWidth / baseWidth;
   const scaleY = window.innerHeight / baseHeight;
   
-  // Choose the smaller of the two scales to ensure the entire game fits
   return Math.min(scaleX, scaleY);
 }
 
@@ -454,13 +463,13 @@ function resizeCanvas() {
   document.documentElement.style.setProperty('--scale-factor', scaleFactor);
   
   const rect = canvas.getBoundingClientRect();
-  canvas.width = rect.width * devicePixelRatio;
-  canvas.height = rect.height * devicePixelRatio;
+  canvas.width = window.innerWidth * devicePixelRatio;
+  canvas.height = window.innerHeight * devicePixelRatio;
   ctx.setTransform(1,0,0,1,0,0);
   ctx.scale(devicePixelRatio,devicePixelRatio);
   
-  // Scale rod position based on screen size
-  rodBaseX = rect.width/2;
+  // Center rod position based on screen size
+  rodBaseX = window.innerWidth/2;
   rodBaseY = 150 * scaleFactor;
 }
 
