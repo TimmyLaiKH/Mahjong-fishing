@@ -438,28 +438,20 @@ let isSelfDrawnWin = false;
 let scaleFactor = 1;
 
 function calculateScaleFactor() {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
   const baseWidth = 1920;
   const baseHeight = 1080;
   
-  if (viewportWidth <= 480) {
-    scaleFactor = 0.7;
-  } else if (viewportWidth <= 768) {
-    scaleFactor = 0.8;
-  } else if (viewportWidth >= 1920) {
-    scaleFactor = 1.2;
-  } else {
-    // Scale based on viewport width relative to base width
-    scaleFactor = Math.min(viewportWidth / baseWidth, viewportHeight / baseHeight);
-    scaleFactor = Math.max(0.7, Math.min(1.2, scaleFactor));
-  }
+  // Calculate scaling factor based on both width and height
+  const scaleX = window.innerWidth / baseWidth;
+  const scaleY = window.innerHeight / baseHeight;
   
-  return scaleFactor;
+  // Choose the smaller of the two scales to ensure the entire game fits
+  return Math.min(scaleX, scaleY);
 }
 
 function resizeCanvas() {
   scaleFactor = calculateScaleFactor();
+  document.documentElement.style.setProperty('--scale-factor', scaleFactor);
   
   const rect = canvas.getBoundingClientRect();
   canvas.width = rect.width * devicePixelRatio;
