@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<title>香港麻雀釣測多種胡牌型</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<style>
+/* --- Professional Mahjong Felt & UI Styles --- */
+html,body {
+  margin:0; padding:0; width:100%; height:100%;
+  /* Felt texture background for the entire page */
+  background: #004d00;
+  font-family: 'Noto Sans TC', sans-serif;
+  overflow:hidden;
+}
+
+/* Responsive scaling variables */
+:root {
+  --scale-factor: 1;
+  --base-font-size: 16px;
+  --hud-padding: 15px;
+  --tile-font-size: 56px;
+  --status-font-size: 24px;
+  --target-font-size: 24px;
+  --overlay-font-size: 36px;
+  --button-font-size: 24px;
+  --control-btn-font-size: 1.2em;
+}
+
+@media screen and (max-width: 768px) {
+  :root {
+    --scale-factor: 0.8;
+    --hud-padding: 12px;
+    --tile-font-size: 44px;
+    --status-font-size: 20px;
+    --target-font-size: 20px;
+    --overlay-font-size: 28px;
+    --button-font-size: 20px;
+    --control-btn-font-size: 1.1em;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  :root {
+    --scale-factor: 0.7;
+    --hud-padding: 10px;
+    --tile-font-size: 36px;
+    --status-font-size: 18px;
+    --target-font-size: 18px;
+    --overlay-font-size: 24px;
+    --button-font-size: 18px;
+    --control-btn-font-size: 1em;
+  }
+}
+
+@media screen and (min-width: 1920px) {
+  :root {
+    --scale-factor: 1.2;
+    --hud-padding: 20px;
+    --tile-font-size: 68px;
+    --status-font-size: 28px;
+    --target-font-size: 28px;
+    --overlay-font-size: 42px;
+    --button-font-size: 28px;
+    --control-btn-font-size: 1.3em;
+  }
+}
+
+#hud {
+  position:absolute; top:0; width:100%;
+  background:rgba(0,0,0,0.6);
+  padding: var(--hud-padding);
+  text-align:center;
+  box-shadow:0 calc(5px * var(--scale-factor)) calc(15px * var(--scale-factor)) rgba(0,0,0,0.5);
+  z-index:10;
+  border-radius: 0 0 calc(15px * var(--scale-factor)) calc(15px * var(--scale-factor));
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#status {
+  font-size: var(--status-font-size);
+  font-weight:bold;
+  color:#fff;
+  text-shadow: calc(1px * var(--scale-factor)) calc(1px * var(--scale-factor)) calc(3px * var(--scale-factor)) #000;
+  margin-bottom: calc(8px * var(--scale-factor));
+}
+
+#status.bump {
+  color: #ff4500 !important;
+  animation: bumpAnim 1s infinite ease-in-out;
+}
+
+@keyframes bumpAnim {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+#hand {
+  font-size: var(--tile-font-size);
+  font-weight:bold;
+  letter-spacing: calc(4px * var(--scale-factor));
+  margin-bottom: calc(5px * var(--scale-factor));
+  text-shadow: calc(1px * var(--scale-factor)) calc(1px * var(--scale-factor)) calc(2px * var(--scale-factor)) #000;
+  line-height: 1;
+}
+
+#hand span {
+  transition: transform 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+  border-radius: calc(5px * var(--scale-factor));
+  padding: 0 calc(2px * var(--scale-factor));
+}
+
+#hand span:hover {
+  transform: translateY(calc(-5px * var(--scale-factor)));
+  box-shadow: 0 calc(5px * var(--scale-factor)) calc(10px * var(--scale-factor)) rgba(0,0,0,0.3);
+}
+
+#target {
+  font-size: var(--target-font-size);
+  font-weight: 500;
+  color: #ffffdd;
+  letter-spacing: calc(2px * var(--scale-factor));
+}
+
+#target .target-tile {
+  background: #d00;
+  color: white;
+  padding: calc(2px * var(--scale-factor)) calc(8px * var(--scale-factor));
+  border-radius: calc(8px * var(--scale-factor));
+  margin: 0 calc(4px * var(--scale-factor));
+}
+
+#overlay {
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.8);
+  display:none; flex-direction:column;
+  justify-content:center; align-items:center;
+  font-size: var(--overlay-font-size);
+  font-weight:bold; color:#fdd;
+  z-index:20;
+  padding: calc(20px * var(--scale-factor));
+  box-sizing:border-box;
+}
+
+#overlay button {
+  margin-top: calc(20px * var(--scale-factor));
+  font-size: var(--button-font-size);
+  padding: calc(12px * var(--scale-factor)) calc(24px * var(--scale-factor));
+  cursor:pointer;
+  border: none;
+  border-radius: calc(8px * var(--scale-factor));
+  background-color: #fdd;
+  color: #d00;
+  font-weight: bold;
+  box-shadow: 0 calc(4px * var(--scale-factor)) calc(6px * var(--scale-factor)) rgba(0,0,0,0.3);
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+#overlay button:hover {
+  transform: translateY(calc(-2px * var(--scale-factor)));
+  background-color: #fff;
+}
+
+#overlay .button-container {
+  display: flex;
+  gap: calc(15px * var(--scale-factor));
+  margin-top: calc(20px * var(--scale-factor));
+}
+
+canvas {
+  display:block; width:100vw; height:100vh;
+  /* Use a gradient to create a felt texture */
+  background: radial-gradient(circle at center, #006600, #004d00);
+}
+
+.control-btn {
+  position:absolute; bottom: calc(20px * var(--scale-factor));
+  font-size: var(--control-btn-font-size);
+  padding: calc(10px * var(--scale-factor)) calc(20px * var(--scale-factor));
+  border: none;
+  border-radius: calc(10px * var(--scale-factor));
+  background: #fdd;
+  color: #d00;
+  font-weight: bold;
+  box-shadow: 0 calc(4px * var(--scale-factor)) calc(6px * var(--scale-factor)) rgba(0,0,0,0.3);
+  cursor:pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.control-btn:hover {
+  transform: translateY(calc(-2px * var(--scale-factor)));
+  box-shadow: 0 calc(6px * var(--scale-factor)) calc(10px * var(--scale-factor)) rgba(0,0,0,0.4);
+}
+
+#castBtn { right: calc(20px * var(--scale-factor)); }
+#patternsBtn { left: calc(20px * var(--scale-factor)); }
+
+#patternsTable {
+  display: none;
+  position: absolute;
+  top: calc(60px * var(--scale-factor));
+  left: calc(20px * var(--scale-factor));
+  background: white;
+  border: calc(2px * var(--scale-factor)) solid #d00;
+  border-radius: calc(15px * var(--scale-factor));
+  padding: calc(15px * var(--scale-factor));
+  max-width: calc(480px * var(--scale-factor));
+  max-height: calc(420px * var(--scale-factor));
+  overflow-y: auto;
+  z-index: 30;
+  font-size: calc(18px * var(--scale-factor));
+  color: #222;
+  box-shadow: 0 calc(5px * var(--scale-factor)) calc(20px * var(--scale-factor)) rgba(0,0,0,0.4);
+}
+
+#patternsTable h3 { color: #d00; margin-top: 0; }
+#patternsTable table {
+  width: 100%;
+  border-collapse: collapse;
+}
+#patternsTable th, #patternsTable td {
+  border: calc(1px * var(--scale-factor)) solid #d00;
+  padding: calc(6px * var(--scale-factor)) calc(8px * var(--scale-factor));
+  text-align: left;
+}
+#patternsTable th {
+  background: #fdd;
+}
+#patternsTable button {
+  margin-top: calc(10px * var(--scale-factor));
+  font-size: calc(16px * var(--scale-factor));
+  padding: calc(6px * var(--scale-factor)) calc(12px * var(--scale-factor));
+  cursor: pointer;
+  border: none;
+  border-radius: calc(8px * var(--scale-factor));
+  background-color: #d00;
+  color: white;
+}
+#patternsTable button:hover {
+  background-color: #c00;
+}
+.tile-example {
+  font-size: calc(24px * var(--scale-factor));
+  font-weight: bold;
+  letter-spacing: calc(-2px * var(--scale-factor));
+}
+
+#game-options {
+  display: flex;
+  gap: calc(10px * var(--scale-factor));
+  margin-bottom: calc(10px * var(--scale-factor));
+}
+
+.option-btn {
+  font-size: calc(16px * var(--scale-factor));
+  padding: calc(8px * var(--scale-factor)) calc(16px * var(--scale-factor));
+  border: none;
+  border-radius: calc(8px * var(--scale-factor));
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.option-btn.on {
+  background-color: #008000; /* Green */
+}
+.option-btn.off {
+  background-color: #d00; /* Red */
+}
+
+.exposed-area {
+  position: absolute;
+  top: calc(10px * var(--scale-factor));
+  left: calc(20px * var(--scale-factor));
+  z-index: 30;
+}
+
+.exposed-area-title {
+  color: white;
+  font-size: calc(20px * var(--scale-factor));
+  font-weight: bold;
+  text-shadow: calc(1px * var(--scale-factor)) calc(1px * var(--scale-factor)) calc(2px * var(--scale-factor)) #000;
+  margin-bottom: calc(5px * var(--scale-factor));
+}
+
+#exposedKongs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: calc(15px * var(--scale-factor));
+}
+
+.kong-set {
+  display: flex;
+  gap: calc(2px * var(--scale-factor));
+}
+
+.kong-tile {
+  font-size: var(--tile-font-size);
+  font-weight: bold;
+  text-shadow: calc(1px * var(--scale-factor)) calc(1px * var(--scale-factor)) calc(2px * var(--scale-factor)) #000;
+  padding: 0 calc(2px * var(--scale-factor));
+  border-radius: calc(5px * var(--scale-factor));
+  width: calc(40px * var(--scale-factor));
+  height: calc(60px * var(--scale-factor));
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.kong-tile-down {
+  color: transparent;
+  background: #222;
+  border: calc(1px * var(--scale-factor)) solid #fff;
+  border-radius: calc(5px * var(--scale-factor));
+  box-shadow: calc(1px * var(--scale-factor)) calc(1px * var(--scale-factor)) calc(3px * var(--scale-factor)) rgba(0,0,0,0.5);
+}
+
+#wind-display {
+  position: absolute;
+  top: calc(20px * var(--scale-factor));
+  right: calc(20px * var(--scale-factor));
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  padding: calc(15px * var(--scale-factor));
+  border-radius: calc(10px * var(--scale-factor));
+  text-align: center;
+  z-index: 30;
+  box-shadow: 0 calc(5px * var(--scale-factor)) calc(15px * var(--scale-factor)) rgba(0,0,0,0.5);
+}
+
+.wind-label {
+  font-size: calc(16px * var(--scale-factor));
+  font-weight: bold;
+  margin-bottom: calc(5px * var(--scale-factor));
+}
+
+.wind-value {
+  font-size: calc(28px * var(--scale-factor));
+  font-weight: bold;
+  line-height: 1;
+}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="game-options">
+    <button id="toggleAiBtn" class="option-btn"></button>
+    <button id="toggleHintsBtn" class="option-btn"></button>
+  </div>
+  <div id="status"></div>
+  <div id="hand"></div>
+  <div id="target"></div>
+</div>
+<div class="exposed-area">
+  <div class="exposed-area-title">副露</div>
+  <div id="exposedKongs"></div>
+</div>
+<button id="castBtn" class="control-btn">🎣 釣魚</button>
+<button id="patternsBtn" class="control-btn">牌型一覽</button>
+<div id="wind-display">
+  <div class="wind-label">場風 (Round Wind)</div>
+  <div class="wind-value">北</div>
+  <div style="margin: 10px 0; border-top: 1px solid white;"></div>
+  <div class="wind-label">圈風 (Seat Wind)</div>
+  <div class="wind-value">西</div>
+</div>
+
+<div id="patternsTable">
+  <h3>常見香港麻雀牌型一覽</h3>
+  <table>
+    <thead><tr><th>牌型</th><th>說明</th><th>番數</th><th>範例</th></tr></thead>
+    <tbody>
+      <tr><td>雞糊</td><td>四組一小，無其他組合</td><td>0</td><td class="tile-example">🀇🀇🀈🀉🀊🀐🀑🀑🀓🀓🀓🀚🀛🀜🀄🀄</td></tr>
+      <tr><td>平糊</td><td>四組順子加一小</td><td>1</td><td class="tile-example">🀇🀈🀉🀊🀋🀌🀐🀑🀑🀚🀛🀜🀆🀆</td></tr>
+      <tr><td>槓上開花</td><td>摸到槓牌並胡牌</td><td>2</td><td class="tile-example">4張🀇，自摸胡牌</td></tr>
+      <tr><td>混一色</td><td>一門花色加字牌的和牌</td><td>3</td><td class="tile-example">🀇🀇🀇🀉🀊🀋🀃🀃🀃🀅🀅🀅🀄🀄</td></tr>
+      <tr><td>花幺九</td><td>只使用幺九及字牌的小小胡</td><td>4</td><td class="tile-example">🀇🀇🀇🀐🀐🀐🀄🀄🀄🀅🀅🀅🀂🀂</td></tr>
+      <tr><td>小三元</td><td>兩組箭牌刻子加一小</td><td>5</td><td class="tile-example">🀆🀆🀆🀅🀅🀅🀄🀄🀇🀈🀉🀐🀑🀑</td></tr>
+      <tr><td>小四喜</td><td>三組風牌刻子加一小</td><td>6</td><td class="tile-example">🀀🀀🀀🀁🀁🀁🀂🀂🀂🀃🀃🀓🀓🀕</td></tr>
+      <tr><td>清一色</td><td>全由一門花色組成</td><td>7</td><td class="tile-example">🀑🀑🀑🀓🀓🀕🀖🀗🀘🀖🀗🀘🀐🀐</td></tr>
+      <tr><td>大三元</td><td>三組箭牌刻子加一小</td><td>8</td><td class="tile-example">🀆🀆🀆🀅🀅🀅🀄🀄🀄🀐🀑🀑🀇🀇</td></tr>
+      <tr><td>坎坎胡</td><td>4組刻子（或槓）加一小</td><td>8</td><td class="tile-example">🀐🀐🀐🀃🀃🀃🀅🀅🀅🀄🀄🀄🀁🀁</td></tr>
+      <tr><td>連槓開花</td><td>多於一個槓子並自摸胡牌</td><td>8</td><td class="tile-example">2組4張🀇，自摸胡牌</td></tr>
+      <tr><td>十八羅漢</td><td>4個槓子和一小將牌的胡牌</td><td>13</td><td class="tile-example">4組4張🀇+🀆🀆</td></tr>
+      <tr><td>字一色</td><td>全由字牌組成的和牌</td><td>10</td><td class="tile-example">🀆🀆🀆🀅🀅🀅🀄🀄🀄🀀🀀🀀🀃🀃</td></tr>
+      <tr><td>清幺九</td><td>由同花色幺九牌構成的小小胡</td><td>10</td><td class="tile-example">🀇🀇🀇🀐🀐🀐🀁🀁🀁🀘🀘🀘🀙🀙</td></tr>
+      <tr><td>九子連環</td><td>門清狀態，特殊清一色組合</td><td>10</td><td class="tile-example">🀇🀇🀇🀈🀉🀊🀋🀌🀍🀎🀏🀏🀏🀇</td></tr>
+      <tr><td>大四喜</td><td>四組風牌刻子加一小</td><td>13</td><td class="tile-example">🀀🀀🀀🀁🀁🀁🀂🀂🀂🀃🀃🀃🀐🀐</td></tr>
+      <tr><td>十三幺</td><td>十三種特定幺九及字牌加其中一小</td><td>13</td><td class="tile-example">🀇🀏🀙🀡🀐🀘🀀🀁🀂🀂🀃🀆🀅🀄</td></tr>
+    </tbody>
+  </table>
+  <button id="closePatternsBtn">關閉</button>
+</div>
+
+<div id="overlay"></div>
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const statusEl = document.getElementById('status');
+const overlayEl = document.getElementById('overlay');
+const castBtn = document.getElementById('castBtn');
+const patternsBtn = document.getElementById('patternsBtn');
+const patternsTable = document.getElementById('patternsTable');
+const closePatternsBtn = document.getElementById('closePatternsBtn');
+const targetEl = document.getElementById('target');
+const handEl = document.getElementById('hand');
+const toggleAiBtn = document.getElementById('toggleAiBtn');
+const toggleHintsBtn = document.getElementById('toggleHintsBtn');
+
+const TILE_SET = [
+  '🀇','🀈','🀉','🀊','🀋','🀌','🀍','🀎','🀏', // Wan
+  '🀙','🀚','🀛','🀜','🀝','🀞','🀟','🀠','🀡', // Tong
+  '🀐','🀑','🀒','🀓','🀔','🀕','🀖','🀗','🀘', // Sou
+  '🀀','🀁','🀂','🀃', // Winds
+  '🀆','🀅','🀄', // Dragons
+];
+const ALL_TILES = [...TILE_SET];
+
+let hand = [];
+let exposedKongs = [];
+let fish = [];
+let phase = 1;
+let casting = false, reeling = false, hookLen = 0;
+let caughtTile = null, caughtFishObj = null;
+let rodBaseX, rodBaseY, rodAngle=0, swingDir=1;
+const swingSpeed = 0.015, swingMax = 1.0;
+let targetTiles = [];
+let aiAssistEnabled = true;
+let hintsEnabled = true;
+let isSelfDrawnWin = false;
+let scaleFactor = 1;
+
+function calculateScaleFactor() {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const baseWidth = 1920;
+  const baseHeight = 1080;
+  
+  if (viewportWidth <= 480) {
+    scaleFactor = 0.7;
+  } else if (viewportWidth <= 768) {
+    scaleFactor = 0.8;
+  } else if (viewportWidth >= 1920) {
+    scaleFactor = 1.2;
+  } else {
+    // Scale based on viewport width relative to base width
+    scaleFactor = Math.min(viewportWidth / baseWidth, viewportHeight / baseHeight);
+    scaleFactor = Math.max(0.7, Math.min(1.2, scaleFactor));
+  }
+  
+  return scaleFactor;
+}
+
+function resizeCanvas() {
+  scaleFactor = calculateScaleFactor();
+  
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * devicePixelRatio;
+  canvas.height = rect.height * devicePixelRatio;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  
+  // Scale rod position based on screen size
+  rodBaseX = rect.width/2;
+  rodBaseY = 150 * scaleFactor;
+}
+
+window.addEventListener('load', () => {
+  resizeCanvas();
+  initHand();
+  setInterval(spawnFish, 1000);
+  gameLoop();
+  updateButtonStates();
+});
+window.addEventListener('resize', resizeCanvas);
+
+function updateButtonStates() {
+  toggleAiBtn.textContent = `AI 輔助發牌: ${aiAssistEnabled ? '開' : '關'}`;
+  toggleAiBtn.classList.toggle('on', aiAssistEnabled);
+  toggleAiBtn.classList.toggle('off', !aiAssistEnabled);
+
+  toggleHintsBtn.textContent = `落牌提示: ${hintsEnabled ? '開' : '關'}`;
+  toggleHintsBtn.classList.toggle('on', hintsEnabled);
+  toggleHintsBtn.classList.toggle('off', !hintsEnabled);
+}
+
+function initHand(){
+  overlayEl.style.display = 'none';
+  statusEl.textContent = '釣起你需要的牌來胡牌吧!';
+  hidePlayPrompt();
+  casting=false; reeling=false; hookLen=0; caughtTile=null; caughtFishObj=null; phase=1;
+  isSelfDrawnWin = false;
+  exposedKongs = [];
+  hand = [];
+  for(let i=0; i<13; i++){
+    hand.push(TILE_SET[Math.floor(Math.random()*TILE_SET.length)]);
+  }
+  sortHand();
+  updateHandDisplay();
+  updateExposedKongsDisplay();
+  updateTargetDisplay();
+}
+
+function updateHandDisplay(){
+  const handDiv = document.getElementById('hand');
+  handDiv.innerHTML = '';
+  const currentHand = [...hand];
+  currentHand.forEach((t,i) => {
+    const span = document.createElement('span');
+    span.textContent = t;
+    span.style.cursor = 'pointer';
+    span.style.margin = `0 ${4 * scaleFactor}px`;
+    span.addEventListener('click', () => {
+      if(phase === 2){
+        hand.splice(i,1);
+        sortHand();
+        updateHandDisplay();
+        updateTargetDisplay();
+        statusEl.textContent = '想好要什麼牌, 再把握好時機摸牌吧!';
+        phase = 1; casting = false; reeling = false;
+        hidePlayPrompt();
+      }
+    });
+    handDiv.appendChild(span);
+  });
+}
+
+function updateExposedKongsDisplay() {
+  const kongsDiv = document.getElementById('exposedKongs');
+  kongsDiv.innerHTML = '';
+  exposedKongs.forEach(kongSet => {
+    const kongDiv = document.createElement('div');
+    kongDiv.className = 'kong-set';
+    
+    // Create 4 tiles for the Kong set
+    for(let i = 0; i < 4; i++) {
+      const tileSpan = document.createElement('span');
+      tileSpan.textContent = kongSet[i];
+      tileSpan.className = 'kong-tile';
+      if(i === 0 || i === 3) {
+        tileSpan.classList.add('kong-tile-down');
+      }
+      kongDiv.appendChild(tileSpan);
+    }
+    kongsDiv.appendChild(kongDiv);
+  });
+}
+
+function sortHand() {
+  hand.sort((a,b) => a.codePointAt(0) - b.codePointAt(0));
+  updateHandDisplay();
+}
+
+function showPlayPrompt() {
+  statusEl.textContent = '請點擊一張牌打出';
+  statusEl.classList.add('bump');
+}
+
+function hidePlayPrompt() {
+  statusEl.classList.remove('bump');
+}
+
+/* --- Smart AI & Spawning Logic --- */
+function findTargetTiles(currentHand) {
+  const potentialTargets = new Set();
+  
+  // Explicitly check for Eighteen Arhats listening state
+  if (exposedKongs.length === 4 && currentHand.length === 1) {
+    potentialTargets.add(currentHand[0]);
+  }
+
+  // Check for all other potential winning tiles
+  for (const tile of ALL_TILES) {
+    const tempHand = [...currentHand, tile];
+    const winResult = checkWinPatterns(tempHand);
+    if (winResult.isWin) {
+      potentialTargets.add(tile);
+    }
+  }
+  
+  return Array.from(potentialTargets);
+}
+
+function findKongEnablingTiles(currentHand) {
+  const potentialKongs = [];
+  const counts = countTiles(currentHand);
+  for (const tile in counts) {
+    if (counts[tile] === 3) {
+      potentialKongs.push(tile);
+    }
+  }
+  return potentialKongs;
+}
+
+function updateTargetDisplay() {
+  if (hintsEnabled) {
+    targetTiles = findTargetTiles(hand);
+    targetEl.innerHTML = '';
+    if (targetTiles.length > 0) {
+      const title = document.createElement('span');
+      title.textContent = '🎯 胡牌落牌: ';
+      targetEl.appendChild(title);
+      targetTiles.forEach(t => {
+        const span = document.createElement('span');
+        span.textContent = t;
+        span.className = 'target-tile';
+        targetEl.appendChild(span);
+      });
+    } else {
+      targetEl.textContent = '暫無落牌';
+    }
+  } else {
+    targetEl.innerHTML = '';
+  }
+}
+
+function getUsefulTiles(currentHand) {
+  const usefulTiles = new Set();
+  const counts = {};
+  currentHand.forEach(t => counts[t] = (counts[t] || 0) + 1);
+
+  const tempHand = [...currentHand];
+  const analysis = analyzeHand(tempHand);
+  const completedGroups = analysis ? [...analysis.filter(g => g.type !== 'pair')] : [];
+
+  for (const tile in counts) {
+    if (counts[tile] === 2) {
+      usefulTiles.add(tile);
+    }
+  }
+
+  const sortedTiles = [...new Set(currentHand)].sort((a, b) => a.codePointAt(0) - b.codePointAt(0));
+
+  for (let i = 0; i < sortedTiles.length; i++) {
+    const tile1 = sortedTiles[i];
+    const suit = suitOfTile(tile1);
+    if (suit === 'honor') continue;
+
+    const val1 = tileVal(tile1);
+
+    const tile2 = getTileFromSuitAndValue(suit, val1 + 2);
+    if (tile2 && counts[tile2] > 0) {
+      usefulTiles.add(getTileFromSuitAndValue(suit, val1 + 1));
+    }
+    
+    const tile3 = getTileFromSuitAndValue(suit, val1 + 1);
+    if (tile3 && counts[tile3] > 0) {
+      if (val1 > 1) {
+        usefulTiles.add(getTileFromSuitAndValue(suit, val1 - 1));
+      }
+      if (val1 < 8) {
+        usefulTiles.add(getTileFromSuitAndValue(suit, val1 + 2));
+      }
+    }
+  }
+
+  let hasPair = false;
+  for(const tile in counts) {
+    if (counts[tile] >= 2) {
+      hasPair = true;
+      break;
+    }
+  }
+  if (!hasPair) {
+    for(const tile of currentHand) {
+      usefulTiles.add(tile);
+    }
+  }
+
+  for(const group of completedGroups) {
+      if(group.type === 'sequence') {
+          for(const tile of group.tiles) {
+              if (usefulTiles.has(tile)) {
+                  usefulTiles.delete(tile);
+              }
+          }
+      }
+  }
+
+  return Array.from(usefulTiles);
+}
+
+function spawnFish(){
+  for(let i=0;i<2;i++){
+    let tileToSpawn;
+    if (aiAssistEnabled) {
+      const kongTiles = findKongEnablingTiles(hand);
+      if (kongTiles.length > 0 && Math.random() < 0.4) { // Increased chance to spawn a Kong tile (40%)
+        tileToSpawn = kongTiles[Math.floor(Math.random() * kongTiles.length)];
+      } else {
+        const winningTiles = findTargetTiles(hand);
+        if(winningTiles.length > 0 && Math.random() < 0.7){
+          tileToSpawn = winningTiles[Math.floor(Math.random() * winningTiles.length)];
+        } else {
+          const usefulTiles = getUsefulTiles(hand);
+          if(usefulTiles.length > 0 && Math.random() < 0.7){
+            tileToSpawn = usefulTiles[Math.floor(Math.random() * usefulTiles.length)];
+          } else {
+            tileToSpawn = TILE_SET[Math.floor(Math.random()*TILE_SET.length)];
+          }
+        }
+      }
+    } else {
+      tileToSpawn = TILE_SET[Math.floor(Math.random()*TILE_SET.length)];
+    }
+    
+    const directions = [
+      {vx: 1 + Math.random()*1.5, vy: 0},
+      {vx: -(1 + Math.random()*1.5), vy: 0},
+      {vx: 1 + Math.random(), vy: (Math.random() - 0.5)*1.5},
+      {vx: -(1 + Math.random()), vy: (Math.random() - 0.5)*1.5}
+    ];
+    const v = directions[Math.floor(Math.random()*directions.length)];
+    const startX = v.vx > 0 ? -50 - Math.random()*100 : canvas.clientWidth + 50 + Math.random()*100;
+    const startY = (400 + Math.random()*(canvas.clientHeight - 450)) * scaleFactor;
+    fish.push({x:startX, y:startY, vx:v.vx * scaleFactor, vy:v.vy * scaleFactor, tile: tileToSpawn});
+  }
+}
+/* --- End of Smart Spawning Logic --- */
+
+function drawRod(){
+  const rodTipX = rodBaseX + Math.sin(rodAngle) * 100 * scaleFactor;
+  const rodTipY = rodBaseY + Math.cos(rodAngle) * 100 * scaleFactor;
+  const hookX = rodTipX + Math.sin(rodAngle) * hookLen * scaleFactor;
+  const hookY = rodTipY + Math.cos(rodAngle) * hookLen * scaleFactor;
+
+  ctx.strokeStyle = '#a52a2a'; /* Brown */
+  ctx.lineWidth = 6 * scaleFactor;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(rodBaseX, rodBaseY);
+  ctx.lineTo(rodTipX, rodTipY);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#c0c0c0'; /* Silver */
+  ctx.lineWidth = 2 * scaleFactor;
+  ctx.beginPath();
+  ctx.moveTo(rodTipX, rodTipY);
+  ctx.lineTo(hookX, hookY);
+  ctx.stroke();
+
+  ctx.font = `${48 * scaleFactor}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🪝', hookX, hookY);
+
+  if(caughtFishObj){
+    ctx.font = `${96 * scaleFactor}px serif`;
+    ctx.fillStyle = '#fefefe';
+    ctx.fillText(caughtFishObj.tile, hookX - 48 * scaleFactor, hookY + 72 * scaleFactor);
+  }
+}
+
+function drawFish(){
+  ctx.font = `${96 * scaleFactor}px serif`;
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#fefefe';
+  fish.forEach(f => ctx.fillText(f.tile, f.x, f.y));
+}
+
+function updateFish(){
+  fish.forEach(f => {
+    f.x += f.vx;
+    f.y += f.vy;
+  });
+  fish = fish.filter(f => f.x > -100 && f.x < canvas.clientWidth + 100 && f.y > 0 && f.y < canvas.clientHeight);
+}
+
+function checkCatch(){
+  const rodTipX = rodBaseX + Math.sin(rodAngle) * 100 * scaleFactor;
+  const rodTipY = rodBaseY + Math.cos(rodAngle) * 100 * scaleFactor;
+  const hookX = rodTipX + Math.sin(rodAngle) * hookLen * scaleFactor;
+  const hookY = rodTipY + Math.cos(rodAngle) * hookLen * scaleFactor;
+  for(let i=0; i<fish.length; i++){
+    const f = fish[i];
+    if(Math.abs(f.x - hookX) < 60 * scaleFactor && Math.abs(f.y - hookY) < 60 * scaleFactor){
+      caughtTile = f.tile;
+      caughtFishObj = {tile: f.tile};
+      fish.splice(i,1);
+      reeling = true;
+      casting = false;
+      isSelfDrawnWin = true;
+      break;
+    }
+  }
+}
+
+function resetRod(){
+  casting = false; reeling = false; hookLen = 0; caughtTile = null; caughtFishObj = null;
+}
+
+const fanValues = {
+  '雞糊': 0,
+  '平糊': 1,
+  '槓上開花': 2,
+  '混一色': 3,
+  '花幺九': 4,
+  '小三元': 5,
+  '小四喜': 6,
+  '清一色': 7,
+  '大三元': 8,
+  '坎坎胡': 8,
+  '連槓開花': 8,
+  '十八羅漢': 13, // Corrected to 13 fan
+  '字一色': 10,
+  '清幺九': 10,
+  '九子連環': 10,
+  '十三幺': 13,
+  '大四喜': 13,
+  '花糊': 7,
+  '門前清': 1,
+  '自摸': 1,
+};
+
+function countTiles(handArr) {
+  const counts = {};
+  handArr.forEach(t => counts[t] = (counts[t] || 0) + 1);
+  return counts;
+}
+
+function isAllHonorTiles(hand){
+  const honors = ['🀀','🀁','🀂','🀃','🀆','🀅','🀄'];
+  return hand.every(t => honors.includes(t));
+}
+
+function suitOfTile(tile){
+  if(tile >= '🀇' && tile <= '🀏') return 'wan';
+  if(tile >= '🀙' && tile <= '🀡') return 'tong';
+  if(tile >= '🀐' && tile <= '🀘') return 'sou';
+  return 'honor';
+}
+
+function tileVal(tile){
+  if(tile >= '🀇' && tile <= '🀏') return tile.codePointAt(0) - 0x1F007 + 1;
+  if(tile >= '🀙' && tile <= '🀡') return tile.codePointAt(0) - 0x1F019 + 1;
+  if(tile >= '🀐' && tile <= '🀘') return tile.codePointAt(0) - 0x1F010 + 1;
+  return -1;
+}
+
+function getTileFromSuitAndValue(suit, val) {
+  if (val < 1 || val > 9) return null;
+  let baseCode;
+  switch(suit) {
+    case 'wan': baseCode = 0x1F007; break;
+    case 'tong': baseCode = 0x1F019; break;
+    case 'sou': baseCode = 0x1F010; break;
+    default: return null;
+  }
+  return String.fromCodePoint(baseCode + val - 1);
+}
+
+function analyzeHand(handArr) {
+  const counts = countTiles(handArr);
+  
+  function findWinningCombination(currentCounts, groups, needsPair) {
+    const remainingTiles = Object.keys(currentCounts).filter(t => currentCounts[t] > 0);
+    if (remainingTiles.length === 0) {
+      const pairs = groups.filter(g => g.type === 'pair');
+      const nonPairs = groups.filter(g => g.type !== 'pair');
+      return pairs.length === 1 && nonPairs.length === 4 ? groups : null;
+    }
+    const tile = remainingTiles[0];
+    const count = currentCounts[tile];
+    
+    if (count >= 3) {
+      const newCounts = {...currentCounts};
+      newCounts[tile] -= 3;
+      if (newCounts[tile] === 0) delete newCounts[tile];
+      const result = findWinningCombination(newCounts, [...groups, {type: 'triplet', tiles: [tile, tile, tile]}], needsPair);
+      if (result) return result;
+    }
+    if (needsPair && count >= 2) {
+      const newCounts = {...currentCounts};
+      newCounts[tile] -= 2;
+      if (newCounts[tile] === 0) delete newCounts[tile];
+      const result = findWinningCombination(newCounts, [...groups, {type: 'pair', tiles: [tile, tile]}], false);
+      if (result) return result;
+    }
+    if (suitOfTile(tile) !== 'honor') {
+      const suit = suitOfTile(tile);
+      const val = tileVal(tile);
+      if (val <= 7) {
+        const tile2 = getTileFromSuitAndValue(suit, val + 1);
+        const tile3 = getTileFromSuitAndValue(suit, val + 2);
+        if (tile2 && tile3 && currentCounts[tile2] >= 1 && currentCounts[tile3] >= 1) {
+          const newCounts = {...currentCounts};
+          newCounts[tile]--;
+          newCounts[tile2]--;
+          newCounts[tile3]--;
+          if (newCounts[tile] === 0) delete newCounts[tile];
+          if (newCounts[tile2] === 0) delete newCounts[tile2];
+          if (newCounts[tile3] === 0) delete newCounts[tile3];
+          const result = findWinningCombination(newCounts, [...groups, {type: 'sequence', tiles: [tile, tile2, tile3]}], needsPair);
+          if (result) return result;
+        }
+      }
+    }
+    return null;
+  }
+  return findWinningCombination(counts, [], true);
+}
+
+function isValidWinningHand(handArr) {
+  if (handArr.length % 3 !== 2) return false;
+  const analysis = analyzeHand(handArr);
+  if (!analysis) return false;
+  const pairs = analysis.filter(g => g.type === 'pair');
+  const groups = analysis.filter(g => g.type !== 'pair');
+  return pairs.length === 1 && groups.length * 3 + pairs.length * 2 === handArr.length;
+}
+
+function checkShiBaLuoHan(handArr) {
+  // Eighteen Arhats: 4 exposed kongs (16 tiles) + 1 pair (2 tiles) = 18 tiles total
+  if (exposedKongs.length !== 4) return false;
+  if (handArr.length !== 2) return false;
+  
+  // Check if the remaining 2 tiles form a valid pair
+  return handArr[0] === handArr[1];
+}
+
+function checkPingHu(handArr) {
+  if (!isValidWinningHand(handArr)) return false;
+  const analysis = analyzeHand(handArr);
+  const sequences = analysis.filter(g => g.type === 'sequence');
+  return sequences.length === 4;
+}
+function checkDaSiXi(hand){
+  const winds = ['🀀','🀁','🀂','🀃'];
+  const counts = countTiles(hand);
+  let tripletCount = 0;
+  for(let w of winds) if(counts[w]>=3) tripletCount++;
+  return tripletCount===4;
+}
+function checkDaSanYuan(hand){
+  const dragons = ['🀆','🀅','🀄'];
+  const counts = countTiles(hand);
+  let tripletCount = 0;
+  for(let d of dragons) if(counts[d]>=3) tripletCount++;
+  return tripletCount===3;
+}
+function checkKanKanHu(hand){
+  if (!isValidWinningHand(hand)) return false;
+  const analysis = analyzeHand(hand);
+  const triplets = analysis.filter(g => g.type === 'triplet');
+  return triplets.length === 4;
+}
+function checkShiSanYao(hand){
+  const yaoJiu = ['🀇','🀏','🀙','🀡','🀐','🀘','🀀','🀁','🀂','🀃','🀆','🀅','🀄'];
+  const counts = countTiles(hand);
+  let hasPair = false;
+  if(hand.length !== 14) return false;
+  for(let t of yaoJiu){
+    if(!counts[t]) return false;
+    if(counts[t] === 2) hasPair = true;
+    else if(counts[t] !== 1) return false;
+  }
+  return hasPair;
+}
+function checkHunYiSe(hand){
+  if (!isValidWinningHand(hand)) return false;
+  let suits = new Set();
+  let hasHonor = false;
+  for(let t of hand){
+    const s = suitOfTile(t);
+    if(s === 'honor') hasHonor = true;
+    else suits.add(s);
+  }
+  return hasHonor && suits.size === 1;
+}
+function checkQingYiSe(hand){
+  if (!isValidWinningHand(hand)) return false;
+  const firstSuit = suitOfTile(hand[0]);
+  if(firstSuit === 'honor') return false;
+  return hand.every(t => suitOfTile(t) === firstSuit);
+}
+function checkHuaYaoJiu(hand){
+  const terminalsAndHonors = [
+    '🀇','🀏','🀙','🀡','🀐','🀘',
+    '🀀','🀁','🀂','🀃','🀆','🀅','🀄'
+  ];
+  if(!hand.every(t => terminalsAndHonors.includes(t))) return false;
+  return checkKanKanHu(hand);
+}
+function checkXiaoSanYuan(hand){
+  if (!isValidWinningHand(hand)) return false;
+  const dragons = ['🀆','🀅','🀄'];
+  const counts = countTiles(hand);
+  let tripletCount = 0;
+  let pairCount = 0;
+  for(let d of dragons){
+    if(counts[d] === 3) tripletCount++;
+    else if(counts[d] === 2) pairCount++;
+  }
+  return tripletCount === 2 && pairCount === 1;
+}
+function checkXiaoSiXi(hand){
+  if (!isValidWinningHand(hand)) return false;
+  const winds = ['🀀','🀁','🀂','🀃'];
+  const counts = countTiles(hand);
+  let tripletCount = 0; let pairCount = 0;
+  for(let w of winds){
+    if(counts[w] === 3) tripletCount++;
+    else if(counts[w] === 2) pairCount++;
+  }
+  return tripletCount === 3 && pairCount === 1;
+}
+function checkZiYiSe(hand){
+  return isValidWinningHand(hand) && isAllHonorTiles(hand);
+}
+function checkQingYaoJiu(hand){
+  const terminals = ['🀇','🀏','🀙','🀡','🀐','🀘'];
+  if(!hand.every(t => terminals.includes(t))) return false;
+  return checkKanKanHu(hand);
+}
+function checkJiuZiLianHuan(hand){
+  if(hand.length !== 14) return false;
+  const suit = suitOfTile(hand[0]);
+  if(suit === 'honor') return false;
+  let counts = Array(10).fill(0);
+  for(let t of hand){
+    if(suitOfTile(t) !== suit) return false;
+    let val = tileVal(t);
+    counts[val]++;
+  }
+  if(counts[1]<3 || counts[9]<3) return false;
+  for(let i=2; i<=8; i++){
+    if(counts[i]<1) return false;
+  }
+  return true;
+}
+function checkHuaHu(hand){return false;}
+
+function calculateTotalFan(patterns, isSpecialHand) {
+  let total = 0;
+  
+  if (isSpecialHand) {
+    total = fanValues[patterns[0]];
+  } else {
+    for (let pattern of patterns) {
+      if (fanValues[pattern] !== undefined) {
+        total += fanValues[pattern];
+      }
+    }
+    if (exposedKongs.length === 0) total += fanValues['門前清'];
+    if (isSelfDrawnWin) total += fanValues['自摸'];
+  }
+  
+  return total;
+}
+
+function checkWinPatterns(hand){
+  let matchedPatterns = [];
+  
+  // 檢查特殊牌型，十八羅漢必須在 isValidWinningHand 之前檢查
+  if(checkShiBaLuoHan(hand)) { matchedPatterns.push('十八羅漢'); }
+  else if(checkShiSanYao(hand)) { matchedPatterns.push('十三幺'); }
+  else if(checkDaSiXi(hand)) { matchedPatterns.push('大四喜'); }
+  else if(checkJiuZiLianHuan(hand)) { matchedPatterns.push('九子連環'); }
+  else if(checkZiYiSe(hand)) { matchedPatterns.push('字一色'); }
+  else if(checkQingYaoJiu(hand)) { matchedPatterns.push('清幺九'); }
+  else if(checkDaSanYuan(hand)) { matchedPatterns.push('大三元'); }
+  
+  const isSpecialHand = matchedPatterns.length > 0;
+  if (isSpecialHand) {
+    const totalFan = calculateTotalFan(matchedPatterns, true);
+    return { isWin: true, patterns: matchedPatterns, totalFan, isSpecialHand };
+  }
+  
+  if(!isValidWinningHand(hand)) {
+    return { isWin: false, patterns: [], totalFan: 0 };
+  }
+
+  if(exposedKongs.length > 0 && isSelfDrawnWin) {
+    if (exposedKongs.length === 1) matchedPatterns.push('槓上開花');
+    else if (exposedKongs.length > 1) matchedPatterns.push('連槓開花');
+  }
+  if(checkHuaYaoJiu(hand)) matchedPatterns.push('花幺九');
+  if(checkXiaoSanYuan(hand)) matchedPatterns.push('小三元');
+  if(checkXiaoSiXi(hand)) matchedPatterns.push('小四喜');
+  if(checkQingYiSe(hand)) matchedPatterns.push('清一色');
+  if(checkHunYiSe(hand)) matchedPatterns.push('混一色');
+  if(checkKanKanHu(hand)) matchedPatterns.push('坎坎胡');
+  if(checkPingHu(hand)) matchedPatterns.push('平糊');
+  
+  if(matchedPatterns.length === 0) {
+    matchedPatterns.push('雞糊');
+  }
+  
+  const totalFan = calculateTotalFan(matchedPatterns, false);
+  return { isWin: true, patterns: matchedPatterns, totalFan, isSpecialHand: false };
+}
+
+function showOverlay(msg, options = {}){
+  overlayEl.innerHTML = '';
+  overlayEl.style.display = 'flex';
+  const msgDiv = document.createElement('div');
+  msgDiv.style.textAlign = 'center';
+  msgDiv.style.whiteSpace = 'pre-line';
+  msgDiv.style.fontSize = `${28 * scaleFactor}px`;
+  msgDiv.style.lineHeight = '1.4';
+  msgDiv.textContent = msg;
+  overlayEl.appendChild(msgDiv);
+  
+  const btnContainer = document.createElement('div');
+  btnContainer.className = 'button-container';
+  
+  if (options.onWinClick) {
+    const winBtn = document.createElement('button');
+    winBtn.textContent = '胡牌';
+    winBtn.onclick = () => {
+      overlayEl.style.display = 'none';
+      options.onWinClick();
+    };
+    btnContainer.appendChild(winBtn);
+  }
+
+  if (options.onContinueClick) {
+    const continueBtn = document.createElement('button');
+    continueBtn.textContent = '繼續摸牌';
+    continueBtn.onclick = () => {
+      overlayEl.style.display = 'none';
+      options.onContinueClick();
+    };
+    btnContainer.appendChild(continueBtn);
+  }
+
+  if (options.onKongClick) {
+    const kongBtn = document.createElement('button');
+    kongBtn.textContent = '開槓';
+    kongBtn.onclick = () => {
+      overlayEl.style.display = 'none';
+      options.onKongClick();
+    };
+    btnContainer.appendChild(kongBtn);
+  }
+
+  if (btnContainer.children.length > 0) {
+    overlayEl.appendChild(btnContainer);
+  } else {
+    const btn = document.createElement('button');
+    btn.textContent = '繼續遊戲';
+    btn.onclick = () => {
+      overlayEl.style.display = 'none';
+      initHand();
+    };
+    overlayEl.appendChild(btn);
+  }
+}
+
+function checkForKong() {
+  const counts = countTiles(hand);
+  let potentialKongTile = null;
+  for (const tile in counts) {
+    if (counts[tile] === 4) {
+      potentialKongTile = tile;
+      break;
+    }
+  }
+
+  if (potentialKongTile) {
+    const winResult = checkWinPatterns(hand);
+    let winMessage = '';
+    let isWin = winResult.isWin;
+    
+    if (isWin) {
+      winMessage = `恭喜! 你已摸到胡牌牌型。\n\n牌型:\n`;
+      if (winResult.isSpecialHand) {
+        winMessage += `• ${winResult.patterns[0]} (${fanValues[winResult.patterns[0]]}番)\n`;
+      } else {
+        const nonBonusPatterns = winResult.patterns.filter(p => !['門前清', '自摸'].includes(p));
+        nonBonusPatterns.forEach(pattern => {
+          winMessage += `• ${pattern} (${fanValues[pattern]}番)\n`;
+        });
+      }
+      winMessage += `\n總計: ${winResult.totalFan}番\n\n`;
+    }
+
+    winMessage += `你摸到了一張 ${potentialKongTile}。\n你有一組四張相同的牌，是否開槓？`;
+    
+    showOverlay(winMessage, {
+      onWinClick: isWin ? () => {
+        const finalMessage = `胡牌成功! 🎉\n\n總計: ${winResult.totalFan}番`;
+        showOverlay(finalMessage);
+        phase = 4;
+      } : null,
+      onContinueClick: () => {
+        phase = 2; // Discard tile
+        showPlayPrompt();
+      },
+      onKongClick: () => {
+        hand = hand.filter(t => t !== potentialKongTile);
+        exposedKongs.push([potentialKongTile, potentialKongTile, potentialKongTile, potentialKongTile]);
+        updateHandDisplay();
+        updateExposedKongsDisplay();
+        updateTargetDisplay(); // ADDED THIS LINE
+
+        phase = 1;
+        resetRod();
+        statusEl.textContent = '開槓成功，再摸一張牌！';
+      }
+    });
+    return true;
+  }
+  return false;
+}
+
+function gameLoop(){
+  ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);
+  if(!casting && !reeling && phase === 1){
+    rodAngle += swingDir*swingSpeed;
+    if(rodAngle > swingMax || rodAngle < -swingMax) swingDir = -swingDir;
+  }
+  if(casting && !reeling){
+    hookLen += 5;
+    if(hookLen >= (canvas.clientHeight-200)/scaleFactor) reeling = true;
+  } else if(reeling){
+    hookLen -= 3;
+    if(hookLen <= 0){
+      if(caughtTile){
+        hand.push(caughtTile);
+        sortHand();
+        updateHandDisplay();
+        updateTargetDisplay();
+
+        if(!checkForKong()){
+          const winResult = checkWinPatterns(hand);
+
+          if(winResult.isWin){
+            let winMessage = '你已摸到胡牌牌型！\n\n牌型:\n';
+            if (winResult.isSpecialHand) {
+              winMessage += `• ${winResult.patterns[0]} (${fanValues[winResult.patterns[0]]}番)\n`;
+            } else {
+              const nonBonusPatterns = winResult.patterns.filter(p => !['門前清', '自摸', '槓上開花', '連槓開花'].includes(p));
+              nonBonusPatterns.forEach(pattern => {
+                winMessage += `• ${pattern} (${fanValues[pattern]}番)\n`;
+              });
+              if (exposedKongs.length === 0) winMessage += `• 門前清 (${fanValues['門前清']}番)\n`;
+              winMessage += `• 自摸 (${fanValues['自摸']}番)\n`;
+              if (exposedKongs.length === 1) winMessage += `• 槓上開花 (${fanValues['槓上開花']}番)\n`;
+              else if (exposedKongs.length > 1) winMessage += `• 連槓開花 (${fanValues['連槓開花']}番)\n`;
+            }
+            winMessage += `\n總計: ${winResult.totalFan}番\n\n是否胡牌？`;
+
+            showOverlay(winMessage, {
+              onWinClick: () => {
+                const finalMessage = `胡牌成功! 🎉\n\n總計: ${winResult.totalFan}番`;
+                showOverlay(finalMessage);
+                phase = 4;
+              },
+              onContinueClick: () => {
+                sortHand();
+                updateHandDisplay();
+                updateTargetDisplay();
+                phase = 2;
+                showPlayPrompt();
+              }
+            });
+          } else {
+            sortHand();
+            updateHandDisplay();
+            updateTargetDisplay();
+            phase = 2;
+            showPlayPrompt();
+          }
+        }
+      }
+      resetRod();
+    }
+  }
+  drawRod();
+  if(!caughtFishObj) drawFish();
+  updateFish();
+  if(casting) checkCatch();
+  requestAnimationFrame(gameLoop);
+}
+
+document.addEventListener('keydown', e => {
+  if(phase === 1 && e.code === 'Space' && !casting && !reeling && overlayEl.style.display === 'none')
+    casting = true;
+});
+canvas.addEventListener('click', e => {
+  if(phase === 1 && !casting && !reeling && overlayEl.style.display === 'none')
+    casting = true;
+});
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if(phase === 1 && !casting && !reeling && overlayEl.style.display === 'none')
+    casting = true;
+});
+castBtn.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if(phase === 1 && !casting && !reeling && overlayEl.style.display === 'none')
+    casting = true;
+});
+
+castBtn.onclick = () => {
+  if(phase === 1 && !casting && !reeling && overlayEl.style.display === 'none')
+    casting = true;
+};
+
+patternsBtn.onclick = () => {
+  patternsTable.style.display = 'block';
+};
+closePatternsBtn.onclick = () => {
+  patternsTable.style.display = 'none';
+};
+
+toggleAiBtn.onclick = () => {
+  aiAssistEnabled = !aiAssistEnabled;
+  updateButtonStates();
+};
+
+toggleHintsBtn.onclick = () => {
+  hintsEnabled = !hintsEnabled;
+  updateTargetDisplay();
+  updateButtonStates();
+};
+</script>
+</body>
+</html>
