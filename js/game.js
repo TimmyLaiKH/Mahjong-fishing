@@ -44,6 +44,7 @@ const ui = {
   roomHostControls: el('roomHostControls'), roomGuestInfo: el('roomGuestInfo'),
   roomHookSpeed: el('roomHookSpeed'), roomHookSpeedValue: el('roomHookSpeedValue'),
   roomGameDuration: el('roomGameDuration'), roomGameDurationValue: el('roomGameDurationValue'),
+  roomGameDurationText: el('roomGameDurationText'),
   roomStart: el('roomStart'), roomLeave: el('roomLeave'), roomMessage: el('roomMessage'),
   settingsSound: el('settingsSound'),
   musicVolume: el('musicVolume'), musicVolumeValue: el('musicVolumeValue'),
@@ -56,6 +57,9 @@ const music = createMusic();
 const net = createNet();
 const MULTI_CLAIM_SECONDS = 5;
 const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+// Codes that failed to produce a live host this session. PeerJS can leave a
+// stale id registered for a while after the host leaves, so never retry them.
+const deadRooms = new Set();
 
 const S = Object.freeze({
   LOADING: 'LOADING',
@@ -1770,12 +1774,15 @@ async function joinRoom() {
     return;
   }
   if (ui.joinRoomCode) ui.joinRoomCode.value = code;
+  if (deadRooms.has(code)) {
+    if (ui.joinMessage) ui.joinMessage.textContent = '房間已關閉，請重新開房間。';
+    openModal('joinScreen');
+    ui.joinRoomCode?.focus();
+    return;
+  }
   if (!net.available) {
-    setRoomMessage('多人功能無法使用：請重新整理頁面。');
-    closeModal('menuScreen');
-    closeModal('joinScreen');
-    openModal('roomScreen');
-    setWaitingRoom(true);
+    if (ui.joinMessage) ui.joinMessage.textContent = '多人功能無法使用：請重新整理頁面。';
+    openModal('joinScreen');
     return;
   }
   clearJoinWatchdog();
@@ -1791,27 +1798,34 @@ async function joinRoom() {
   game.role = 'guest';
   game.playerId = randomPlayerId();
   game.roomCode = code;
-  setRoomMessage('正在加入房間…');
+  // Stay on the join screen until the host actually welcomes us. A stale
+  // PeerJS id can open a data channel after the host left, and showing the
+  // room screen first made an empty, unusable lobby look like a valid room.
+  if (ui.joinMessage) ui.joinMessage.textContent = '正在加入房間…';
   closeModal('menuScreen');
-  closeModal('joinScreen');
-  openModal('roomScreen');
-  setWaitingRoom(true);
-  renderRoom();
+  closeModal('roomScreen');
+  openModal('joinScreen');
+  // Start the watchdog before connecting so both the connection and the
+  // welcome are covered — a dead room can never trap the player in a lobby.
+  game.joinTimer = setTimeout(() => {
+    if (game.joinOutcome === 'pending') {
+      deadRooms.add(code);
+      rejectJoin('房間已關閉', '房間已關閉，請重新開房間。');
+    }
+  }, 8000);
   try {
     await net.joinRoom(code, game.playerId, game.playerCustomName ? game.playerName : null);
-    if (game.joinOutcome !== 'pending') return;
-    setRoomMessage('已加入房間，等待房主開始遊戲。');
-    renderRoom();
-    // A stale PeerJS id can accept a data channel even after the host left.
-    // Without a welcome there is nobody to start the game, so treat it as a
-    // closed room instead of trapping the player in an unusable lobby.
-    game.joinTimer = setTimeout(() => {
-      if (game.joinOutcome === 'pending') rejectJoin('房間已關閉', '房間已關閉，請重新開房間。');
-    }, 6000);
+    if (game.joinOutcome === 'pending' && ui.joinMessage) {
+      ui.joinMessage.textContent = '等待房主回應…';
+    }
   } catch (error) {
     console.warn('[mf] 加入房間失敗：', error);
     if (game.joinOutcome !== 'pending') return;
+    if (error?.message === 'peer-unavailable' || error?.message === 'room-timeout') {
+      deadRooms.add(code);
+    }
     rejectJoin('無法加入房間', error?.message === 'room-timeout'
+      || error?.message === 'peer-unavailable'
       ? '找不到這個房間，請確認代碼是否正確。'
       : '無法連線到房間，請檢查網路後再試。');
   }
@@ -1837,6 +1851,10 @@ function renderRoom() {
   if (ui.roomGameDuration) {
     ui.roomGameDuration.value = String(game.roomSettings.gameSeconds);
     ui.roomGameDurationValue.textContent = formatClock(game.roomSettings.gameSeconds);
+  }
+  if (ui.roomGameDurationText
+    && document.activeElement !== ui.roomGameDurationText) {
+    ui.roomGameDurationText.value = formatClock(game.roomSettings.gameSeconds);
   }
   if (ui.roomPlayers) {
     ui.roomPlayers.innerHTML = '';
@@ -1880,6 +1898,20 @@ function updateRoomSettings() {
   game.roomSettings = {
     hookSpeed: Number(ui.roomHookSpeed.value),
     gameSeconds: Number(ui.roomGameDuration.value),
+  };
+  net.broadcast({ t: 'settings', settings: game.roomSettings });
+  renderRoom();
+}
+
+/** Host can type a clock (5:00, 05:00, 0:30 or 5) instead of dragging. */
+function commitRoomDurationText() {
+  if (!net.isHost || game.mode !== 'multi') return;
+  const parsed = parseClock(ui.roomGameDurationText?.value);
+  const seconds = parsed === null ? game.roomSettings.gameSeconds : clampGameSeconds(parsed);
+  ui.roomGameDuration.value = String(seconds);
+  game.roomSettings = {
+    hookSpeed: Number(ui.roomHookSpeed.value),
+    gameSeconds: seconds,
   };
   net.broadcast({ t: 'settings', settings: game.roomSettings });
   renderRoom();
@@ -2505,9 +2537,14 @@ function wireNetEvents() {
     if (game.mode !== 'multi' || game.role !== 'guest') return;
     game.joinOutcome = 'joined';
     clearJoinWatchdog();
+    if (game.roomCode) deadRooms.delete(game.roomCode);
     game.seat = msg.seat;
     adoptPlayersList(msg.players);
     game.roomSettings = { ...msg.settings };
+    // Only now is the room confirmed live, so reveal the lobby.
+    closeModal('joinScreen');
+    openModal('roomScreen');
+    setWaitingRoom(true);
     setRoomMessage(`你的座位：${seatName(msg.seat)}`);
     renderRoom();
   });
@@ -2707,6 +2744,8 @@ function wireNetEvents() {
 
   net.on('hostClose', () => {
     if (game.leavingRoom || game.mode !== 'multi' || game.role !== 'guest') return;
+    // The host is gone for good; don't let the player rejoin the same stale id.
+    if (game.roomCode) deadRooms.add(game.roomCode);
     resetMultiState();
     showMenu();
     showOverlay({
@@ -2718,6 +2757,7 @@ function wireNetEvents() {
 
   net.on('error', ({ error }) => {
     if (game.joinOutcome === 'pending') {
+      if (error?.message === 'peer-unavailable' && game.roomCode) deadRooms.add(game.roomCode);
       rejectJoin('無法加入房間', error?.message === 'peer-unavailable'
         ? '找不到這個房間，請確認代碼是否正確。'
         : '無法連線到房間，請檢查網路後再試。');
@@ -3124,7 +3164,7 @@ function drawFish() {
   }
 }
 
-function drawGhostRod(seat, position, phase, caughtTile = null) {
+function drawGhostRod(seat, position, phase, caughtTile = null, label = '') {
   const baseX = view.width / 2;
   const tipX = baseX + (position.hookX - baseX) * 0.08;
   const tipY = ROD_BASE_Y + (position.hookY - ROD_BASE_Y) * 0.08;
@@ -3154,6 +3194,21 @@ function drawGhostRod(seat, position, phase, caughtTile = null) {
       images: game.images, shadow: true,
     });
   }
+  // Identifier so everyone can tell whose ghost hook this is.
+  if (label) {
+    const text = String(label);
+    ctx.globalAlpha = 0.85;
+    ctx.font = 'bold 24px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const x = position.hookX + 26;
+    const y = position.hookY - 26;
+    const width = ctx.measureText(text).width;
+    ctx.fillStyle = 'rgba(4, 32, 44, 0.75)';
+    ctx.fillRect(x - 6, y - 15, width + 12, 30);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, x, y);
+  }
   ctx.restore();
 }
 
@@ -3163,13 +3218,51 @@ function renderGhostRods() {
     if (now - game.hookPeers[seat].seen > 1500) delete game.hookPeers[seat];
   }
   for (const state of Object.values(game.aiStates)) {
-    drawGhostRod(state.seat, aiHookPosition(state), state.rod.phase, state.caught);
+    drawGhostRod(state.seat, aiHookPosition(state), state.rod.phase, state.caught, seatLabel(state.seat));
   }
   for (const [seat, hook] of Object.entries(game.hookPeers)) {
     const value = Number(seat);
     if (value === game.seat || game.aiStates[value]) continue;
-    drawGhostRod(value, { hookX: hook.x * view.width, hookY: hook.y }, hook.phase, hook.caught);
+    drawGhostRod(value, { hookX: hook.x * view.width, hookY: hook.y }, hook.phase,
+      hook.caught, seatLabel(value));
   }
+}
+
+/** Four small player avatars beside the rod, in seat order (0–3). */
+function drawPlayerAvatars() {
+  const baseX = view.width / 2;
+  const colors = ['#a9e5ff', '#ffd27f', '#c8a9ff', '#ff9b9b'];
+  const spread = Math.min(160, view.width / 10);
+  const offsets = [-spread, -spread * 0.45, spread * 0.45, spread];
+  const y = 52;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let seat = 0; seat < 4; seat += 1) {
+    const player = game.players.find((item) => item?.seat === seat);
+    const isYou = seat === game.seat;
+    const empty = !player || player.isEmpty;
+    const x = baseX + offsets[seat];
+    ctx.globalAlpha = empty ? 0.3 : 1;
+    // Colored disc so each seat is recognizable at a glance.
+    ctx.beginPath();
+    ctx.arc(x, y, 26, 0, Math.PI * 2);
+    ctx.fillStyle = colors[seat];
+    ctx.fill();
+    if (isYou) {
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+    }
+    ctx.font = '30px sans-serif';
+    ctx.fillStyle = '#06384a';
+    ctx.fillText('🧍', x, y + 1);
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillStyle = '#fff';
+    const label = isYou ? '你' : (player?.name ?? seatName(seat)).slice(0, 2);
+    ctx.fillText(label, x, y + 40);
+  }
+  ctx.restore();
 }
 
 function drawRod() {
@@ -3208,6 +3301,7 @@ function draw(dt) {
   ctx.setTransform(view.dpr * view.scale, 0, 0, view.dpr * view.scale, 0, 0);
   drawBackground();
   drawFish();
+  drawPlayerAvatars();
   renderGhostRods();
   drawRod();
   positionClaimBar();
@@ -3226,13 +3320,31 @@ function draw(dt) {
  * ------------------------------------------------------------------ */
 
 let lastFrame = 0;
-// While the host tab is hidden the shared sea freezes. Guests keep
-// extrapolating, so on return we advance the host by the real elapsed time and
-// publish a fresh snapshot immediately instead of snapping everyone backwards.
-let hostHiddenAt = 0;
+// Whenever the host pauses (hidden tab OR an open modal) the shared sea freezes
+// while guests keep extrapolating. On resume we advance the host by the real
+// elapsed time and publish a fresh snapshot so nobody sees a backwards snap.
+let hostSeaPausedAt = 0;
+
+function syncHostSeaPause() {
+  const live = game.mode === 'multi' && net.isHost
+    && ![S.LOADING, S.WIN, S.DRAW_GAME].includes(game.state);
+  if (!live) { hostSeaPausedAt = 0; return; }
+  if (paused()) {
+    if (!hostSeaPausedAt) hostSeaPausedAt = Date.now();
+  } else if (hostSeaPausedAt) {
+    const elapsed = Math.min(30, Math.max(0, (Date.now() - hostSeaPausedAt) / 1000));
+    hostSeaPausedAt = 0;
+    if (elapsed > 0.05) {
+      updateFish(elapsed);
+      broadcastSeaSnapshot();
+    }
+  }
+}
+
 function gameLoop(timestamp) {
   const dt = lastFrame ? Math.min((timestamp - lastFrame) / 1000, 0.05) : 0;
   lastFrame = timestamp;
+  syncHostSeaPause();
   // Multiplayer time is wall-clock based: a host changing tabs cannot pause it,
   // and every guest counts down from the last host sync on its own clock.
   // LOADING is excluded too: a room lobby must never inherit a previous
@@ -3943,21 +4055,16 @@ function wireInput() {
   document.addEventListener('pointerdown', unlockMusic);
   document.addEventListener('keydown', unlockMusic);
   document.addEventListener('visibilitychange', () => {
-    const seaLive = game.mode === 'multi' && net.isHost
-      && ![S.LOADING, S.WIN, S.DRAW_GAME].includes(game.state);
+    // Sea catch-up is unified in syncHostSeaPause() so a hidden tab and an
+    // open modal behave identically (both call paused()). rAF is throttled
+    // while hidden, so call it here too — otherwise the gameLoop never gets a
+    // chance to record when the pause started.
     if (document.hidden) {
       music.suspend();
-      if (seaLive) hostHiddenAt = Date.now();
+      syncHostSeaPause();
     } else {
       if (game.settings.sound) music.resume();
-      if (hostHiddenAt) {
-        const elapsed = Math.min(30, Math.max(0, (Date.now() - hostHiddenAt) / 1000));
-        hostHiddenAt = 0;
-        if (seaLive) {
-          updateFish(elapsed);
-          broadcastSeaSnapshot();
-        }
-      }
+      syncHostSeaPause();
       // A background tab's rAF timestamp is stale; restart the frame clock.
       lastFrame = performance.now();
     }
@@ -3989,6 +4096,13 @@ function wireInput() {
   ui.roomCopy.addEventListener('click', copyRoomLink);
   ui.roomHookSpeed.addEventListener('input', updateRoomSettings);
   ui.roomGameDuration.addEventListener('input', updateRoomSettings);
+  ui.roomGameDurationText.addEventListener('change', commitRoomDurationText);
+  ui.roomGameDurationText.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    commitRoomDurationText();
+    ui.roomGameDurationText.blur();
+  });
   el('menuHelp').addEventListener('click', () => openModal('helpPanel'));
   el('menuSettings').addEventListener('click', () => openModal('settingsPanel'));
   el('menuCredits').addEventListener('click', () => openModal('creditsPanel'));
@@ -4105,7 +4219,8 @@ if (new URLSearchParams(location.search).has('test')) {
     aiTick, createAiState, resetAiRod, publishDiscard, scheduleAiClaims, bestAiClaim,
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
-    renderClaimBoxes, leaveMultiRoom,
+    renderClaimBoxes, leaveMultiRoom, deadRooms, commitRoomDurationText,
+    syncHostSeaPause, updateFish, broadcastSeaSnapshot,
   };
 }
 
