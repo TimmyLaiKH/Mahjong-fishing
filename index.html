@@ -74,6 +74,9 @@
     <p class="menu-subtitle">拋竿釣牌，湊成你的胡牌。</p>
     <div id="menuTiles" class="menu-tiles" aria-hidden="true"></div>
     <div class="menu-actions">
+      <label class="player-name-input">玩家名稱
+        <input id="menuPlayerName" type="text" maxlength="12" autocomplete="off" aria-label="玩家名稱" value="幼羚" />
+      </label>
       <button id="menuStart" class="primary" type="button">單機遊戲</button>
       <button id="menuHost" class="secondary" type="button">開新房間</button>
       <button id="menuJoin" class="secondary" type="button">加入房間</button>
@@ -96,6 +99,9 @@
       <input id="roomLink" type="text" readonly aria-label="分享連結" />
     </label>
     <button id="roomCopy" class="secondary" type="button">複製連結</button>
+    <label class="player-name-input room-player-name">玩家名稱
+      <input id="roomPlayerName" type="text" maxlength="12" autocomplete="off" aria-label="玩家名稱" value="幼羚" />
+    </label>
     <div id="roomPlayers" class="room-players"></div>
     <div id="roomHostControls" class="room-host-controls">
       <label class="field">鉤速
@@ -166,6 +172,9 @@
         <b id="gameDurationValue">05:00</b>
         <input id="gameDurationText" class="duration-text" type="text" inputmode="numeric" value="05:00" aria-label="輸入每局時間（分:秒）" />
       </span>
+    </label>
+    <label class="player-name-input settings-player-name">玩家名稱
+      <input id="settingsPlayerName" type="text" maxlength="12" autocomplete="off" aria-label="玩家名稱" value="幼羚" />
     </label>
     <label class="field check"><input id="settingsSound" type="checkbox" checked /> 背景音樂（隨機中國風器樂）</label>
     <label class="field">音樂音量

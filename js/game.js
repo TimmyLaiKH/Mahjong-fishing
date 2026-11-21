@@ -35,8 +35,9 @@ const ui = {
   meldPanel: el('meldPanel'), meldRows: el('meldRows'),
   menu: el('menuScreen'), menuStart: el('menuStart'), menuTiles: el('menuTiles'),
   menuRecord: el('menuRecord'), menuHost: el('menuHost'), menuJoin: el('menuJoin'),
-  menuRoomCode: el('menuRoomCode'),
+  menuRoomCode: el('menuRoomCode'), menuPlayerName: el('menuPlayerName'),
   room: el('roomScreen'), roomCode: el('roomCode'), roomLink: el('roomLink'),
+  roomPlayerName: el('roomPlayerName'), settingsPlayerName: el('settingsPlayerName'),
   roomCopy: el('roomCopy'), roomPlayers: el('roomPlayers'),
   roomHostControls: el('roomHostControls'), roomGuestInfo: el('roomGuestInfo'),
   roomHookSpeed: el('roomHookSpeed'), roomHookSpeedValue: el('roomHookSpeedValue'),
@@ -84,6 +85,7 @@ const MEMORY_FLIP_DURATION = 3;
 const CLAIM_SECONDS = 5;
 /** The other three seats, in turn order starting after the player. */
 const BOT_NAMES = ['允行', '一心', '念慈'];
+const DEFAULT_PLAYER_NAME = '幼羚';
 const GAME_SECONDS = 300;
 const MIN_GAME_SECONDS = 30;
 const MAX_GAME_SECONDS = 1800;
@@ -135,6 +137,8 @@ const game = {
   mode: 'solo',             // 'solo' | 'multi'
   role: 'none',             // 'host' | 'guest'
   seat: 0,                  // 0 = room host, 1–3 = guests / AI fill-ins
+  playerName: DEFAULT_PLAYER_NAME,
+  playerCustomName: false,
   playerId: null,
   roomCode: null,
   players: [],              // [{ seat, name, wind, isBot, playerId }]
@@ -437,7 +441,7 @@ function startGame({ keepTurn = false, preset = null } = {}) {
     game.roundWind = WINDS[Math.floor(Math.random() * WINDS.length)];
     game.seatWind = WINDS[(WINDS.indexOf(game.roundWind) + 1 + Math.floor(Math.random() * 3)) % WINDS.length];
     game.players = [
-      { seat: 0, name: '你', wind: game.seatWind, isBot: false, playerId: game.playerId },
+      { seat: 0, name: game.playerName, wind: game.seatWind, isBot: false, playerId: game.playerId },
       ...createBots().map((bot, index) => ({
         seat: index + 1, name: bot.name, wind: bot.wind, isBot: true, playerId: null,
       })),
@@ -926,7 +930,7 @@ function normalizeRoomCode(text) {
 function defaultRoomPlayers() {
   const wind = game.seatWind ?? 'E';
   return [
-    { seat: 0, name: '房主', wind, isBot: false, playerId: game.playerId },
+    { seat: 0, name: game.playerName, wind, isBot: false, playerId: game.playerId },
     ...BOT_NAMES.map((name, index) => ({
       seat: index + 1,
       name,
@@ -939,6 +943,51 @@ function defaultRoomPlayers() {
 
 function setRoomMessage(text) {
   if (ui.roomMessage) ui.roomMessage.textContent = text;
+}
+
+function normalizePlayerName(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, 12) || DEFAULT_PLAYER_NAME;
+}
+
+/** Seat names shown to other devices; our own seat always uses its current name. */
+function seatName(seat) {
+  if (seat === game.seat) return game.playerName;
+  return game.players.find((player) => player.seat === seat)?.name
+    ?? (seat === 0 ? DEFAULT_PLAYER_NAME : BOT_NAMES[seat - 1] ?? `好友${seat}`);
+}
+
+function setPlayerName(value, notify = true) {
+  const name = normalizePlayerName(value);
+  game.playerName = name;
+  game.playerCustomName = true;
+  const me = game.players.find((player) => player.seat === game.seat);
+  if (me) me.name = name;
+  for (const input of [ui.menuPlayerName, ui.roomPlayerName, ui.settingsPlayerName]) {
+    if (input) input.value = name;
+  }
+  if (game.mode === 'multi' && notify) {
+    broadcastOrSend({ t: 'name', seat: game.seat, name });
+  }
+  renderRoom();
+  renderMeldsPanel();
+  renderClaimBoxes();
+}
+
+function commitPlayerNameInput(event) {
+  setPlayerName(event.target.value);
+}
+
+/** Guests adopt the name assigned by the host, or their own edited name once relayed. */
+function adoptPlayersList(players) {
+  game.players = players.map((player) => ({ ...player }));
+  const me = game.players.find((player) => player.seat === game.seat);
+  if (me) {
+    game.playerName = me.name;
+    for (const input of [ui.menuPlayerName, ui.roomPlayerName, ui.settingsPlayerName]) {
+      if (input) input.value = me.name;
+    }
+  }
+  refreshMultiBots();
 }
 
 function setMultiUIVisibility(visible) {
@@ -1018,7 +1067,7 @@ async function joinRoom() {
   openModal('roomScreen');
   renderRoom();
   try {
-    await net.joinRoom(code, game.playerId);
+    await net.joinRoom(code, game.playerId, game.playerCustomName ? game.playerName : null);
     setRoomMessage('已加入房間，等待房主開始。');
     renderRoom();
   } catch (error) {
@@ -1057,10 +1106,11 @@ function renderRoom() {
       const row = document.createElement('div');
       row.className = `room-player${player.seat === game.seat ? ' you' : ''}`;
       const label = document.createElement('span');
-      label.textContent = `${player.seat === game.seat ? '你' : player.name}（${player.wind ?? ''}）`;
+      label.textContent = `${player.name}（${player.wind ?? ''}）`;
       const role = document.createElement('span');
       role.className = 'room-player-role';
-      role.textContent = player.isBot ? 'AI 補位' : player.seat === 0 ? '房主' : '好友';
+      role.textContent = player.seat === game.seat ? '你'
+        : player.isBot ? 'AI 補位' : player.seat === 0 ? '房主' : '好友';
       row.append(label, role);
       ui.roomPlayers.appendChild(row);
     }
@@ -1125,7 +1175,7 @@ function sendDiscard(tile) {
     seat: game.seat,
     tileId: tile.id,
     uid: tile.uid,
-    name: game.players[game.seat]?.name ?? (game.seat === 0 ? '房主' : '好友'),
+    name: seatName(game.seat),
     wind: game.players[game.seat]?.wind ?? game.seatWind,
   };
   if (net.isHost) {
@@ -1242,8 +1292,7 @@ function addSeatMeld(seat, meld) {
 }
 
 function winnerName(seat) {
-  if (seat === game.seat) return '你';
-  return game.players.find((player) => player.seat === seat)?.name ?? `座位 ${seat + 1}`;
+  return seatName(seat);
 }
 
 function finishMultiWin(seat, result, fanTotal, bestFan) {
@@ -1291,6 +1340,12 @@ function applyMultiDraw() {
 
 function resetMultiState() {
   net.close();
+  if (!game.playerCustomName) {
+    game.playerName = DEFAULT_PLAYER_NAME;
+    for (const input of [ui.menuPlayerName, ui.roomPlayerName, ui.settingsPlayerName]) {
+      if (input) input.value = DEFAULT_PLAYER_NAME;
+    }
+  }
   game.mode = 'solo';
   game.role = 'none';
   game.seat = 0;
@@ -1325,7 +1380,7 @@ function wireNetEvents() {
       ...game.players[seat - 1],
       isBot: false,
       playerId: conn.peer,
-      name: `好友${seat}`,
+      name: BOT_NAMES[seat - 1] ?? `好友${seat}`,
     };
     conn.send({
       t: 'welcome', seat, players: game.players, settings: game.roomSettings,
@@ -1339,21 +1394,47 @@ function wireNetEvents() {
   net.on('join', (msg, conn) => {
     if (!net.isHost) return;
     const player = game.players.find((item) => item.playerId === conn.peer);
-    if (player) player.gamePlayerId = msg.playerId;
+    if (!player) return;
+    player.gamePlayerId = msg.playerId;
+    if (typeof msg.name === 'string' && msg.name.trim()) {
+      player.name = normalizePlayerName(msg.name);
+      net.broadcast({ t: 'players', players: game.players });
+      refreshMultiBots();
+      renderRoom();
+      renderMeldsPanel();
+    }
+  });
+
+  net.on('name', (msg, conn) => {
+    if (game.mode !== 'multi') return;
+    if (net.isHost) {
+      const player = game.players.find((item) => item.seat === msg.seat && item.playerId === conn.peer);
+      if (!player || typeof msg.name !== 'string') return;
+      player.name = normalizePlayerName(msg.name);
+      net.broadcast({ t: 'players', players: game.players });
+      refreshMultiBots();
+      renderRoom();
+      renderMeldsPanel();
+      return;
+    }
+    const player = game.players.find((item) => item.seat === msg.seat);
+    if (player && typeof msg.name === 'string') {
+      adoptPlayersList(game.players.map((item) => item.seat === msg.seat
+        ? { ...item, name: normalizePlayerName(msg.name) } : item));
+      renderRoom();
+    }
   });
 
   net.on('welcome', (msg) => {
     game.seat = msg.seat;
-    game.players = msg.players.map((player) => ({ ...player }));
+    adoptPlayersList(msg.players);
     game.roomSettings = { ...msg.settings };
-    refreshMultiBots();
-    setRoomMessage(`你的座位：${msg.seat === 0 ? '你' : `好友${msg.seat}`}`);
+    setRoomMessage(`你的座位：${seatName(msg.seat)}`);
     renderRoom();
   });
 
   net.on('players', (msg) => {
-    game.players = msg.players.map((player) => ({ ...player }));
-    refreshMultiBots();
+    adoptPlayersList(msg.players);
     renderRoom();
     renderMeldsPanel();
   });
@@ -1500,11 +1581,12 @@ function renderMeldsPanel() {
   ui.meldRows.innerHTML = '';
   const players = game.players.length ? game.players : defaultRoomPlayers();
   for (const player of players) {
+    if (player.seat === game.seat) continue;
     const row = document.createElement('div');
     row.className = 'meld-row';
     const name = document.createElement('span');
     name.className = 'meld-row-name';
-    name.textContent = player.seat === game.seat ? '你' : player.name;
+    name.textContent = player.name;
     row.appendChild(name);
     const melds = game.seatMelds[player.seat] ?? [];
     if (!melds.length) {
@@ -2371,6 +2453,7 @@ function buildPatternTable() {
 const PATTERN_ROWS = PATTERN_TABLE;
 
 function updateSettingsUI() {
+  if (ui.settingsPlayerName) ui.settingsPlayerName.value = game.playerName;
   ui.gameDuration.value = String(game.settings.gameSeconds);
   ui.gameDurationValue.textContent = formatClock(game.settings.gameSeconds);
   ui.gameDurationText.value = formatClock(game.settings.gameSeconds);
@@ -2458,6 +2541,13 @@ function wireInput() {
   ui.menuStart.addEventListener('click', startFromMenu);
   ui.menuHost.addEventListener('click', openRoom);
   ui.menuJoin.addEventListener('click', joinRoom);
+  for (const input of [ui.menuPlayerName, ui.roomPlayerName, ui.settingsPlayerName]) {
+    if (!input) continue;
+    input.addEventListener('change', commitPlayerNameInput);
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); input.blur(); }
+    });
+  }
   ui.roomStart.addEventListener('click', startMultiGame);
   ui.roomLeave.addEventListener('click', leaveMultiRoom);
   ui.roomCopy.addEventListener('click', copyRoomLink);
@@ -2570,7 +2660,7 @@ if (new URLSearchParams(location.search).has('test')) {
     previousWind, canChowFrom, botLabel, positionClaimBar,
     chowCombinations, claimWinResult, declareOpenMeld, renderMelds, renderClaim,
     renderSelfWin, clearSelfWin, positionSelfWinBar, setMusicVolume,
-    showMenu, startFromMenu, quitToMenu, net, openRoom, joinRoom,
+    showMenu, startFromMenu, quitToMenu, net, openRoom, joinRoom, setPlayerName,
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,
   };
 }

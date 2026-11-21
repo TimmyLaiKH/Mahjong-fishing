@@ -435,6 +435,9 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
   text-transform: uppercase;
   font-size: 1.2em;
 }
+.player-name-input { display: grid; gap: 4px; font-size: 0.85em; text-align: left; }
+.player-name-input input { width: 100%; }
+.room-player-name, .settings-player-name { margin: 8px 0; }
 .room-screen {
   background: linear-gradient(rgba(3, 22, 32, 0.55), rgba(3, 22, 32, 0.88)),
     url('../assets/bg/underwater.jpg') center / cover;

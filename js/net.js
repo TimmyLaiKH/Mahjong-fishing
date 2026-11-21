@@ -78,7 +78,7 @@ export function createNet() {
     return true;
   }
 
-  async function joinRoom(code, playerId) {
+  async function joinRoom(code, playerId, name = null) {
     hosting = false;
     peer = new window.Peer(undefined, { debug: 0 });
     peer.on('error', (error) => emit('error', { error }));
@@ -87,7 +87,7 @@ export function createNet() {
     hostConn = peer.connect(roomPeerId(code), { reliable: true });
     wireConnection(hostConn, false);
     await waitForOpen(hostConn, 'room', 10000);
-    sendToHost({ t: 'join', playerId });
+    sendToHost({ t: 'join', playerId, name });
     return true;
   }
 
