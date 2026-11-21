@@ -444,6 +444,9 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   game.flowers = dealt.flowers;
   game.melds = [];
   game.river = [];
+  // Fish x/vx are normalised to 0..1 of the logical sea width, never pixels.
+  // Resizing a window (or restoring a hidden tab) therefore cannot shift the
+  // shared sea: every device maps the same coordinates onto its own canvas.
   game.fish = [];
   game.fishSeq = 0;
   game.seaClock = 0;
@@ -663,8 +666,10 @@ function checkCatch() {
   // second contact would overwrite lastDraw and silently lose both tiles.
   if (game.lastDraw || game.pendingCatch) return;
   const { hookX, hookY } = hookPosition();
+  const hookNormX = hookX / view.width;
+  const catchWidth = 16 / view.width;
   for (const fish of game.fish) {
-    if (Math.abs(fish.x - hookX) <= fish.w / 2 + 16
+    if (Math.abs(fish.x - hookNormX) <= fish.w / 2 / view.width + catchWidth
       && Math.abs(fish.y - hookY) <= fish.h / 2 + 16) {
       requestCatch(fish);
       return;
@@ -1086,8 +1091,10 @@ function aiCheckCatch(state) {
   // whole sea), so only the already-caught flag may skip the check.
   if (state.caught) return;
   const { hookX, hookY } = aiHookPosition(state);
+  const hookNormX = hookX / view.width;
+  const catchWidth = 16 / view.width;
   for (const fish of game.fish) {
-    if (Math.abs(fish.x - hookX) <= fish.w / 2 + 16
+    if (Math.abs(fish.x - hookNormX) <= fish.w / 2 / view.width + catchWidth
       && Math.abs(fish.y - hookY) <= fish.h / 2 + 16) {
       handleCatchRequest({ fishId: fish.id, seat: state.seat });
       return;
@@ -2845,6 +2852,10 @@ function resizeCanvas() {
   canvas.style.height = `calc(100% - ${hudBottom}px)`;
   const width = canvas.clientWidth || window.innerWidth;
   const height = canvas.clientHeight || window.innerHeight;
+  // A minimised/restored window can report zero dimensions. Keep the last
+  // valid geometry so the world width never becomes zero or infinity and the
+  // shared sea does not jump when the tab is shown again.
+  if (!(width > 0) || !(height > 0)) return;
   view.dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.round(width * view.dpr);
   canvas.height = Math.round(height * view.dpr);
@@ -3078,7 +3089,7 @@ function fishFaceDown(f) {
 function drawFish() {
   const t = performance.now() / 1000;
   for (const f of game.fish) {
-    drawTile(ctx, f.tileId, f.x, f.y, f.w, f.h, {
+    drawTile(ctx, f.tileId, f.x * view.width, f.y, f.w, f.h, {
       images: game.images,
       shadow: true,
       // Hooked tiles are drawn face-up by drawRod(), so the flash never hides
@@ -3265,9 +3276,11 @@ function broadcastSeaSnapshot() {
     fish: game.fish.map((fish) => ({
       id: fish.id,
       tileId: fish.tileId,
-      x: fish.x / view.width,
+      // x/vx are already normalised; never divide by the current view width
+      // again, otherwise a host resize shifts every fish on every device.
+      x: fish.x,
       y: fish.y,
-      vx: fish.vx / view.width,
+      vx: fish.vx,
       vy: fish.vy,
       rotation: fish.rotation,
       phase: fish.phase,
@@ -3285,13 +3298,15 @@ function applySea(msg) {
   const previous = new Map(game.fish.map((fish) => [fish.id, fish]));
   game.fish = msg.fish.map((fish) => {
     const old = previous.get(fish.id);
-    const x = fish.x * view.width;
+    // Keep the snapshot's normalised coordinates; only the drawing step maps
+    // them onto this device's canvas.
+    const x = fish.x;
     return {
       id: fish.id,
       tileId: fish.tileId,
       x: old ? old.x : x,
       y: old ? old.y : fish.y,
-      vx: fish.vx * view.width,
+      vx: fish.vx,
       vy: fish.vy,
       w: TILE_W,
       h: TILE_H,
@@ -3363,9 +3378,9 @@ function spawnFish(count) {
     game.fish.push({
       id: `f${++game.fishSeq}`,
       tileId: randomTileKind(),
-      x: direction > 0 ? -TILE_W : view.width + TILE_W,
+      x: direction > 0 ? -TILE_W / view.width : 1 + TILE_W / view.width,
       y: minY + Math.random() * (maxY - minY),
-      vx: speed * speedFactor * direction,
+      vx: speed * speedFactor * direction / view.width,
       vy: (Math.random() - 0.5) * 34 * speedFactor,
       w: TILE_W, h: TILE_H,
       rotation: Math.random() * Math.PI * 2,
@@ -3390,7 +3405,8 @@ function updateFish(dt) {
       fish.vy *= -1;
     }
     // The endless pool never recycles fish; they simply swim off screen.
-    return fish.x >= -TILE_W * 2 && fish.x <= view.width + TILE_W * 2;
+    const margin = TILE_W * 2 / view.width;
+    return fish.x >= -margin && fish.x <= 1 + margin;
   });
 }
 

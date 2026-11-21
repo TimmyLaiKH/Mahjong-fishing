@@ -1,9 +1,9 @@
 /* Single scaling approach: CSS sizes the HUD, the canvas owns the game world. */
 :root {
   --tile-h: clamp(52px, 4.2vw, 66px);
-  --hud-pad: clamp(7px, 1.3vw, 16px);
+  --hud-pad: clamp(6px, 1.1vw, 12px);
   --ui-font: clamp(12px, 1.35vw, 16px);
-  --hud-height: clamp(430px, 52vh, 480px);
+  --hud-height: clamp(416px, 46vh, 470px);
   --accent: #c62828;
   --panel: rgba(4, 32, 44, 0.86);
 }
@@ -47,8 +47,8 @@ html, body {
   right: 0;
   z-index: 10;
   display: grid;
-  align-content: start;
-  gap: clamp(4px, 0.7vh, 9px);
+  align-content: space-between;
+  gap: clamp(3px, 0.5vh, 6px);
   height: var(--hud-height);
   min-height: var(--hud-height);
   max-height: var(--hud-height);
@@ -556,12 +556,12 @@ td:last-child { min-width: 220px; }
 .button-row button { background: #c62828; color: #fff; border-color: #ffcdd2; font-weight: 700; padding: 8px 18px; }
 
 @media (max-width: 768px) {
-  :root { --tile-h: clamp(44px, 7vw, 52px); --ui-font: 13px; --hud-height: clamp(410px, 52vh, 460px); }
+  :root { --tile-h: clamp(44px, 7vw, 52px); --ui-font: 13px; --hud-height: clamp(416px, 46vh, 446px); }
   .hud-bar { display: flex; flex-wrap: wrap; justify-content: space-between; }
 }
 
 @media (max-width: 480px) {
-  :root { --tile-h: clamp(38px, 10vw, 44px); --ui-font: 12px; --hud-height: clamp(416px, 64vh, 450px); }
+  :root { --tile-h: clamp(38px, 10vw, 44px); --ui-font: 12px; --hud-height: clamp(414px, 56vh, 440px); }
   .hud-bar { gap: 4px 8px; }
   .option-row, .hud-right { gap: 4px; }
   .timer { font-size: 24px; padding: 1px 6px; border-width: 1px; }
