@@ -119,6 +119,9 @@ const game = {
   nextUid: 1,
   roundWind: 'E', seatWind: 'S',
   turn: 1, timeLeft: GAME_SECONDS,
+  timeDeadline: 0,          // host: wall-clock end time, so hidden tabs still count down
+  timeBase: GAME_SECONDS,   // guest: most recent host-approved remaining time
+  timeSyncAt: 0,            // guest: Date.now() when timeBase was received
   // Only fan totals are tracked — there is no fan-to-points conversion.
   fanTotal: readNumber('mf-fantotal'), bestFan: readNumber('mf-bestfan'),
   settings: {
@@ -159,6 +162,10 @@ const game = {
   rematchVotes: [],         // seats that agreed to another round
   rematchRequired: [],      // human seats that must agree
   rematchMessage: '',
+  restartActive: false,     // mid-game restart vote opened by any human seat
+  restartVotes: [],
+  restartRequired: [],
+  restartMessage: '',
 };
 
 game.roomSettings = { hookSpeed: game.hookSpeed, gameSeconds: game.settings.gameSeconds };
@@ -423,6 +430,13 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   game.pendingAiClaims = [];
   game.turn = nextTurn;
   game.timeLeft = game.settings.gameSeconds;
+  game.timeDeadline = Date.now() + game.settings.gameSeconds * 1000;
+  game.timeBase = game.settings.gameSeconds;
+  game.timeSyncAt = Date.now();
+  game.restartActive = false;
+  game.restartVotes = [];
+  game.restartRequired = [];
+  game.restartMessage = '';
   game.kongChain = 0;
   game.lastDraw = null;
   game.hookLen = 0;
@@ -821,7 +835,9 @@ function clearClaim() {
   game.pendingClaim = null;
   game.claimActions = [];
   game.claimTimeLeft = 0;
+  game.claimBoxes = [];
   renderClaim();
+  renderClaimBoxes();
 }
 
 /** Cancel delayed AI reactions once the human has resolved the same tile. */
@@ -939,10 +955,31 @@ function nextBotDiscard() {
  * public discards — never another seat's concealed hand.
  * ------------------------------------------------------------------ */
 
+/** Choose where an AI aims its next cast. Some casts deliberately go all the
+ *  way to a side so the hook visibly reaches the bottom corner like a player's. */
+function aiCastTarget() {
+  const limit = swingLimit();
+  const roll = Math.random();
+  if (roll < 0.2) return -limit;
+  if (roll < 0.4) return limit;
+  return (Math.random() * 2 - 1) * limit;
+}
+
+/** Reset the rod to a fresh swing toward a new aim point. */
+function resetAiRod(state, minWait = 0.35) {
+  const rod = state.rod;
+  const limit = swingLimit();
+  rod.angle = Math.max(-limit, Math.min(limit, rod.angle ?? 0));
+  rod.targetAngle = aiCastTarget();
+  rod.dir = rod.targetAngle >= rod.angle ? 1 : -1;
+  rod.hookLen = 0;
+  rod.phase = 'swing';
+  rod.wait = minWait + Math.random() * 0.9;
+}
+
 function createAiState(seat) {
   const dealt = dealTiles(13);
-  const limit = swingLimit();
-  return {
+  const state = {
     seat,
     hand: dealt.hand,
     flowers: dealt.flowers,
@@ -956,13 +993,16 @@ function createAiState(seat) {
     fanTotal: 0,
     bestFan: 0,
     rod: {
-      angle: Math.max(-limit, Math.min(limit, (Math.random() - 0.5) * 0.8)),
-      dir: Math.random() < 0.5 ? 1 : -1,
+      angle: 0,
+      targetAngle: 0,
+      dir: 1,
       hookLen: 0,
       phase: 'swing',
-      wait: 0.5 + Math.random() * 2.5,
+      wait: 0,
     },
   };
+  resetAiRod(state, 0.5 + Math.random() * 2.5);
+  return state;
 }
 
 function isAiSeat(seat) {
@@ -1075,9 +1115,7 @@ function assignCatchToAi(seat, tileId) {
     state.kongChain += 1;
     // Like the human seat, a kong owes a replacement draw before any discard.
     state.caught = null;
-    state.rod.hookLen = 0;
-    state.rod.phase = 'swing';
-    state.rod.wait = 0.4 + Math.random() * 1.4;
+    resetAiRod(state);
     return;
   }
   state.mustDiscard = true;
@@ -1108,40 +1146,36 @@ function aiChooseAndDiscard(state) {
   // A claimed fish keeps `caught` and the line extended until the forced
   // discard; reset both or the next cast would relock and start at full depth.
   state.caught = null;
-  state.rod.hookLen = 0;
-  state.rod.phase = 'swing';
-  state.rod.wait = 0.4 + Math.random() * 1.4;
+  resetAiRod(state);
   publishDiscard(state.seat, discarded, true);
 }
 
 function publishDiscard(seat, tile, isBot) {
   const player = game.players.find((item) => item?.seat === seat);
   const wind = player?.wind ?? seatWindOf(seat);
+  const sourceKey = `${seat}:${tile.uid ?? tile.id}:${game.nextUid++}`;
+  const entry = {
+    t: 'discard',
+    claimId: sourceKey,
+    sourceKey,
+    seat,
+    tileId: tile.id,
+    uid: tile.uid,
+    name: seatName(seat),
+    isBot: Boolean(isBot),
+    wind,
+  };
   if (game.mode !== 'multi') {
-    const bot = { name: player?.name ?? seatName(seat), wind, isBot };
-    game.pendingClaim = { tile, bot };
-    game.claimActions = buildClaimActions(tile.id, bot);
-    game.claimTimeLeft = CLAIM_SECONDS;
-    renderClaim();
+    addClaimBox(entry);
   } else if (net.isHost || seat === game.seat) {
-    const msg = {
-      t: 'discard',
-      claimId: `${seat}:${tile.uid}:${game.nextUid++}`,
-      seat,
-      tileId: tile.id,
-      uid: tile.uid,
-      name: seatName(seat),
-      isBot: Boolean(isBot),
-      wind,
-    };
     if (net.isHost) {
-      net.broadcast(msg);
-      addClaimBox(msg);
+      net.broadcast(entry);
+      addClaimBox(entry);
     } else {
-      net.sendToHost(msg);
+      net.sendToHost(entry);
     }
   }
-  scheduleAiClaims(tile, seat);
+  scheduleAiClaims(tile, seat, sourceKey);
 }
 
 function bestAiClaim(seat, tileId, discarderSeat) {
@@ -1166,10 +1200,10 @@ function bestAiClaim(seat, tileId, discarderSeat) {
   return null;
 }
 
-function scheduleAiClaims(tile, discarderSeat) {
+function scheduleAiClaims(tile, discarderSeat, sharedSourceKey = null) {
   if (!Object.keys(game.aiStates).length || game.state === S.WIN || game.state === S.DRAW_GAME) return;
   const tileId = typeof tile === 'string' ? tile : tile.id;
-  const sourceKey = `${discarderSeat}:${tile.uid ?? tileId}:${game.nextUid++}`;
+  const sourceKey = sharedSourceKey ?? `${discarderSeat}:${tile.uid ?? tileId}:${game.nextUid++}`;
   for (const seat of Object.keys(game.aiStates).map(Number)) {
     if (seat === discarderSeat) continue;
     const claim = bestAiClaim(seat, tileId, discarderSeat);
@@ -1225,13 +1259,11 @@ function applyAiMeldClaim(msg) {
   };
   state.melds.push(meld);
   addSeatMeld(msg.seat, meld);
-  state.rod.phase = 'swing';
-  state.rod.hookLen = 0;
-  state.rod.wait = 0.4 + Math.random() * 1.2;
+  state.caught = null;
+  resetAiRod(state);
   if (msg.type === 'kong') {
     // 明槓 also needs a replacement fish before the forced discard.
     state.kongChain += 1;
-    state.caught = null;
     return;
   }
   state.mustDiscard = true;
@@ -1279,33 +1311,49 @@ function aiTick(dt) {
       continue;
     }
     if (rod.phase === 'swing') {
-      // Match the human rod: keep sweeping across the full on-screen range
-      // while waiting, then cast from the angle reached at that moment.
-      swingAiRod(rod, dt);
+      // Aim across the whole player-reachable range, including the bottom
+      // corners. Sweep to that aim point before casting instead of freezing at
+      // whatever angle the previous reel happened to finish.
+      const limit = swingLimit();
+      const target = Math.max(-limit, Math.min(limit, rod.targetAngle ?? 0));
+      rod.targetAngle = target;
+      const diff = target - rod.angle;
+      if (Math.abs(diff) < 0.002) {
+        rod.angle = target;
+      } else {
+        const dir = Math.sign(diff);
+        rod.dir = dir;
+        swingAiRod(rod, dt);
+        if ((dir > 0 && rod.angle >= target) || (dir < 0 && rod.angle <= target)) {
+          rod.angle = target;
+        }
+      }
       if (rod.wait > 0) {
         rod.wait -= dt;
         if (rod.wait > 0) continue;
       }
+      if (Math.abs(rod.targetAngle - rod.angle) >= 0.002) continue;
       rod.phase = 'casting';
       rod.hookLen = 0;
     }
     if (rod.phase === 'casting') {
-      rod.hookLen += 980 * hookRate * dt;
-      aiCheckCatch(state);
+      // Let the hook reach the sea floor (and hence the screen edge at the
+      // swing limit) before grabbing anything; catches on the way back are
+      // still allowed.
       const maxLen = maxHookLength(rod.angle);
+      rod.hookLen = Math.min(maxLen, rod.hookLen + 980 * hookRate * dt);
       if (rod.hookLen >= maxLen) {
         rod.hookLen = maxLen;
-        rod.phase = 'reeling';
+        aiCheckCatch(state);
+        if (rod.phase === 'casting') rod.phase = 'reeling';
       }
     } else if (rod.phase === 'reeling') {
       aiCheckCatch(state);
       if (rod.phase === 'reeling') {
         rod.hookLen -= 820 * hookRate * dt;
         if (rod.hookLen <= 0) {
-          rod.hookLen = 0;
-          rod.phase = 'swing';
-          rod.wait = 0.4 + Math.random() * 1.4;
           state.caught = null;
+          resetAiRod(state);
         }
       }
     }
@@ -1743,6 +1791,7 @@ function startMultiGame() {
   const msg = {
     t: 'start',
     settings: { ...game.roomSettings },
+    timeLeft: game.roomSettings.gameSeconds,
     roundWind: WINDS[Math.floor(Math.random() * WINDS.length)],
     seatWind,
     players: game.players.map((player) => ({
@@ -1772,10 +1821,49 @@ function applyMultiStart(msg) {
   setWaitingRoom(false);
   updateSettingsUI();
   startGame({ preset: msg });
+  // The host's clock may differ from ours, so keep its remaining seconds and
+  // count down from the moment this device received the message.
+  if (!net.isHost) {
+    const seconds = Number.isFinite(msg.timeLeft)
+      ? Math.max(0, msg.timeLeft)
+      : game.settings.gameSeconds;
+    syncRemoteTime(seconds);
+  }
+}
+
+/** Adopt a host-approved remaining time without trusting the host's clock. */
+function syncRemoteTime(seconds) {
+  game.timeBase = seconds;
+  game.timeSyncAt = Date.now();
+  game.timeLeft = seconds;
+  game.timeDeadline = 0;
+  updateTimer();
+}
+
+function hostTimeLeft() {
+  return Math.max(0, (game.timeDeadline - Date.now()) / 1000);
+}
+
+function guestTimeLeft() {
+  return Math.max(0, game.timeBase - (Date.now() - game.timeSyncAt) / 1000);
+}
+
+/** Runs on an interval as well as the frame loop so a hidden host tab still
+ *  publishes time and eventually ends the round. */
+function broadcastHostTime() {
+  if (game.mode !== 'multi' || !net.isHost) return;
+  if ([S.LOADING, S.WIN, S.DRAW_GAME].includes(game.state)) return;
+  const seconds = hostTimeLeft();
+  game.timeLeft = seconds;
+  updateTimer();
+  net.broadcast({ t: 'time', timeLeft: seconds, sentAt: Date.now() });
+  if (seconds <= 0) {
+    net.broadcast({ t: 'draw' });
+    applyMultiDraw();
+  }
 }
 
 function addClaimBox(entry) {
-  if (game.mode !== 'multi') return;
   // Keep a host-side box even for the host's own discard: the host needs it to
   // arbitrate human and AI claims. Rendering still hides that seat's box.
   // One box per opponent: a newer discard replaces that opponent's older one.
@@ -1789,7 +1877,7 @@ function addClaimBox(entry) {
 }
 
 function sendClaimMessage(msg) {
-  if (net.isHost) handleClaim(msg);
+  if (game.mode !== 'multi' || net.isHost) handleClaim(msg);
   else net.sendToHost(msg);
 }
 
@@ -1801,6 +1889,7 @@ function claimFromBox(box, action) {
   const msg = {
     t: 'claim',
     claimId: box.claimId,
+    sourceKey: box.sourceKey,
     seat: game.seat,
     tileId: box.tileId,
     type: action.type,
@@ -1874,7 +1963,9 @@ function applyClaimResult(msg) {
   const box = game.claimBoxes.find((item) => item.claimId === msg.claimId);
   if (box) box.resolved = true;
   if (msg.type === 'win') {
-    if (game.aiStates[msg.seat] && (net.isHost || game.mode !== 'multi')) {
+    if (msg.seat === game.seat && game.mode !== 'multi') {
+      commitWin(msg.result);
+    } else if (game.aiStates[msg.seat] && (net.isHost || game.mode !== 'multi')) {
       commitAiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan);
     } else {
       finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan);
@@ -1983,6 +2074,146 @@ function voteRematch() {
   }
 }
 
+/* ---- Mid-game restart vote (all human seats must agree) ---- */
+
+function restartVoteMessage() {
+  const required = game.restartRequired.length ? game.restartRequired : humanSeats();
+  const names = required.map((seat) => {
+    const mark = game.restartVotes.includes(seat) ? '✓' : '○';
+    return `${mark}${seatLabel(seat)}`;
+  }).join('　');
+  const reason = game.restartMessage || '有玩家要求重新開始。';
+  return `${reason}\n\n重新開始投票：${names}（${game.restartVotes.length}/${required.length}）`;
+}
+
+function showRestartVoteOverlay() {
+  showOverlay({
+    title: '重新開始投票',
+    message: restartVoteMessage(),
+    actions: [
+      {
+        label: '同意重新開始',
+        keepOpen: true,
+        pendingLabel: '已同意，等待其他玩家…',
+        onClick: voteRestart,
+      },
+      { label: '取消', primary: false, onClick: cancelRestart },
+    ],
+  });
+}
+
+function updateRestartOverlay() {
+  if (!game.restartActive || !ui.overlay.classList.contains('show')) return;
+  const body = ui.overlay.querySelector('.breakdown');
+  if (body) body.textContent = restartVoteMessage();
+  const button = ui.overlay.querySelector('[data-keep-open]');
+  if (button && game.restartVotes.includes(game.seat)) {
+    button.disabled = true;
+    button.textContent = button.dataset.pendingLabel;
+  }
+}
+
+function broadcastRestartStatus() {
+  if (!net.isHost) return;
+  net.broadcast({
+    t: 'restartStatus',
+    active: game.restartActive,
+    votes: [...game.restartVotes],
+    required: [...game.restartRequired],
+    message: game.restartMessage,
+  });
+  updateRestartOverlay();
+}
+
+function addRestartVote(seat) {
+  if (!game.restartVotes.includes(seat)) game.restartVotes.push(seat);
+}
+
+function startRestartVote(requester) {
+  if (game.mode !== 'multi' || !net.isHost || game.restartActive) return;
+  const humans = humanSeats();
+  if (!humans.length) return;
+  game.restartActive = true;
+  game.restartRequired = humans;
+  game.restartVotes = humans.includes(requester) ? [requester] : [];
+  game.restartMessage = requester === game.seat
+    ? '你要求重新開始這一局。'
+    : `${seatLabel(requester)} 要求重新開始這一局。`;
+  showRestartVoteOverlay();
+  broadcastRestartStatus();
+  checkRestartReady();
+}
+
+function checkRestartReady() {
+  if (!net.isHost || !game.restartActive) return;
+  const required = game.restartRequired.length ? game.restartRequired : humanSeats();
+  if (!required.length || !required.every((seat) => game.restartVotes.includes(seat))) return;
+  game.restartActive = false;
+  game.restartVotes = [];
+  game.restartRequired = [];
+  game.restartMessage = '';
+  ui.overlay.classList.remove('show');
+  net.broadcast({ t: 'restartNow' });
+  startMultiGame();
+}
+
+function cancelRestartVote() {
+  if (!net.isHost || !game.restartActive) return;
+  game.restartActive = false;
+  game.restartVotes = [];
+  game.restartRequired = [];
+  game.restartMessage = '';
+  ui.overlay.classList.remove('show');
+  broadcastRestartStatus();
+}
+
+/** HUD 重來這局: solo restarts immediately; multiplayer opens a vote. */
+function requestRestart() {
+  if (game.mode !== 'multi') {
+    startGame({ keepTurn: true });
+    return;
+  }
+  if (net.isHost) {
+    startRestartVote(game.seat);
+    return;
+  }
+  net.sendToHost({ t: 'restartRequest', seat: game.seat });
+  showOverlay({
+    title: '重新開始投票',
+    message: '已向房主提出重新開始，等待投票。',
+    actions: [{
+      label: '取消請求',
+      primary: false,
+      onClick: () => {
+        net.sendToHost({ t: 'restartCancel', seat: game.seat });
+        ui.overlay.classList.remove('show');
+      },
+    }],
+  });
+}
+
+function voteRestart() {
+  if (game.mode !== 'multi' || !game.restartActive) return;
+  if (net.isHost) {
+    addRestartVote(game.seat);
+    broadcastRestartStatus();
+    checkRestartReady();
+  } else {
+    net.sendToHost({ t: 'restartVote', seat: game.seat });
+  }
+  updateRestartOverlay();
+}
+
+function cancelRestart() {
+  if (game.mode !== 'multi') return;
+  if (net.isHost) {
+    cancelRestartVote();
+  } else {
+    net.sendToHost({ t: 'restartCancel', seat: game.seat });
+    ui.overlay.classList.remove('show');
+  }
+}
+
 function refreshRematchParticipants() {
   if (!net.isHost || ![S.WIN, S.DRAW_GAME].includes(game.state)) return;
   const humans = humanSeats();
@@ -2073,11 +2304,11 @@ function leaveMultiRoom() {
 function wireNetEvents() {
   net.on('guestOpen', (msg, conn) => {
     if (!net.isHost || game.mode !== 'multi') return;
-    // Real players take priority over AI seats: joining kicks an AI first so
-    // a room where the host added bots still has space for friends.
-    const seat = [1, 2, 3].find((value) => game.players[value]?.isBot)
-      ?? [1, 2, 3].find((value) => game.players[value]?.isEmpty);
-    if (!seat) {
+    // Take a genuinely empty seat first; only replace an AI when the room has
+    // no empty seats. Four human seats cannot accept another connection.
+    const seat = [1, 2, 3].find((value) => game.players[value]?.isEmpty)
+      ?? [1, 2, 3].find((value) => game.players[value]?.isBot);
+    if (!seat || humanSeats().length >= 4) {
       conn.send({ t: 'full' });
       return;
     }
@@ -2170,6 +2401,11 @@ function wireNetEvents() {
 
   net.on('sea', (msg) => applySea(msg));
 
+  net.on('time', (msg) => {
+    if (net.isHost || game.mode !== 'multi' || !Number.isFinite(msg.timeLeft)) return;
+    syncRemoteTime(msg.timeLeft);
+  });
+
   net.on('hook', (msg) => {
     // Guests can only talk to the host; relay their ghost hooks so the other
     // guests see every seat's rod, not just the host-owned AI rods.
@@ -2236,8 +2472,53 @@ function wireNetEvents() {
     updateRematchOverlay();
   });
 
+  const humanSeatFromMessage = (msg) => game.players.find(
+    (player) => player?.seat === msg.seat && !player.isBot && !player.isEmpty,
+  );
+
+  net.on('restartRequest', (msg) => {
+    if (!net.isHost || game.mode !== 'multi' || !humanSeatFromMessage(msg)) return;
+    if (!game.restartActive) startRestartVote(msg.seat);
+  });
+
+  net.on('restartVote', (msg) => {
+    if (!net.isHost || !game.restartActive || !humanSeatFromMessage(msg)) return;
+    if (!game.restartRequired.includes(msg.seat)) return;
+    addRestartVote(msg.seat);
+    broadcastRestartStatus();
+    checkRestartReady();
+  });
+
+  net.on('restartCancel', (msg) => {
+    if (!net.isHost || !game.restartActive || !humanSeatFromMessage(msg)) return;
+    cancelRestartVote();
+  });
+
+  net.on('restartStatus', (msg) => {
+    if (game.mode !== 'multi' || net.isHost) return;
+    game.restartActive = Boolean(msg.active);
+    game.restartVotes = Array.isArray(msg.votes) ? [...msg.votes] : [];
+    game.restartRequired = Array.isArray(msg.required) ? [...msg.required] : humanSeats();
+    game.restartMessage = typeof msg.message === 'string' ? msg.message : '';
+    if (!game.restartActive) {
+      ui.overlay.classList.remove('show');
+      return;
+    }
+    showRestartVoteOverlay();
+  });
+
+  net.on('restartNow', () => {
+    if (net.isHost || game.mode !== 'multi') return;
+    game.restartActive = false;
+    game.restartVotes = [];
+    game.restartRequired = [];
+    game.restartMessage = '';
+    ui.overlay.classList.remove('show');
+  });
+
   function fillSeatWithBot(player) {
     if (!player || player.seat === 0) return;
+    if (game.restartActive && game.restartRequired.includes(player.seat)) cancelRestartVote();
     player.isBot = true;
     player.playerId = null;
     player.name = BOT_NAMES[player.seat - 1] ?? `好友${player.seat}`;
@@ -2279,9 +2560,7 @@ function wireNetEvents() {
 
 function renderClaimBoxes() {
   if (!ui.claimBoxes) return;
-  const boxes = game.mode === 'multi'
-    ? game.claimBoxes.filter((box) => box.seat !== game.seat && !box.resolved)
-    : [];
+  const boxes = game.claimBoxes.filter((box) => box.seat !== game.seat && !box.resolved);
   ui.claimBoxes.hidden = boxes.length === 0;
   ui.claimBoxes.innerHTML = '';
   for (const box of boxes) {
@@ -2342,13 +2621,15 @@ function renderMeldsPanel() {
   if (!visible || !ui.meldRows) return;
   ui.meldRows.innerHTML = '';
   for (let seat = 0; seat < 4; seat += 1) {
+    // 自己的花牌與副露已在 HUD 另行顯示，這裡只列其他三家。
+    if (seat === game.seat) continue;
     const player = game.players.find((item) => item?.seat === seat)
-      ?? (seat === game.seat ? { seat, name: game.playerName } : makeBotPlayer(seat));
+      ?? makeBotPlayer(seat);
     const row = document.createElement('div');
     row.className = 'meld-row';
     const name = document.createElement('span');
     name.className = 'meld-row-name';
-    name.textContent = `${playerDisplayName(player)}${seat === game.seat ? '（你）' : ''}`;
+    name.textContent = playerDisplayName(player);
     row.appendChild(name);
 
     const flowers = game.seatFlowers[seat] ?? flowersForSeat(seat) ?? [];
@@ -2391,8 +2672,7 @@ function renderMeldsPanel() {
   }
 }
 
-function multiTick(dt) {
-  if (game.mode !== 'multi') return;
+function tickClaimBoxes(dt) {
   let expired = false;
   for (const box of game.claimBoxes) {
     if (box.resolved) continue;
@@ -2760,21 +3040,26 @@ let lastFrame = 0;
 function gameLoop(timestamp) {
   const dt = lastFrame ? Math.min((timestamp - lastFrame) / 1000, 0.05) : 0;
   lastFrame = timestamp;
-  if (!paused()) {
-    if (game.state !== S.WIN && game.state !== S.DRAW_GAME) {
+  // Multiplayer time is wall-clock based: a host changing tabs cannot pause it,
+  // and every guest counts down from the last host sync on its own clock.
+  if (game.state !== S.WIN && game.state !== S.DRAW_GAME) {
+    if (game.mode === 'multi') {
+      game.timeLeft = net.isHost ? hostTimeLeft() : guestTimeLeft();
+      updateTimer();
+      if (net.isHost && game.timeLeft <= 0) {
+        net.broadcast({ t: 'draw' });
+        applyMultiDraw();
+      }
+    } else if (!paused()) {
       game.timeLeft = Math.max(0, game.timeLeft - dt);
       updateTimer();
-      if (game.timeLeft <= 0) {
-        if (game.mode === 'multi') {
-          if (net.isHost) { net.broadcast({ t: 'draw' }); applyMultiDraw(); }
-        } else {
-          endDrawGame();
-        }
-      }
+      if (game.timeLeft <= 0) endDrawGame();
     }
+  }
+  if (!paused()) {
     if (game.state !== S.WIN && game.state !== S.DRAW_GAME) {
-      if (game.mode === 'multi') multiTick(dt);
-      else updateClaimTimer(dt);
+      tickClaimBoxes(dt);
+      if (game.mode !== 'multi') updateClaimTimer(dt);
       aiTick(dt);
       aiClaimTick(dt);
       broadcastHookState(dt);
@@ -2839,13 +3124,15 @@ function broadcastSeaSnapshot() {
 
 function applySea(msg) {
   if (net.isHost || !Array.isArray(msg.fish)) return;
-  const scale = view.width / (msg.worldWidth || view.width);
+  // The host publishes x/vx normalised to its own canvas width. Convert them
+  // to this device's canvas; multiplying by the width *ratio* left every fish
+  // at x≈0..1 on guests, i.e. stuck against the left edge.
   game.fish = msg.fish.map((fish) => ({
     id: fish.id,
     tileId: fish.tileId,
-    x: fish.x * scale,
+    x: fish.x * view.width,
     y: fish.y,
-    vx: fish.vx * scale,
+    vx: fish.vx * view.width,
     vy: fish.vy,
     w: TILE_W,
     h: TILE_H,
@@ -3444,7 +3731,7 @@ function wireInput() {
   el('menuHelp').addEventListener('click', () => openModal('helpPanel'));
   el('menuSettings').addEventListener('click', () => openModal('settingsPanel'));
   el('menuCredits').addEventListener('click', () => openModal('creditsPanel'));
-  el('restartBtn').addEventListener('click', () => { closeTopModal(); restartGame(); });
+  el('restartBtn').addEventListener('click', () => { closeTopModal(); requestRestart(); });
   el('helpBtn').addEventListener('click', () => openModal('helpPanel'));
   el('settingsBtn').addEventListener('click', () => openModal('settingsPanel'));
   el('creditsBtn').addEventListener('click', () => openModal('creditsPanel'));
@@ -3509,6 +3796,7 @@ function loadBackground() {
 async function boot() {
   music.setVolume(game.settings.musicVolume);
   music.setEnabled(game.settings.sound);
+  setInterval(broadcastHostTime, 500);
   wireInput();
   updateSettingsUI();
   const [loaded, bg] = await Promise.all([
@@ -3537,23 +3825,24 @@ async function boot() {
    Normal play never exposes internal state. */
 if (new URLSearchParams(location.search).has('test')) {
   window.__mf = {
-    game, S,
+    game, S, view,
     handFrom: (ids) => ids.map((id) => ({ id, uid: game.nextUid++ })),
     setState, resolveDraw, declareKong, commitWin, endDrawGame, startGame,
     renderHand, renderTarget, updateHUD, findKongTile, hookPosition, music,
     paceFactor, GAME_SECONDS, MIN_GAME_SECONDS, MAX_GAME_SECONDS, setGameSeconds, formatClock, parseClock,
     HAIDI_SECONDS, winContext, openingWinContext, checkCatch, randomTileKind, analyzeDiscards, selectDiscard,
-    finishReel, renderFlowers, checkInitialSelfDraw, checkAiOpeningWins,
+    finishReel, renderFlowers, checkInitialSelfDraw, checkAiOpeningWins, hookPositionFor,
     MEMORY_FLIP_CHANCE, MEMORY_FLIP_DELAY, MEMORY_FLIP_DURATION, CLAIM_SECONDS, fishFaceDown,
     discard, nextBotDiscard, passClaim, buildClaimActions, chooseOpponentDiscardKind,
     previousWind, canChowFrom, botLabel, positionClaimBar,
     chowCombinations, claimWinResult, declareOpenMeld, renderMelds, renderClaim,
     renderSelfWin, clearSelfWin, positionSelfWinBar, setMusicVolume,
     showMenu, startFromMenu, quitToMenu, net, openRoom, joinRoom, askRoomCode, setPlayerName,
-    voteRematch, showMultiEndOverlay,
+    voteRematch, showMultiEndOverlay, requestRestart, startRestartVote, voteRestart, cancelRestart,
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,
     renderMeldsPanel, handleCatchRequest, applyFishCaught, applySea, applyHook,
-    aiTick, createAiState, publishDiscard, scheduleAiClaims, bestAiClaim,
+    aiTick, createAiState, resetAiRod, publishDiscard, scheduleAiClaims, bestAiClaim,
+    addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
   };
 }
 
