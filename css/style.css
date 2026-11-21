@@ -226,7 +226,7 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
-.meld-panel summary { cursor: pointer; color: #ffe58f; font-weight: 700; }
+.meld-title { color: #ffe58f; font-weight: 700; margin-bottom: 2px; }
 .meld-rows { display: grid; gap: 3px; margin-top: 4px; }
 .meld-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .meld-row-name { min-width: 4em; font-weight: 700; color: #d7f5ff; }
@@ -353,8 +353,9 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
 .meld-list .tile-img.fallback { font-size: calc(var(--tile-h) * 0.72); }
 
 .target {
-  min-height: 1.25em;
-  max-height: 1.5em;
+  min-height: calc(var(--tile-h) * 0.52 + 8px);
+  height: calc(var(--tile-h) * 0.52 + 8px);
+  max-height: calc(var(--tile-h) * 0.52 + 8px);
   overflow-y: hidden;
   text-align: center;
   color: #fff3b0;
