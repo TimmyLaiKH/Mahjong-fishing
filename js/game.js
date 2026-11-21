@@ -9,6 +9,7 @@ import {
 } from './tiles.js';
 import { createMusic } from './audio.js';
 import { createNet, randomPlayerId } from './net.js';
+import { settleRound } from './payout.js';
 import {
   WINDS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown,
@@ -28,6 +29,9 @@ const ui = {
   selfWinBar: el('selfWinBar'), selfWinLabel: el('selfWinLabel'),
   selfWinTile: el('selfWinTile'), selfWinActions: el('selfWinActions'),
   roundWind: el('roundWind'), seatWind: el('seatWind'),
+  scoreBtn: el('scoreBtn'), moneyCount: el('moneyCount'),
+  scorePanel: el('scorePanel'), scoreRoundInfo: el('scoreRoundInfo'),
+  scoreStandings: el('scoreStandings'), scoreHistory: el('scoreHistory'),
   timer: el('timer'), turnCount: el('turnCount'),
   fanCount: el('fanCount'), bestFanCount: el('bestFanCount'),
   exposedKongs: el('exposedKongs'),
@@ -46,12 +50,20 @@ const ui = {
   roomHookSpeed: el('roomHookSpeed'), roomHookSpeedValue: el('roomHookSpeedValue'),
   roomGameDuration: el('roomGameDuration'), roomGameDurationValue: el('roomGameDurationValue'),
   roomGameDurationText: el('roomGameDurationText'),
+  roomStartingMoney: el('roomStartingMoney'), roomStartingMoneyText: el('roomStartingMoneyText'),
+  roomStartingMoneyValue: el('roomStartingMoneyValue'),
+  roomWinds: el('roomWinds'), roomBase: el('roomBase'), roomBaseText: el('roomBaseText'),
+  roomBaseValue: el('roomBaseValue'),
   roomStart: el('roomStart'), roomLeave: el('roomLeave'), roomMessage: el('roomMessage'),
   settingsSound: el('settingsSound'),
   musicVolume: el('musicVolume'), musicVolumeValue: el('musicVolumeValue'),
   gameDuration: el('gameDuration'), gameDurationValue: el('gameDurationValue'),
   gameDurationText: el('gameDurationText'),
   hookSpeed: el('hookSpeed'), hookSpeedValue: el('hookSpeedValue'),
+  matchStartingMoney: el('matchStartingMoney'), matchStartingMoneyText: el('matchStartingMoneyText'),
+  matchStartingMoneyValue: el('matchStartingMoneyValue'),
+  matchWinds: el('matchWinds'), matchBase: el('matchBase'), matchBaseText: el('matchBaseText'),
+  matchBaseValue: el('matchBaseValue'),
 };
 
 const music = createMusic();
@@ -99,6 +111,16 @@ const MIN_GAME_SECONDS = 30;
 const MAX_GAME_SECONDS = 1800;
 /** 海底撈月: any tile won within the final 5 seconds; 自摸 is still scored separately. */
 const HAIDI_SECONDS = 5;
+/** Match scoring: one shared stake, a wind limit and a starting purse per seat. */
+const MIN_STARTING_MONEY = 1;
+const MAX_STARTING_MONEY = 100000000;
+const DEFAULT_STARTING_MONEY = 10000;
+const MIN_WINDS = 1;
+const MAX_WINDS = 4;
+const DEFAULT_WINDS = 4;
+const MIN_BASE = 1;
+const MAX_BASE = 100;
+const DEFAULT_BASE = 1;
 /** The host owns the shared sea and sends compact snapshots ten times a second. */
 const SEA_BROADCAST_INTERVAL = 0.1;
 const HOOK_BROADCAST_INTERVAL = 0.1;
@@ -133,8 +155,13 @@ const game = {
   joinOutcome: null,        // pending | joined | full | closed
   joinTimer: null,
   toastTimer: null,
-  // Only fan totals are tracked — there is no fan-to-points conversion.
+  // Fan records stay local; match money is a per-game setting chosen by the
+  // host (no new localStorage keys are introduced).
   fanTotal: readNumber('mf-fantotal'), bestFan: readNumber('mf-bestfan'),
+  matchSetup: {
+    startingMoney: DEFAULT_STARTING_MONEY, winds: DEFAULT_WINDS, base: DEFAULT_BASE,
+  },
+  match: null,              // created by resetMatch(); authoritative on the host
   settings: {
     sound: readSetting('mf-sound', true),
     musicVolume: Math.min(1, Math.max(0, readNumberWithDefault('mf-volume', 0.32))),
@@ -163,7 +190,10 @@ const game = {
   playerId: null,
   roomCode: null,
   players: [],              // [{ seat, name, wind, isBot, playerId }]
-  roomSettings: { hookSpeed: 1, gameSeconds: GAME_SECONDS },
+  roomSettings: {
+    hookSpeed: 1, gameSeconds: GAME_SECONDS,
+    startingMoney: DEFAULT_STARTING_MONEY, winds: DEFAULT_WINDS, base: DEFAULT_BASE,
+  },
   claimBoxes: [],           // multiplayer claim slots (one per recent discard)
   claimedKeys: new Set(),   // solo: one AI claim per played tile
   seatMelds: {},            // seat -> meld[], used by the 副露 panel
@@ -180,7 +210,10 @@ const game = {
   restartMessage: '',
 };
 
-game.roomSettings = { hookSpeed: game.hookSpeed, gameSeconds: game.settings.gameSeconds };
+game.roomSettings = {
+  hookSpeed: game.hookSpeed, gameSeconds: game.settings.gameSeconds,
+  ...game.matchSetup,
+};
 
 function readNumber(key) {
   try { return Number(localStorage.getItem(key)) || 0; } catch { return 0; }
@@ -231,6 +264,110 @@ function commitDurationText() {
 }
 function save(key, value) {
   try { localStorage.setItem(key, String(value)); } catch { /* private mode */ }
+}
+
+/* ------------------------------------------------------------------ *
+ * Match scoring (money, winds, dealer continuity)
+ * ------------------------------------------------------------------ */
+
+function clampInt(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+function normalizeMatchSetup(source = {}) {
+  return {
+    startingMoney: clampInt(source.startingMoney, MIN_STARTING_MONEY, MAX_STARTING_MONEY, DEFAULT_STARTING_MONEY),
+    winds: clampInt(source.winds, MIN_WINDS, MAX_WINDS, DEFAULT_WINDS),
+    base: clampInt(source.base, MIN_BASE, MAX_BASE, DEFAULT_BASE),
+  };
+}
+
+function formatMoney(value) {
+  return Math.round(Number(value) || 0).toLocaleString('zh-Hant');
+}
+
+function resetMatch(setup = game.matchSetup, dealerSeat = null) {
+  const settings = normalizeMatchSetup(setup);
+  game.matchSetup = settings;
+  const money = Array.from({ length: 4 }, () => settings.startingMoney);
+  game.match = {
+    ...settings,
+    money,
+    dealerSeat: dealerSeat === null
+      ? Math.floor(Math.random() * 4)
+      : clampInt(dealerSeat, 0, 3, 0),
+    repeatCount: 0,
+    handNumber: 0,
+    history: [],
+    lastPayout: null,
+    over: false,
+    winner: null,
+    active: false,
+  };
+  updateScoreUI();
+  return game.match;
+}
+
+/** Plain copy for network messages (no prototypes, no local UI references). */
+function cloneMatch(match = game.match) {
+  if (!match) return null;
+  return {
+    startingMoney: match.startingMoney, winds: match.winds, base: match.base,
+    money: [...match.money], dealerSeat: match.dealerSeat,
+    repeatCount: match.repeatCount, handNumber: match.handNumber,
+    history: match.history.map((entry) => ({ ...entry })),
+    lastPayout: match.lastPayout ? { ...match.lastPayout } : null,
+    over: match.over, winner: match.winner === undefined ? null : [...(match.winner ?? [])],
+    active: Boolean(match.active),
+  };
+}
+
+function adoptMatch(data) {
+  if (!data || !Array.isArray(data.money) || data.money.length !== 4) return;
+  game.matchSetup = normalizeMatchSetup(data);
+  game.match = {
+    ...game.matchSetup,
+    money: data.money.map((value) => Math.round(Number(value) || 0)),
+    dealerSeat: clampInt(data.dealerSeat, 0, 3, 0),
+    repeatCount: clampInt(data.repeatCount, 0, 999, 0),
+    handNumber: clampInt(data.handNumber, 0, 999, 0),
+    history: Array.isArray(data.history) ? data.history.map((entry) => ({ ...entry })) : [],
+    lastPayout: data.lastPayout ? { ...data.lastPayout } : null,
+    over: Boolean(data.over),
+    winner: Array.isArray(data.winner) ? [...data.winner] : null,
+    active: Boolean(data.active),
+  };
+  updateScoreUI();
+}
+
+function windIndexFor(match = game.match) {
+  return Math.min(MAX_WINDS - 1, Math.floor((match?.handNumber ?? 0) / 4));
+}
+
+/** Seat 0's wind such that the dealer carries the current round wind. */
+function seatZeroWind(match = game.match) {
+  return WINDS[(windIndexFor(match) - (match?.dealerSeat ?? 0) + WINDS.length) % WINDS.length];
+}
+
+/** Apply a host-chosen setup, keeping the dealer steady while in the lobby. */
+function applyMatchSetup(setup) {
+  const normalized = normalizeMatchSetup(setup);
+  game.matchSetup = normalized;
+  if (game.match && game.match.handNumber === 0 && !game.match.history.length) {
+    resetMatch(normalized, game.match.dealerSeat);
+  }
+}
+
+function bestSeats(money) {
+  const best = Math.max(...money);
+  return money.map((value, seat) => (value === best ? seat : -1)).filter((seat) => seat >= 0);
+}
+
+function scoreSeatName(seat) {
+  const player = game.players.find((item) => item.seat === seat);
+  return withAiTag(seatName(seat), Boolean(player?.isBot));
 }
 
 /** Three bots sit after the player in wind order; the last one is 上家. */
@@ -488,18 +625,23 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   game.grabPending = false;
   clearClaim();
   clearSelfWin();
+  // Winds follow the match's dealer: the dealer holds the round wind, and 連莊
+  // keeps both the dealer and the wind unchanged for the next hand.
+  if (!game.match) resetMatch();
+  game.match.active = true;
+  updateSettingsUI();
+  const roundWind = WINDS[windIndexFor(game.match)];
+  const seatZeroWindName = seatZeroWind(game.match);
+  game.roundWind = roundWind;
+  game.seatWind = WINDS[(WINDS.indexOf(seatZeroWindName) + game.seat) % WINDS.length];
   if (preset) {
-    game.roundWind = preset.roundWind;
-    game.seatWind = WINDS[(WINDS.indexOf(preset.seatWind) + game.seat) % WINDS.length];
     game.players = preset.players.map((player) => ({
       ...player,
-      wind: WINDS[(WINDS.indexOf(preset.seatWind) + player.seat) % WINDS.length],
+      wind: WINDS[(WINDS.indexOf(seatZeroWindName) + player.seat) % WINDS.length],
     }));
   } else {
-    game.roundWind = WINDS[Math.floor(Math.random() * WINDS.length)];
-    game.seatWind = WINDS[(WINDS.indexOf(game.roundWind) + 1 + Math.floor(Math.random() * 3)) % WINDS.length];
     game.players = [
-      { seat: 0, name: game.playerName, wind: game.seatWind, isBot: false, playerId: game.playerId },
+      { seat: 0, name: game.playerName, wind: seatZeroWindName, isBot: false, playerId: game.playerId },
       ...createBots().map((bot, index) => ({
         seat: index + 1, name: bot.name, wind: bot.wind, isBot: true, playerId: null,
       })),
@@ -575,6 +717,11 @@ function continueAfterOpeningFlowerDecline() {
 
 /** Restarting a hand keeps the 巡 counter and its difficulty pace. */
 function restartGame() {
+  // A finished match starts from a fresh purse; an unfinished one continues
+  // with the same dealer, money and wind.
+  if (game.match?.over && (game.mode !== 'multi' || net.isHost)) {
+    resetMatch(game.matchSetup);
+  }
   if (game.mode === 'multi') {
     if (net.isHost) startMultiGame();
     else setStatus('請等待房主重新開始。');
@@ -1250,6 +1397,7 @@ function scheduleAiClaims(tile, discarderSeat, sharedSourceKey = null) {
       tileId,
       sourceKey,
       claimId: `ai:${seat}:${sourceKey}`,
+      discarderSeat,
       time: AI_CLAIM_DELAY_MIN + Math.random() * AI_CLAIM_DELAY_RANGE,
     });
   }
@@ -1277,6 +1425,7 @@ function aiClaimTick(dt) {
       result: claim.result ?? null,
       fanTotal: claim.fanTotal ?? null,
       bestFan: claim.bestFan ?? null,
+      discarderSeat: claim.discarderSeat,
     });
   }
 }
@@ -1306,19 +1455,22 @@ function applyAiMeldClaim(msg) {
   state.discardTimer = 0.8 + Math.random() * 1.2;
 }
 
-function commitAiWin(seat, result, fanTotal = null, bestFan = null) {
+function commitAiWin(seat, result, fanTotal = null, bestFan = null, meta = {}) {
   if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
   game.pendingAiClaims = [];
   const state = game.aiStates[seat];
   const total = fanTotal ?? (state?.fanTotal ?? 0) + result.totalFan;
   const best = bestFan ?? Math.max(state?.bestFan ?? 0, result.totalFan);
+  const selfDraw = meta.selfDraw === undefined ? winIsSelfDraw(result) : Boolean(meta.selfDraw);
+  const winMeta = { discarder: selfDraw ? null : (meta.discarder ?? null), selfDraw };
   if (game.mode === 'multi') {
     if (net.isHost) {
-      net.broadcast({ t: 'win', seat, result, fanTotal: total, bestFan: best, isBot: true });
+      net.broadcast({ t: 'win', seat, result, fanTotal: total, bestFan: best, isBot: true, ...winMeta });
     }
-    finishMultiWin(seat, result, total, best);
+    finishMultiWin(seat, result, total, best, winMeta);
     return;
   }
+  const log = recordRoundResult({ winner: seat, result, ...winMeta });
   clearClaim();
   clearSelfWin();
   setState(S.WIN);
@@ -1326,7 +1478,7 @@ function commitAiWin(seat, result, fanTotal = null, bestFan = null) {
   setStatus(`${name} 胡牌！${result.totalFan} 番`);
   showOverlay({
     title: `${name} 胡牌`,
-    message: `${formatWinBreakdown(result)}\n\n${name}：本局 ${result.totalFan} 番`,
+    message: withMatchSummary(`${formatWinBreakdown(result)}\n\n${name}：本局 ${result.totalFan} 番`, log),
     tiles: [
       ...winningTiles(result),
       ...(result.flowers ?? []).map((id) => ({ id })),
@@ -1436,7 +1588,88 @@ function passClaim() {
   renderClaim();
 }
 
-function commitWin(result) {
+function winIsSelfDraw(result) {
+  return Boolean(result?.patterns?.some((pattern) => pattern.id === '自摸'));
+}
+
+/** Settle one finished hand and keep the money/dealer state in sync. */
+function recordRoundResult({ winner = null, discarder = null, result = null, selfDraw = false } = {}) {
+  const match = game.match;
+  if (!match || match.over) return null;
+  // A guest may see the win message and the host's match snapshot in either
+  // order; the round key makes settlement idempotent on every device.
+  const roundKey = `${match.handNumber}:${match.repeatCount}:${match.dealerSeat}`;
+  if (match.lastPayout?.roundKey === roundKey) return match.lastPayout;
+  const settled = settleRound({
+    money: match.money,
+    winner,
+    discarder,
+    fan: result?.totalFan ?? 0,
+    base: match.base,
+    selfDraw,
+    dealerSeat: match.dealerSeat,
+    repeatCount: match.repeatCount,
+    handNumber: match.handNumber,
+    totalWinds: match.winds,
+  });
+  settled.log.roundKey = roundKey;
+  match.money = settled.money;
+  match.dealerSeat = settled.dealerSeat;
+  match.repeatCount = settled.repeatCount;
+  match.handNumber = settled.handNumber;
+  match.history.push(settled.log);
+  match.lastPayout = settled.log;
+  match.over = settled.over;
+  match.winner = settled.over ? bestSeats(settled.money) : null;
+  if (game.mode === 'multi' && net.isHost) {
+    net.broadcast({ t: 'match', match: cloneMatch(match) });
+  }
+  updateScoreUI();
+  return settled.log;
+}
+
+function payoutSummary(log = game.match?.lastPayout) {
+  if (!log) return '';
+  const money = log.after.map((value, seat) => `${scoreSeatName(seat)} ${formatMoney(value)}`).join('　');
+  const wind = WINDS[log.windIndex] ?? WINDS[0];
+  const lines = [];
+  if (log.winner !== null && log.winner !== undefined) {
+    lines.push(`${scoreSeatName(log.winner)} ${log.fan} 番`);
+    if (log.selfDraw) {
+      lines.push(`自摸：三家各付 ${formatMoney(log.payout.each)}，共得 ${formatMoney(log.payout.total)}`);
+    } else {
+      lines.push(`放槍：${scoreSeatName(log.discarder)} 支付 ${formatMoney(log.payout.value)}`);
+    }
+  } else {
+    lines.push('流局：不派彩');
+  }
+  if (log.dealerWon) lines.push(`${scoreSeatName(log.dealerSeat)} 連莊（第 ${log.repeatCount} 次）`);
+  lines.push(`資金：${money}`);
+  lines.push(`${TILE_INFO[wind]?.name ?? wind}風第 ${log.windIndex * 4 + 1} 局`);
+  return lines.join('\n');
+}
+
+function matchEndMessage() {
+  const match = game.match;
+  if (!match?.over) return '';
+  const winners = bestSeats(match.money);
+  const names = winners.map((seat) => scoreSeatName(seat)).join('、');
+  const amounts = winners.map((seat) => formatMoney(match.money[seat])).join('、');
+  return amounts
+    ? `比賽結束！資金最多：${names}（${amounts}）`
+    : `比賽結束！資金最多：${names}`;
+}
+
+function withMatchSummary(message, log = game.match?.lastPayout) {
+  const summary = payoutSummary(log);
+  const combined = summary ? `${message}\n\n${summary}` : message;
+  const ending = matchEndMessage();
+  return ending ? `${ending}\n\n${combined}` : combined;
+}
+
+function commitWin(result, { discarder = null, selfDraw = null } = {}) {
+  const isSelfDraw = selfDraw === null ? winIsSelfDraw(result) : Boolean(selfDraw);
+  const meta = { discarder: isSelfDraw ? null : discarder, selfDraw: isSelfDraw };
   game.pendingAiClaims = [];
   if (game.mode === 'multi') {
     const fanTotal = game.fanTotal + result.totalFan;
@@ -1447,10 +1680,11 @@ function commitWin(result) {
     save('mf-bestfan', bestFan);
     clearClaim();
     clearSelfWin();
-    broadcastOrSend({ t: 'win', seat: game.seat, result, fanTotal, bestFan });
-    finishMultiWin(game.seat, result, fanTotal, bestFan);
+    broadcastOrSend({ t: 'win', seat: game.seat, result, fanTotal, bestFan, ...meta });
+    finishMultiWin(game.seat, result, fanTotal, bestFan, meta);
     return;
   }
+  recordRoundResult({ winner: game.seat, result, ...meta });
   game.fanTotal += result.totalFan;
   if (result.totalFan > game.bestFan) {
     game.bestFan = result.totalFan;
@@ -1463,7 +1697,7 @@ function commitWin(result) {
   setStatus(`胡牌！${result.totalFan} 番`);
   showOverlay({
     title: '🎉 胡牌成功！',
-    message: `${formatWinBreakdown(result)}\n\n累計 ${game.fanTotal} 番　最佳 ${game.bestFan} 番`,
+    message: withMatchSummary(`${formatWinBreakdown(result)}\n\n累計 ${game.fanTotal} 番　最佳 ${game.bestFan} 番`),
     tiles: [
       ...winningTiles(result),
       ...(result.flowers ?? []).map((id) => ({ id })),
@@ -1475,13 +1709,14 @@ function commitWin(result) {
 function endDrawGame() {
   clearClaim();
   clearSelfWin();
+  const log = recordRoundResult({ winner: null });
   game.timeLeft = 0;
   setState(S.DRAW_GAME);
   setStatus('時間到，流局。');
   updateTimer();
   showOverlay({
     title: '流局',
-    message: `時間到，沒有胡牌。\n累計 ${game.fanTotal} 番　最佳 ${game.bestFan} 番`,
+    message: withMatchSummary(`時間到，沒有胡牌。\n累計 ${game.fanTotal} 番　最佳 ${game.bestFan} 番`, log),
     actions: [{ label: '再玩一局', onClick: restartGame }],
   });
 }
@@ -1729,7 +1964,11 @@ async function openRoom() {
   game.playerId = randomPlayerId();
   game.roomCode = makeRoomCode();
   game.players = defaultRoomPlayers();
-  game.roomSettings = { hookSpeed: game.hookSpeed, gameSeconds: game.settings.gameSeconds };
+  game.roomSettings = {
+    hookSpeed: game.hookSpeed, gameSeconds: game.settings.gameSeconds,
+    ...game.matchSetup,
+  };
+  resetMatch(game.matchSetup);
   setRoomMessage('正在建立房間…');
   closeModal('menuScreen');
   closeModal('joinScreen');
@@ -1823,7 +2062,8 @@ function renderRoom() {
   if (ui.roomGuestInfo) {
     ui.roomGuestInfo.hidden = isHost;
     if (!isHost) {
-      ui.roomGuestInfo.textContent = `房主設定：鉤速 ${game.roomSettings.hookSpeed.toFixed(1)}×・每局 ${formatClock(game.roomSettings.gameSeconds)}`;
+      const setup = normalizeMatchSetup(game.roomSettings);
+      ui.roomGuestInfo.textContent = `房主設定：鉤速 ${Number(game.roomSettings.hookSpeed).toFixed(1)}×・每局 ${formatClock(game.roomSettings.gameSeconds)}・起始資金 ${formatMoney(setup.startingMoney)}・${setup.winds} 圈・底注 ${setup.base}×`;
     }
   }
   if (ui.roomHookSpeed) {
@@ -1837,6 +2077,22 @@ function renderRoom() {
   if (ui.roomGameDurationText
     && document.activeElement !== ui.roomGameDurationText) {
     ui.roomGameDurationText.value = formatClock(game.roomSettings.gameSeconds);
+  }
+  const setup = normalizeMatchSetup(game.roomSettings);
+  if (ui.roomStartingMoney) {
+    ui.roomStartingMoney.value = String(setup.startingMoney);
+    ui.roomStartingMoneyValue.textContent = formatMoney(setup.startingMoney);
+  }
+  if (ui.roomStartingMoneyText && document.activeElement !== ui.roomStartingMoneyText) {
+    ui.roomStartingMoneyText.value = String(setup.startingMoney);
+  }
+  if (ui.roomWinds) ui.roomWinds.value = String(setup.winds);
+  if (ui.roomBase) {
+    ui.roomBase.value = String(setup.base);
+    ui.roomBaseValue.textContent = `${setup.base}×`;
+  }
+  if (ui.roomBaseText && document.activeElement !== ui.roomBaseText) {
+    ui.roomBaseText.value = String(setup.base);
   }
   if (ui.roomAvatars) {
     ui.roomAvatars.innerHTML = '';
@@ -1888,12 +2144,23 @@ function copyRoomLink() {
   );
 }
 
+function currentRoomMatchSetup() {
+  return normalizeMatchSetup({
+    startingMoney: ui.roomStartingMoney?.value ?? game.matchSetup.startingMoney,
+    winds: ui.roomWinds?.value ?? game.matchSetup.winds,
+    base: ui.roomBase?.value ?? game.matchSetup.base,
+  });
+}
+
 function updateRoomSettings() {
   if (!net.isHost || game.mode !== 'multi') return;
+  const setup = currentRoomMatchSetup();
   game.roomSettings = {
     hookSpeed: Number(ui.roomHookSpeed.value),
     gameSeconds: Number(ui.roomGameDuration.value),
+    ...setup,
   };
+  applyMatchSetup(setup);
   net.broadcast({ t: 'settings', settings: game.roomSettings });
   renderRoom();
 }
@@ -1904,23 +2171,40 @@ function commitRoomDurationText() {
   const parsed = parseClock(ui.roomGameDurationText?.value);
   const seconds = parsed === null ? game.roomSettings.gameSeconds : clampGameSeconds(parsed);
   ui.roomGameDuration.value = String(seconds);
-  game.roomSettings = {
-    hookSpeed: Number(ui.roomHookSpeed.value),
-    gameSeconds: seconds,
-  };
-  net.broadcast({ t: 'settings', settings: game.roomSettings });
-  renderRoom();
+  updateRoomSettings();
+}
+
+/** Numeric text inputs mirror the sliders so big values can be typed exactly. */
+function commitRoomMoneyText() {
+  if (!net.isHost || game.mode !== 'multi') return;
+  const setup = normalizeMatchSetup({
+    ...currentRoomMatchSetup(),
+    startingMoney: clampInt(ui.roomStartingMoneyText?.value, MIN_STARTING_MONEY, MAX_STARTING_MONEY, game.matchSetup.startingMoney),
+  });
+  if (ui.roomStartingMoney) ui.roomStartingMoney.value = String(setup.startingMoney);
+  updateRoomSettings();
+}
+
+function commitRoomBaseText() {
+  if (!net.isHost || game.mode !== 'multi') return;
+  const setup = normalizeMatchSetup({
+    ...currentRoomMatchSetup(),
+    base: clampInt(ui.roomBaseText?.value, MIN_BASE, MAX_BASE, game.matchSetup.base),
+  });
+  if (ui.roomBase) ui.roomBase.value = String(setup.base);
+  updateRoomSettings();
 }
 
 function startMultiGame() {
   if (game.mode !== 'multi' || !net.isHost) return;
   fillEmptySeatsWithBots();
-  const seatWind = WINDS[Math.floor(Math.random() * WINDS.length)];
+  const seatWind = seatZeroWind(game.match);
   const msg = {
     t: 'start',
     settings: { ...game.roomSettings },
+    match: cloneMatch(game.match),
     timeLeft: game.roomSettings.gameSeconds,
-    roundWind: WINDS[Math.floor(Math.random() * WINDS.length)],
+    roundWind: WINDS[windIndexFor(game.match)],
     seatWind,
     players: game.players.map((player) => ({
       seat: player.seat,
@@ -1938,6 +2222,8 @@ function applyMultiStart(msg) {
   if (game.mode !== 'multi') return;
   game.pendingMultiStart = msg;
   game.roomSettings = { ...msg.settings };
+  if (msg.match) adoptMatch(msg.match);
+  else game.matchSetup = normalizeMatchSetup(msg.settings);
   game.hookSpeed = msg.settings.hookSpeed;
   game.settings.gameSeconds = msg.settings.gameSeconds;
   game.rematchVotes = [];
@@ -2031,6 +2317,7 @@ function claimFromBox(box, action) {
     tileId: box.tileId,
     type: action.type,
     kinds: action.kinds ?? null,
+    discarderSeat: box.seat,
   };
   if (action.type === 'win') {
     msg.result = action.result;
@@ -2091,6 +2378,7 @@ function handleClaim(msg) {
     result: msg.result ?? null,
     fanTotal: msg.fanTotal ?? null,
     bestFan: msg.bestFan ?? null,
+    discarderSeat: msg.discarderSeat ?? box?.seat ?? null,
   };
   if (game.mode === 'multi') net.broadcast(result);
   applyClaimResult(result);
@@ -2100,12 +2388,13 @@ function applyClaimResult(msg) {
   const box = game.claimBoxes.find((item) => item.claimId === msg.claimId);
   if (box) box.resolved = true;
   if (msg.type === 'win') {
+    const winMeta = { discarder: msg.discarderSeat ?? null, selfDraw: false };
     if (msg.seat === game.seat && game.mode !== 'multi') {
-      commitWin(msg.result);
+      commitWin(msg.result, winMeta);
     } else if (game.aiStates[msg.seat] && (net.isHost || game.mode !== 'multi')) {
-      commitAiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan);
+      commitAiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan, winMeta);
     } else {
-      finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan);
+      finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan, winMeta);
     }
     return;
   }
@@ -2192,6 +2481,7 @@ function checkRematchReady() {
   game.rematchRequired = [];
   game.rematchMessage = '';
   ui.overlay.classList.remove('show');
+  if (game.match?.over) resetMatch(game.matchSetup);
   startMultiGame();
 }
 
@@ -2369,8 +2659,15 @@ function refreshRematchParticipants() {
   checkRematchReady();
 }
 
-function finishMultiWin(seat, result, fanTotal, bestFan) {
+function finishMultiWin(seat, result, fanTotal, bestFan, meta = {}) {
   if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
+  const selfDraw = meta.selfDraw === undefined ? winIsSelfDraw(result) : Boolean(meta.selfDraw);
+  const log = recordRoundResult({
+    winner: seat,
+    discarder: selfDraw ? null : (meta.discarder ?? null),
+    result,
+    selfDraw,
+  });
   if (seat === game.seat) {
     game.fanTotal = fanTotal ?? game.fanTotal + (result?.totalFan ?? 0);
     game.bestFan = bestFan ?? Math.max(game.bestFan, result?.totalFan ?? 0);
@@ -2386,7 +2683,7 @@ function finishMultiWin(seat, result, fanTotal, bestFan) {
   setStatus(`${name} 胡牌！${result?.totalFan ?? 0} 番`);
   showMultiEndOverlay(
     seat === game.seat ? '🎉 胡牌成功！' : `${name} 胡牌`,
-    `遊戲結束。${formatWinBreakdown(result)}\n\n${name}：累計 ${fanTotal ?? game.fanTotal} 番　最佳 ${bestFan ?? game.bestFan} 番`,
+    withMatchSummary(`遊戲結束。${formatWinBreakdown(result)}\n\n${name}：累計 ${fanTotal ?? game.fanTotal} 番　最佳 ${bestFan ?? game.bestFan} 番`, log),
     [
       ...winningTiles(result),
       ...(result?.flowers ?? []).map((id) => ({ id })),
@@ -2396,6 +2693,7 @@ function finishMultiWin(seat, result, fanTotal, bestFan) {
 
 function applyMultiDraw() {
   if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
+  const log = recordRoundResult({ winner: null });
   clearClaim();
   clearSelfWin();
   game.claimBoxes = [];
@@ -2404,7 +2702,7 @@ function applyMultiDraw() {
   setState(S.DRAW_GAME);
   setStatus('時間到，流局。');
   updateTimer();
-  showMultiEndOverlay('流局', '遊戲結束。時間到，沒有胡牌。');
+  showMultiEndOverlay('流局', withMatchSummary('遊戲結束。時間到，沒有胡牌。', log));
 }
 
 function resetMultiState() {
@@ -2450,6 +2748,7 @@ function resetMultiState() {
   ui.overlay.classList.remove('show');
   clearNotices();
   game.state = S.LOADING;
+  resetMatch(game.matchSetup);
   setMultiUIVisibility(false);
   setWaitingRoom(false);
   closeModal('joinScreen');
@@ -2536,6 +2835,7 @@ function wireNetEvents() {
     game.seat = msg.seat;
     adoptPlayersList(msg.players);
     game.roomSettings = { ...msg.settings };
+    applyMatchSetup(normalizeMatchSetup(msg.settings));
     // Only now is the room confirmed live, so reveal the lobby.
     closeModal('joinScreen');
     openModal('roomScreen');
@@ -2552,6 +2852,7 @@ function wireNetEvents() {
 
   net.on('settings', (msg) => {
     game.roomSettings = { ...msg.settings };
+    applyMatchSetup(normalizeMatchSetup(msg.settings));
     renderRoom();
   });
 
@@ -2625,7 +2926,15 @@ function wireNetEvents() {
 
   net.on('win', (msg) => {
     if (net.isHost && msg.seat !== game.seat) net.broadcast(msg);
-    finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan);
+    const selfDraw = msg.selfDraw === undefined ? winIsSelfDraw(msg.result) : Boolean(msg.selfDraw);
+    finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan, {
+      discarder: msg.discarder ?? null,
+      selfDraw,
+    });
+  });
+
+  net.on('match', (msg) => {
+    if (!net.isHost) adoptMatch(msg.match);
   });
 
   net.on('draw', () => {
@@ -3549,7 +3858,79 @@ function updateFish(dt) {
  * HUD
  * ------------------------------------------------------------------ */
 
+function updateScoreUI() {
+  if (ui.moneyCount) {
+    ui.moneyCount.textContent = game.match
+      ? formatMoney(game.match.money[game.seat] ?? 0) : '—';
+  }
+  if (ui.scoreRoundInfo) {
+    const match = game.match;
+    if (!match) {
+      ui.scoreRoundInfo.textContent = '尚未開始';
+    } else {
+      const wind = WINDS[windIndexFor(match)];
+      const pieces = [
+        `${TILE_INFO[wind]?.name ?? wind}風第 ${match.handNumber % 4 + 1} 局`,
+        `${match.winds} 圈`,
+        `底注 ${match.base}×`,
+      ];
+      if (match.repeatCount) pieces.push(`連莊 ${match.repeatCount}`);
+      if (match.over) pieces.push('比賽結束');
+      ui.scoreRoundInfo.textContent = pieces.join('・');
+    }
+  }
+  if (ui.scoreStandings) {
+    ui.scoreStandings.innerHTML = '';
+    const match = game.match;
+    if (!match) {
+      ui.scoreStandings.innerHTML = '<div class="score-empty">開始遊戲後顯示資金。</div>';
+    } else {
+      const rows = match.money
+        .map((value, seat) => ({ value, seat }))
+        .sort((a, b) => b.value - a.value);
+      rows.forEach(({ value, seat }, index) => {
+        const row = document.createElement('div');
+        row.className = 'score-row';
+        if (seat === game.seat) row.classList.add('you');
+        if (seat === match.dealerSeat) row.classList.add('dealer');
+        const rank = document.createElement('span');
+        rank.textContent = String(index + 1);
+        const name = document.createElement('span');
+        name.className = 'score-seat';
+        const wind = TILE_INFO[seatWindOf(seat)]?.name ?? '';
+        const suffix = seat === game.seat ? '（你）' : '';
+        name.textContent = `${wind} ${scoreSeatName(seat)}${suffix}`;
+        const money = document.createElement('span');
+        money.className = 'score-money';
+        money.textContent = formatMoney(value);
+        row.append(rank, name, money);
+        ui.scoreStandings.appendChild(row);
+      });
+    }
+  }
+  if (ui.scoreHistory) {
+    ui.scoreHistory.innerHTML = '';
+    const history = [...(game.match?.history ?? [])].reverse();
+    if (!history.length) {
+      ui.scoreHistory.innerHTML = '<div class="score-empty">尚無派彩紀錄。</div>';
+    } else {
+      for (const log of history) {
+        const item = document.createElement('div');
+        item.className = `score-history-item${log.winner === null ? ' draw' : ''}`;
+        const detail = log.winner === null
+          ? '流局'
+          : `${scoreSeatName(log.winner)} ${log.fan} 番・${log.selfDraw
+            ? `自摸 三家各 ${formatMoney(log.payout.each)}`
+            : `放槍 ${scoreSeatName(log.discarder)} 付 ${formatMoney(log.payout.value)}`}`;
+        item.textContent = `第 ${log.windIndex * 4 + 1} 局　${detail}${log.dealerWon ? '・連莊' : ''}`;
+        ui.scoreHistory.appendChild(item);
+      }
+    }
+  }
+}
+
 function updateHUD() {
+  updateScoreUI();
   ui.roundWind.textContent = TILE_INFO[game.roundWind].name;
   ui.seatWind.textContent = TILE_INFO[game.seatWind].name;
   ui.turnCount.textContent = String(game.turn);
@@ -3910,6 +4291,7 @@ function showMenu() {
 function startFromMenu() {
   closeModal('menuScreen');
   unlockMusic();
+  if (game.mode !== 'multi') resetMatch(game.matchSetup);
   startGame();
 }
 
@@ -3929,6 +4311,7 @@ function quitToMenu() {
   } else {
     game.state = S.LOADING;
     game.pendingResult = null;
+    resetMatch(game.matchSetup);
   }
   ui.overlay.classList.remove('show');
   showMenu();
@@ -3963,7 +4346,56 @@ function buildPatternTable() {
 
 const PATTERN_ROWS = PATTERN_TABLE;
 
+function currentMatchSetup() {
+  return normalizeMatchSetup({
+    startingMoney: ui.matchStartingMoney?.value ?? game.matchSetup.startingMoney,
+    winds: ui.matchWinds?.value ?? game.matchSetup.winds,
+    base: ui.matchBase?.value ?? game.matchSetup.base,
+  });
+}
+
+function updateMatchSettings() {
+  const setup = currentMatchSetup();
+  applyMatchSetup(setup);
+  renderMatchSettingsUI();
+}
+
+/** The typed values are kept in sync with the sliders for very large purses. */
+function renderMatchSettingsUI() {
+  const setup = game.matchSetup;
+  if (ui.matchStartingMoney) ui.matchStartingMoney.value = String(setup.startingMoney);
+  if (ui.matchStartingMoneyValue) ui.matchStartingMoneyValue.textContent = formatMoney(setup.startingMoney);
+  if (ui.matchStartingMoneyText && document.activeElement !== ui.matchStartingMoneyText) {
+    ui.matchStartingMoneyText.value = String(setup.startingMoney);
+  }
+  if (ui.matchWinds) ui.matchWinds.value = String(setup.winds);
+  if (ui.matchBase) ui.matchBase.value = String(setup.base);
+  if (ui.matchBaseValue) ui.matchBaseValue.textContent = `${setup.base}×`;
+  if (ui.matchBaseText && document.activeElement !== ui.matchBaseText) {
+    ui.matchBaseText.value = String(setup.base);
+  }
+}
+
+function commitMatchMoneyText() {
+  const setup = normalizeMatchSetup({
+    ...currentMatchSetup(),
+    startingMoney: clampInt(ui.matchStartingMoneyText?.value, MIN_STARTING_MONEY, MAX_STARTING_MONEY, game.matchSetup.startingMoney),
+  });
+  applyMatchSetup(setup);
+  renderMatchSettingsUI();
+}
+
+function commitMatchBaseText() {
+  const setup = normalizeMatchSetup({
+    ...currentMatchSetup(),
+    base: clampInt(ui.matchBaseText?.value, MIN_BASE, MAX_BASE, game.matchSetup.base),
+  });
+  applyMatchSetup(setup);
+  renderMatchSettingsUI();
+}
+
 function updateSettingsUI() {
+  renderMatchSettingsUI();
   if (ui.settingsPlayerName) ui.settingsPlayerName.value = game.playerName;
   ui.gameDuration.value = String(game.settings.gameSeconds);
   ui.gameDurationValue.textContent = formatClock(game.settings.gameSeconds);
@@ -3981,6 +4413,18 @@ function updateSettingsUI() {
     input.disabled = locked;
     input.closest('.field')?.classList.toggle('disabled', locked);
   }
+  // Scoring is chosen before the first deal. Once a solo match is underway it
+  // is locked just like the host's room settings.
+  const scoringLocked = locked || Boolean(game.match?.active);
+  for (const input of [
+    ui.matchStartingMoney, ui.matchStartingMoneyText, ui.matchWinds,
+    ui.matchBase, ui.matchBaseText,
+  ]) {
+    if (!input) continue;
+    input.disabled = scoringLocked;
+    input.closest('.field')?.classList.toggle('disabled', scoringLocked);
+  }
+  ui.matchStartingMoney?.closest('.match-setup')?.classList.toggle('disabled', scoringLocked);
 }
 
 function setSoundEnabled(value) {
@@ -4083,13 +4527,24 @@ function wireInput() {
   ui.roomCopy.addEventListener('click', copyRoomLink);
   ui.roomHookSpeed.addEventListener('input', updateRoomSettings);
   ui.roomGameDuration.addEventListener('input', updateRoomSettings);
+  ui.roomStartingMoney?.addEventListener('input', updateRoomSettings);
+  ui.roomWinds?.addEventListener('change', updateRoomSettings);
+  ui.roomBase?.addEventListener('input', updateRoomSettings);
+  ui.roomStartingMoneyText?.addEventListener('change', commitRoomMoneyText);
+  ui.roomBaseText?.addEventListener('change', commitRoomBaseText);
+  for (const [input, commit] of [
+    [ui.roomStartingMoneyText, commitRoomMoneyText],
+    [ui.roomBaseText, commitRoomBaseText],
+    [ui.roomGameDurationText, commitRoomDurationText],
+  ]) {
+    input?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      commit();
+      input.blur();
+    });
+  }
   ui.roomGameDurationText.addEventListener('change', commitRoomDurationText);
-  ui.roomGameDurationText.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter') return;
-    event.preventDefault();
-    commitRoomDurationText();
-    ui.roomGameDurationText.blur();
-  });
   el('menuHelp').addEventListener('click', () => openModal('helpPanel'));
   el('menuSettings').addEventListener('click', () => openModal('settingsPanel'));
   el('menuCredits').addEventListener('click', () => openModal('creditsPanel'));
@@ -4097,6 +4552,26 @@ function wireInput() {
   el('helpBtn').addEventListener('click', () => openModal('helpPanel'));
   el('settingsBtn').addEventListener('click', () => openModal('settingsPanel'));
   el('creditsBtn').addEventListener('click', () => openModal('creditsPanel'));
+  ui.scoreBtn?.addEventListener('click', () => {
+    updateScoreUI();
+    openModal('scorePanel');
+  });
+  ui.matchStartingMoney?.addEventListener('input', updateMatchSettings);
+  ui.matchWinds?.addEventListener('change', updateMatchSettings);
+  ui.matchBase?.addEventListener('input', updateMatchSettings);
+  ui.matchStartingMoneyText?.addEventListener('change', commitMatchMoneyText);
+  ui.matchBaseText?.addEventListener('change', commitMatchBaseText);
+  for (const [input, commit] of [
+    [ui.matchStartingMoneyText, commitMatchMoneyText],
+    [ui.matchBaseText, commitMatchBaseText],
+  ]) {
+    input?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      commit();
+      input.blur();
+    });
+  }
   el('settingsQuit').addEventListener('click', quitToMenu);
   for (const button of document.querySelectorAll('[data-close]')) {
     button.addEventListener('click', () => closeModal(button.dataset.close));
@@ -4156,6 +4631,7 @@ function loadBackground() {
 }
 
 async function boot() {
+  resetMatch(game.matchSetup);
   music.setVolume(game.settings.musicVolume);
   music.setEnabled(game.settings.sound);
   setInterval(broadcastHostTime, 500);
@@ -4206,8 +4682,11 @@ if (new URLSearchParams(location.search).has('test')) {
     aiTick, createAiState, resetAiRod, publishDiscard, scheduleAiClaims, bestAiClaim,
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
-    renderClaimBoxes, leaveMultiRoom, deadRooms, commitRoomDurationText,
+    renderClaimBoxes, leaveMultiRoom, deadRooms, commitRoomDurationText, renderRoom,
     syncHostSeaPause, updateFish, broadcastSeaSnapshot,
+    resetMatch, cloneMatch, adoptMatch, recordRoundResult, payoutSummary,
+    updateScoreUI, normalizeMatchSetup, windIndexFor, seatZeroWind,
+    updateRoomSettings, currentRoomMatchSetup, updateMatchSettings,
   };
 }
 

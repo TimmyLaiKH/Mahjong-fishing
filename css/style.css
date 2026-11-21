@@ -544,6 +544,45 @@ kbd {
 .duration-controls input[type='range'] { width: clamp(65px, 11vw, 150px); accent-color: #ffb300; }
 .duration-controls b { min-width: 3.4em; }
 .duration-text { width: 4.5em; font: inherit; padding: 4px 6px; border-radius: 6px; text-align: center; }
+#roomStartingMoneyText, #matchStartingMoneyText { width: 8em; }
+#moneyCount { color: #a5ff6b; }
+
+.match-setup {
+  margin: 12px 0 4px;
+  padding: 8px 10px;
+  border: 1px solid rgba(198, 40, 40, 0.35);
+  border-radius: 9px;
+  background: rgba(198, 40, 40, 0.05);
+}
+.match-setup-title { font-weight: 700; color: #8c1d1d; margin-bottom: 4px; }
+.match-setup .field { margin: 6px 0; }
+
+.score-round-info { color: #555; font-size: 0.9em; }
+.score-standings { display: grid; gap: 4px; margin: 10px 0; }
+.score-row {
+  display: grid;
+  grid-template-columns: 1.6em 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid #e0b4b4;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.7);
+}
+.score-row.you { border-color: #c62828; background: rgba(198, 40, 40, 0.09); font-weight: 700; }
+.score-row.dealer .score-seat::after { content: ' 莊'; color: #c62828; font-size: 0.8em; }
+.score-money { font-variant-numeric: tabular-nums; color: #8c1d1d; font-weight: 700; }
+.score-history { display: grid; gap: 6px; max-height: 34vh; overflow-y: auto; }
+.score-history-item {
+  padding: 6px 8px;
+  border-left: 3px solid #c62828;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.04);
+  font-size: 0.88em;
+  line-height: 1.5;
+}
+.score-history-item.draw { border-left-color: #789; }
+.score-empty { color: #777; font-size: 0.88em; }
 
 .table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
