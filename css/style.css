@@ -199,8 +199,10 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
 .meld-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .meld-row-name { min-width: 4em; font-weight: 700; color: #d7f5ff; }
 .meld-row-empty { opacity: 0.65; }
-.meld-row .tile-img img { height: clamp(24px, 3.5vh, 38px); width: auto; }
-.meld-row .tile-img.fallback { font-size: clamp(24px, 3.5vh, 38px); }
+.meld-row .tile-img img { height: clamp(20px, 3vh, 34px); width: auto; }
+.meld-row .tile-img.fallback { font-size: clamp(20px, 3vh, 34px); }
+.meld-row .flower-set .tile-img img { height: clamp(16px, 2.4vh, 26px); width: auto; }
+.meld-row .flower-set .tile-img.fallback { font-size: clamp(16px, 2.4vh, 26px); }
 
 .claim-label {
   color: #ffeb3b;

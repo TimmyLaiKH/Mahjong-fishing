@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------ *
  * Minimal PeerJS wrapper for casual, room-code based multiplayer.
- * The host owns the room ID and relays messages; every player still runs
- * their own game locally, so no tile/wall state is ever sent.
+ * The host owns the room ID and relays messages, plus the shared fish sea;
+ * concealed hands are kept private on each device.
  * ------------------------------------------------------------------ */
 
 const ROOM_PREFIX = 'mf-';
@@ -95,6 +95,13 @@ export function createNet() {
     if (hostConn?.open) hostConn.send(msg);
   }
 
+  /** Host-only: send a direct ruling (e.g. a rejected catch) to one seat. */
+  function sendToPeer(peerId, msg) {
+    if (!hosting) return;
+    const conn = guests.get(peerId);
+    if (conn?.open) conn.send(msg);
+  }
+
   function broadcast(msg) {
     for (const conn of guests.values()) {
       if (conn.open) conn.send(msg);
@@ -112,7 +119,7 @@ export function createNet() {
   }
 
   return {
-    on, emit, startHost, joinRoom, sendToHost, broadcast,
+    on, emit, startHost, joinRoom, sendToHost, sendToPeer, broadcast,
     guestCount, close,
     get isHost() { return hosting; },
     get available() { return typeof window.Peer === 'function'; },

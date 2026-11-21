@@ -4,7 +4,7 @@ import {
   ABSORBS, FAN_CAP, FAN_VALUES, FLOWER_PATTERN_TABLE, ORPHANS, PATTERN_TABLE, TERMINALS,
   countTiles, createWall, decompose, evaluateHand, evaluateFlowers,
   findWaits, flowerWin, flowerWinResult, formatWinBreakdown, getAssistTiles,
-  getUsefulTiles, isThirteenOrphans, normalizeMelds, shanten, withFlowers,
+  getUsefulTiles, isThirteenOrphans, normalizeMelds, randomTileKind, shanten, withFlowers,
 } from '../js/rules.js';
 import { FLOWER_IDS, isFlower, TILE_IDS, tileName } from '../js/tiles.js';
 
@@ -41,7 +41,26 @@ console.log('\n— 基本胡牌與聽牌 —');
 test('有效／有效的 14 張牌判定', () => {
   assert.equal(evalTiles('m1 m2 m3 m4 m5 m6 p2 p3 p4 s7 s8 s9 p9 p9').isWin, true);
   assert.equal(evalTiles('m1 m2 m3 m4 m5 m6 p2 p3 p4 s7 s8 s9 p9 p8').isWin, false);
-  assert.equal(evalTiles('m1 m1 m1 m1 m1 m2 m3 m4 p2 p3 p4 s7 s8 s9').isWin, false);
+  assert.equal(evalTiles('m1 m1 m1 m1 m1 m2 m3 m4 p2 p3 p4 s7 s8 s9').isWin, true);
+});
+
+test('無四張上限：五張、六張相同牌都能組成胡牌', () => {
+  assert.equal(evalTiles('m1 m1 m1 m1 m1 m2 m3 m4 p2 p3 p4 s7 s8 s9').isWin, true);
+  assert.equal(evalTiles('m1 m1 m1 m1 m1 m1 m2 m3 m4 p2 p3 p4 s7 s7').isWin, true);
+});
+
+test('無四張上限：四張相同牌可當兩對，仍可成立七對子', () => {
+  const result = evalTiles('m1 m1 m1 m1 p2 p2 s3 s3 s4 s4 E E C C');
+  assert.equal(result.isWin, true);
+  assert.ok(names(result).includes('七對子'));
+});
+
+test('無限牌池維持普通牌 4：1 花牌加權', () => {
+  assert.equal(randomTileKind(() => 0), 'm1');
+  assert.equal(randomTileKind(() => 0.999), 'H8');
+  const drawn = Array.from({ length: 144 }, (_, i) => randomTileKind(() => (i + 0.5) / 144));
+  assert.equal(drawn.filter((id) => isFlower(id)).length, 8);
+  assert.equal(drawn.filter((id) => id === 'm1').length, 4);
 });
 
 test('B2：3萬4萬 的兩面聽（2萬／5萬）都能找到', () => {

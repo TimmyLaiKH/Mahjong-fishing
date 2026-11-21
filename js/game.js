@@ -1,5 +1,5 @@
 /*
- * Game state machine, wall, canvas rendering and input for Mahjong-fishing.
+ * Game state machine, shared fish sea, canvas rendering and input for Mahjong-fishing.
  * All gameplay happens in one logical world (height 1080; width follows the
  * viewport aspect ratio), so mouse, touch and canvas coordinates agree.
  */
@@ -10,8 +10,8 @@ import {
 import { createMusic } from './audio.js';
 import { createNet, randomPlayerId } from './net.js';
 import {
-  WINDS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, createWall, countTiles,
-  evaluateHand, findWaits, getAssistTiles, formatWinBreakdown,
+  WINDS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
+  evaluateHand, findWaits, formatWinBreakdown,
   withFlowers, flowerWin, flowerWinResult,
 } from './rules.js';
 
@@ -93,24 +93,28 @@ const MIN_GAME_SECONDS = 30;
 const MAX_GAME_SECONDS = 1800;
 /** 海底撈月: any tile won within the final 5 seconds; 自摸 is still scored separately. */
 const HAIDI_SECONDS = 5;
-/** AI assist applies to new fish only; bot discards are fully random. */
-const ASSIST_CHANCE = 0.7;
-const ASSIST_TIERS = [
-  ['wins', 0.85],
-  ['flowers', 0.75],
-  ['kongs', 0.6],
-  ['progress', 0.7],
-];
+/** The host owns the shared sea and sends compact snapshots ten times a second. */
+const SEA_BROADCAST_INTERVAL = 0.1;
+const HOOK_BROADCAST_INTERVAL = 0.1;
+/** AI claims wait briefly so a nearby human press still wins the tile. */
+const AI_CLAIM_DELAY_MIN = 0.25;
+const AI_CLAIM_DELAY_RANGE = 0.6;
 
 const view = { scale: 1, width: REFERENCE_W, dpr: 1 };
 const game = {
   state: S.LOADING,
   images: {},
   bg: null,
-  wall: [],
   hand: [],                 // [{ uid, id }] — uid keeps discard clicks stable
   flowers: [],              // flower tile ids, kept outside the hand (補花)
   melds: [], river: [], fish: [],
+  fishSeq: 0,               // shared-sea fish ids stay unique even with duplicate kinds
+  seaClock: 0, hookClock: 0,
+  pendingCatch: null,       // fish id requested by this seat, awaiting host ruling
+  seatFlowers: {},          // seat -> public flower ids, used by the 副露 panel
+  aiStates: {},             // host/solo only: seat -> full simulated player state
+  hookPeers: {},            // seat -> latest ghost hook state received over the network
+  pendingAiClaims: [],      // host/solo only: delayed AI claims on a discard
   bots: [], botIndex: -1,
   nextUid: 1,
   roundWind: 'E', seatWind: 'S',
@@ -135,7 +139,8 @@ const game = {
   claimActions: [], claimTimeLeft: 0,
   pendingSelfWin: null,     // { result, kongTile, onDecline } — inline 胡牌／過 prompt
   declinedFlowerWin: false, // 七花已拒絕；只接受八花，之後手牌胡加上花糊
-  // Multiplayer (PeerJS room). Each device still runs its own local game.
+  // Multiplayer (PeerJS room). Devices keep private hands; the host owns the
+  // shared fish sea and arbitrates catches/claims.
   mode: 'solo',             // 'solo' | 'multi'
   role: 'none',             // 'host' | 'guest'
   seat: 0,                  // 0 = room host, 1–3 = guests / AI fill-ins
@@ -146,11 +151,10 @@ const game = {
   players: [],              // [{ seat, name, wind, isBot, playerId }]
   roomSettings: { hookSpeed: 1, gameSeconds: GAME_SECONDS },
   claimBoxes: [],           // multiplayer claim slots (one per recent discard)
+  claimedKeys: new Set(),   // solo: one AI claim per played tile
   seatMelds: {},            // seat -> meld[], used by the 副露 panel
   mustDiscard: false,       // after 碰／上／明槓, block further claims until discard
   grabPending: false,       // from casting until the grabbed tile is discarded
-  multiDiscardTimer: 0,
-  multiAiIndex: 0,
   pendingMultiStart: null,
   rematchVotes: [],         // seats that agreed to another round
   rematchRequired: [],      // human seats that must agree
@@ -257,15 +261,7 @@ function winContext() {
 
 /** The opening self-draw is 天胡 for the dealer and 地胡 for every other seat. */
 function openingWinContext() {
-  const dealer = game.seatWind === game.roundWind;
-  return {
-    ...winContext(),
-    selfDraw: true,
-    kongReplacementChain: 0,
-    haidi: false,
-    tiangu: dealer,
-    dihu: !dealer,
-  };
+  return seatWinContext(game.seat, { opening: true });
 }
 
 function setState(next) {
@@ -300,130 +296,131 @@ function setStatus(text, bump = false) {
 }
 
 /* ------------------------------------------------------------------ *
- * Wall and turn flow
+ * Endless weighted pool and opening deals
  * ------------------------------------------------------------------ */
 
-function takeFromWall(kind = null) {
-  if (!game.wall.length) return null;
-  let index = game.wall.length - 1;
-  if (kind !== null) {
-    index = game.wall.lastIndexOf(kind);
-    if (index === -1) return null;
-  }
-  const [id] = game.wall.splice(index, 1);
+function newTile(id) {
   return { id, uid: game.nextUid++ };
 }
 
-/**
- * Look at the tile the dealer would draw for 天胡, including any flowers that
- * must be replaced first. Non-winning hands leave the wall untouched so the
- * normal "fish for your first tile" flow is unchanged.
- */
-function peekInitialDraw() {
-  const flowers = [];
-  let index = game.wall.length - 1;
-  while (index >= 0 && isFlower(game.wall[index])) {
-    flowers.push(game.wall[index]);
-    index -= 1;
-  }
-  return { index, tile: index >= 0 ? game.wall[index] : null, flowers };
+function randomTile() {
+  return newTile(randomTileKind());
 }
 
-function consumeInitialDraw(peek) {
-  game.flowers.push(...peek.flowers);
-  if (peek.index >= 0) game.wall.splice(peek.index);
-  else game.wall.length = 0;
+/** Every seat gets its own private hand from the same 4:1 weighted pool. */
+function dealTiles(count = 13) {
+  const hand = [];
+  const flowers = [];
+  while (hand.length < count) {
+    const id = randomTileKind();
+    if (isFlower(id)) flowers.push(id);
+    else hand.push(newTile(id));
+  }
+  hand.sort((a, b) => TILE_IDS.indexOf(a.id) - TILE_IDS.indexOf(b.id));
+  return { hand, flowers };
+}
+
+function seatWindOf(seat) {
+  if (seat === game.seat) return game.seatWind;
+  return game.players.find((player) => player?.seat === seat)?.wind
+    ?? WINDS[(WINDS.indexOf(game.roundWind ?? 'E') + seat) % WINDS.length];
+}
+
+function seatWinContext(seat, { opening = false, ...extra } = {}) {
+  const seatWind = seatWindOf(seat);
+  const dealer = seatWind === game.roundWind;
+  const context = {
+    selfDraw: true,
+    kongReplacementChain: 0,
+    haidi: game.timeLeft <= HAIDI_SECONDS,
+    roundWind: game.roundWind,
+    seatWind,
+    fanCap: game.settings.fanCap,
+    declinedFlowerWin: seat === game.seat ? game.declinedFlowerWin : false,
+  };
+  if (opening) {
+    context.haidi = false;
+    context.tiangu = dealer;
+    context.dihu = !dealer;
+  }
+  return { ...context, ...extra };
+}
+
+/** Public flower display is shared; concealed hands are never sent. */
+function syncSeatFlowers(seat, flowers = null) {
+  const source = flowers ?? (seat === game.seat ? game.flowers : game.aiStates[seat]?.flowers ?? []);
+  game.seatFlowers[seat] = [...source];
+  broadcastFlowers(seat);
+  renderMeldsPanel();
+}
+
+function broadcastFlowers(seat) {
+  if (game.mode !== 'multi') return;
+  const msg = { t: 'flowers', seat, flowers: [...(game.seatFlowers[seat] ?? [])] };
+  if (net.isHost) net.broadcast(msg);
+  else if (seat === game.seat) net.sendToHost(msg);
 }
 
 /** Return true when the opening self-draw ended the round (天胡／地胡 or 花糊). */
 function checkInitialSelfDraw() {
-  const peek = peekInitialDraw();
-  const allFlowers = [...game.flowers, ...peek.flowers];
+  const flowers = [];
+  let tile = randomTileKind();
+  while (isFlower(tile)) {
+    flowers.push(tile);
+    tile = randomTileKind();
+  }
+  const allFlowers = [...game.flowers, ...flowers];
+  const context = seatWinContext(game.seat, { opening: true });
   const flowerResult = flowerWinResult(
-    allFlowers, game.seatWind, game.settings.fanCap, openingWinContext(),
+    allFlowers, game.seatWind, game.settings.fanCap, context,
   );
   // A declined 花糊 can only be upgraded to 大花糊, never re-offered here.
   if (flowerResult && (!game.declinedFlowerWin
     || flowerResult.patterns.some((p) => p.id === '大花糊'))) {
-    consumeInitialDraw(peek);
+    game.flowers = [...allFlowers];
+    syncSeatFlowers(game.seat);
     sortHand();
     updateHUD();
     commitWin(flowerResult);
     return true;
   }
-  if (!peek.tile) return false;
 
   const tiangu = withFlowers(evaluateHand({
-    concealed: [...concealedIds(), peek.tile],
+    concealed: [...concealedIds(), tile],
     melds: game.melds,
-    winningTile: peek.tile,
-    context: openingWinContext(),
-  }), allFlowers, game.seatWind, game.settings.fanCap, openingWinContext());
+    winningTile: tile,
+    context,
+  }), allFlowers, game.seatWind, game.settings.fanCap, context);
   if (!tiangu.isWin) return false;
 
-  consumeInitialDraw(peek);
-  const drawn = { id: peek.tile, uid: game.nextUid++, source: 'tiangu' };
+  game.flowers = [...allFlowers];
+  const drawn = { id: tile, uid: game.nextUid++, source: 'tiangu' };
   game.hand.push(drawn);
   game.lastDraw = drawn;
   sortHand();
+  syncSeatFlowers(game.seat);
   updateHUD();
   commitWin(tiangu);
   return true;
 }
 
-/** Tiles available for new fish and bot discards. Discards are recycled once
- *  the wall is empty so play continues until a win or the timer ends. */
-function playableKinds() {
-  if (game.wall.length) return game.wall;
-  if (game.river.length) return game.river.map((tile) => tile.id);
-  return TILE_IDS;
-}
-
-/** Draw from the wall, falling back to recycled discards or a fresh tile. */
-function takeTileForPlay(kind = null) {
-  const fromWall = takeFromWall(kind);
-  if (fromWall) return fromWall;
-  if (game.river.length) {
-    let index = game.river.length - 1;
-    if (kind !== null) {
-      const match = game.river.findIndex((tile) => tile.id === kind);
-      if (match !== -1) index = match;
-    }
-    const [tile] = game.river.splice(index, 1);
-    return { id: tile.id, uid: tile.uid ?? game.nextUid++ };
-  }
-  return { id: kind ?? TILE_IDS[Math.floor(Math.random() * TILE_IDS.length)], uid: game.nextUid++ };
-}
-
-function chooseFishKind() {
-  const supply = playableKinds();
-  const fallback = () => supply[Math.floor(Math.random() * supply.length)];
-  if (Math.random() > ASSIST_CHANCE) return fallback();
-  const assist = getAssistTiles({
-    concealed: concealedIds(),
-    melds: game.melds,
-    flowers: game.flowers,
-    availability: countTiles(supply),
-    context: winContext(),
-  });
-  for (const [key, chance] of ASSIST_TIERS) {
-    const candidates = assist[key];
-    if (candidates.length && Math.random() < chance) {
-      return candidates[Math.floor(Math.random() * candidates.length)];
-    }
-  }
-  return fallback();
-}
-
 function startGame({ keepTurn = false, preset = null } = {}) {
   const nextTurn = keepTurn ? game.turn : 1;
-  game.wall = createWall();
-  game.hand = [];
-  game.flowers = [];
+  // Uids must be allocated before dealing so AI hands and discards never reuse
+  // a human tile's uid (claim ids and click handlers depend on uniqueness).
+  game.nextUid = 1;
+  const dealt = dealTiles(13);
+  game.hand = dealt.hand;
+  game.flowers = dealt.flowers;
   game.melds = [];
   game.river = [];
   game.fish = [];
-  game.nextUid = 1;
+  game.fishSeq = 0;
+  game.seaClock = 0;
+  game.hookClock = 0;
+  game.pendingCatch = null;
+  game.hookPeers = {};
+  game.pendingAiClaims = [];
   game.turn = nextTurn;
   game.timeLeft = game.settings.gameSeconds;
   game.kongChain = 0;
@@ -433,7 +430,10 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   game.pendingResult = null;
   game.declinedFlowerWin = false;
   game.claimBoxes = [];
+  game.claimedKeys = new Set();
   game.seatMelds = {};
+  game.seatFlowers = {};
+  game.aiStates = {};
   game.mustDiscard = false;
   game.grabPending = false;
   clearClaim();
@@ -459,22 +459,26 @@ function startGame({ keepTurn = false, preset = null } = {}) {
     .filter((player) => player && !player.isEmpty && player.seat !== game.seat)
     .map((player) => ({ name: player.name, wind: player.wind, isBot: true }));
   game.botIndex = -1;
-  // 花牌不進手牌：起手摸到就先亮出，再補一張，直到補滿 13 張普通牌。
-  let openingFlowerWin = null;
-  while (game.hand.length < 13 && game.wall.length) {
-    const tile = takeFromWall();
-    if (isFlower(tile.id)) {
-      game.flowers.push(tile.id);
-      const win = flowerWinResult(
-        game.flowers, game.seatWind, game.settings.fanCap, openingWinContext(),
-      );
-      if (win) openingFlowerWin = win;
-    } else {
-      game.hand.push(tile);
+  // AI seats are full simulated players on the host (and in single-player).
+  // Guests only receive their public actions and ghost hook positions.
+  if (game.mode !== 'multi' || net.isHost) {
+    for (const player of game.players) {
+      if (player?.isBot && !player.isEmpty) game.aiStates[player.seat] = createAiState(player.seat);
     }
+  }
+  syncSeatFlowers(game.seat, game.flowers);
+  for (const seat of Object.keys(game.aiStates)) {
+    syncSeatFlowers(Number(seat), game.aiStates[seat].flowers);
+  }
+  let openingFlowerWin = null;
+  if (game.flowers.length) {
+    openingFlowerWin = flowerWinResult(
+      game.flowers, game.seatWind, game.settings.fanCap, openingWinContext(),
+    );
   }
   sortHand();
   updateHUD();
+  let awaitingFlowerDecision = false;
   if (openingFlowerWin) {
     // 八花沒有更大的花糊可等待，直接即時胡牌；七花可選「過」拒絕。
     if (!openingFlowerWin.patterns.some((p) => p.id === '花糊')) {
@@ -486,8 +490,13 @@ function startGame({ keepTurn = false, preset = null } = {}) {
       game.declinedFlowerWin = true;
       continueAfterOpeningFlowerDecline();
     });
-    return;
+    awaitingFlowerDecision = true;
   }
+  if (!awaitingFlowerDecision && checkInitialSelfDraw()) return;
+  // AI seats also get opening flower / self-draw wins. A host broadcasts the
+  // result so every device ends the round together.
+  if (checkAiOpeningWins()) return;
+  if (awaitingFlowerDecision) return;
   continueAfterOpeningFlowerDecline();
 }
 
@@ -513,12 +522,10 @@ function continueAfterOpeningFlowerDecline() {
   } else {
     setState(S.AWAIT_CAST);
   }
-  if (game.mode === 'multi') {
-    game.multiDiscardTimer = 0;
-    game.multiAiIndex = 0;
-    setMultiUIVisibility(true);
-  } else {
-    nextBotDiscard();
+  if (game.mode === 'multi') setMultiUIVisibility(true);
+  else {
+    renderClaimBoxes();
+    renderMeldsPanel();
   }
 }
 
@@ -538,7 +545,7 @@ function sortHand() {
 
 function findKongTile() {
   const counts = countTiles(concealedIds());
-  return Object.keys(counts).find((id) => counts[id] === 4) ?? null;
+  return Object.keys(counts).find((id) => counts[id] >= 4) ?? null;
 }
 
 function startCast() {
@@ -551,29 +558,77 @@ function startCast() {
   if (game.mode === 'multi') renderClaimBoxes();
 }
 
+function fishAuthority() {
+  return game.mode !== 'multi' || net.isHost;
+}
+
+/** A contested catch is sent to the host; only the host removes the fish. */
+function requestCatch(fish) {
+  if (game.pendingCatch || game.lastDraw) return;
+  if (game.mode === 'multi' && !net.isHost) {
+    game.pendingCatch = fish.id;
+    net.sendToHost({ t: 'catch', fishId: fish.id, seat: game.seat });
+    setStatus('鉤到牌了，等待房主裁定…');
+    return;
+  }
+  handleCatchRequest({ fishId: fish.id, seat: game.seat });
+}
+
+function handleCatchRequest(msg, rejectIfMissing = false) {
+  if (!fishAuthority()) return false;
+  const index = game.fish.findIndex((fish) => fish.id === msg.fishId);
+  if (index === -1) {
+    // The guest's sea snapshot can be slightly behind the host's. Tell the
+    // requesting seat so its hook does not wait forever for a ruling.
+    if (rejectIfMissing && net.isHost) {
+      const player = game.players.find((item) => item?.seat === msg.seat);
+      if (player?.playerId) net.sendToPeer(player.playerId, { t: 'catchRejected', fishId: msg.fishId });
+    }
+    return false;
+  }
+  const [fish] = game.fish.splice(index, 1);
+  const result = { t: 'fishCaught', fishId: fish.id, seat: msg.seat, tileId: fish.tileId };
+  if (game.mode === 'multi') net.broadcast(result);
+  applyFishCaught(result, fish);
+  return true;
+}
+
+function applyFishCaught(msg, caughtFish = null) {
+  // Guests trust the host's fish list; the host has already removed this fish.
+  if (!caughtFish && !net.isHost) {
+    game.fish = game.fish.filter((fish) => fish.id !== msg.fishId);
+  }
+  const ai = game.aiStates[msg.seat];
+  if (ai) assignCatchToAi(msg.seat, msg.tileId);
+  if (msg.seat === game.seat && !ai) {
+    const flower = isFlower(msg.tileId);
+    const kongReplacement = !flower && game.kongChain > 0;
+    game.pendingCatch = null;
+    game.lastDraw = {
+      id: msg.tileId,
+      uid: game.nextUid++,
+      source: flower ? 'flower' : (kongReplacement ? 'kong' : 'fish'),
+    };
+    if (!kongReplacement) game.kongChain = 0;
+    setState(S.REELING);
+    setStatus(flower
+      ? `釣到花牌 ${tileName(msg.tileId)}！再釣一張牌。`
+      : `釣到 ${tileName(msg.tileId)}！`);
+  } else if (game.pendingCatch === msg.fishId) {
+    game.pendingCatch = null;
+    setStatus('這張牌被別人釣走了！');
+  }
+}
+
 function checkCatch() {
   // Once a tile is hooked, ignore everything else on the way back. Otherwise a
   // second contact would overwrite lastDraw and silently lose both tiles.
-  if (game.lastDraw) return;
+  if (game.lastDraw || game.pendingCatch) return;
   const { hookX, hookY } = hookPosition();
-  for (let i = 0; i < game.fish.length; i += 1) {
-    const f = game.fish[i];
-    if (Math.abs(f.x - hookX) <= f.w / 2 + 16 && Math.abs(f.y - hookY) <= f.h / 2 + 16) {
-      const [caught] = game.fish.splice(i, 1);
-      const flower = isFlower(caught.id);
-      // A pending kong chain survives until the player hooks the replacement.
-      // Catching a flower resets it, so that tile cannot score 槓上開花.
-      const kongReplacement = !flower && !game.lastDraw && game.kongChain > 0;
-      game.lastDraw = {
-        id: caught.id,
-        uid: game.nextUid++,
-        source: flower ? 'flower' : (kongReplacement ? 'kong' : 'fish'),
-      };
-      if (!kongReplacement) game.kongChain = 0;
-      setState(S.REELING);
-      setStatus(flower
-        ? `釣到花牌 ${tileName(caught.id)}！再釣一張牌。`
-        : `釣到 ${tileName(caught.id)}！`);
+  for (const fish of game.fish) {
+    if (Math.abs(fish.x - hookX) <= fish.w / 2 + 16
+      && Math.abs(fish.y - hookY) <= fish.h / 2 + 16) {
+      requestCatch(fish);
       return;
     }
   }
@@ -581,9 +636,12 @@ function checkCatch() {
 
 function finishReel() {
   if (game.lastDraw?.source === 'flower') {
-    // Flowers never enter the hand, so there is no forced discard afterwards.
-    game.grabPending = false;
+    // A flower never enters the hand, but a flower caught as a kong replacement
+    // still leaves us waiting for the actual replacement tile.
+    const waitingForKongReplacement = game.kongChain > 0;
+    if (!waitingForKongReplacement) game.grabPending = false;
     game.flowers.push(game.lastDraw.id);
+    syncSeatFlowers(game.seat, game.flowers);
     const immediate = flowerWinResult(
       game.flowers, game.seatWind, game.settings.fanCap, winContext(),
     );
@@ -598,15 +656,16 @@ function finishReel() {
       offerSelfWin(immediate, null, () => {
         game.declinedFlowerWin = true;
         game.lastDraw = null;
-        game.kongChain = 0;
+        if (!waitingForKongReplacement) game.kongChain = 0;
         setState(S.AWAIT_CAST);
       });
       return;
     }
     // No automatic replacement: the player hooks the next tile instead.
     game.lastDraw = null;
-    game.kongChain = 0;
+    if (!waitingForKongReplacement) game.kongChain = 0;
     setState(S.AWAIT_CAST);
+    if (waitingForKongReplacement) setStatus('釣到花牌！再釣一張牌補槓。');
     return;
   }
   if (game.lastDraw?.source === 'fish' || game.lastDraw?.source === 'kong') {
@@ -615,6 +674,9 @@ function finishReel() {
     setState(S.RESOLVE_DRAW);
     resolveDraw();
   } else {
+    // An empty cast releases the claim lock, unless we still owe a replacement
+    // draw after 槓 — in that case the next successful catch must be discarded.
+    if (game.kongChain === 0) game.grabPending = false;
     setState(S.AWAIT_CAST);
   }
 }
@@ -696,11 +758,7 @@ function discard(uid) {
   // With bots discarding independently, nothing else advances the player's
   // turn after a discard. Return to casting so fishing can continue.
   setState(S.AWAIT_CAST);
-  if (game.mode !== 'multi' && game.pendingClaim) {
-    game.claimActions = buildClaimActions(game.pendingClaim.tile.id, game.pendingClaim.bot);
-    renderClaim();
-  }
-  sendDiscard(tile);
+  publishDiscard(game.seat, tile, false);
   if (game.mode === 'multi') renderClaimBoxes();
 }
 
@@ -730,14 +788,33 @@ function chowCombinations(discardId, handIds = concealedIds()) {
   return combinations;
 }
 
+function handIdsForSeat(seat) {
+  if (seat === game.seat) return concealedIds();
+  return (game.aiStates[seat]?.hand ?? []).map((tile) => tile.id);
+}
+
+function meldsForSeat(seat) {
+  return seat === game.seat ? game.melds : (game.aiStates[seat]?.melds ?? []);
+}
+
+function flowersForSeat(seat) {
+  if (seat === game.seat) return game.flowers;
+  return game.aiStates[seat]?.flowers ?? game.seatFlowers[seat] ?? [];
+}
+
 /** Winning off a discard is never 自摸; open calls additionally remove 門前清. */
-function claimWinResult(discardId) {
+function claimWinResultFor(seat, discardId) {
+  const context = seatWinContext(seat, { selfDraw: false });
   return withFlowers(evaluateHand({
-    concealed: [...concealedIds(), discardId],
-    melds: game.melds,
+    concealed: [...handIdsForSeat(seat), discardId],
+    melds: meldsForSeat(seat),
     winningTile: discardId,
-    context: { ...winContext(), selfDraw: false },
-  }), game.flowers, game.seatWind, game.settings.fanCap, { ...winContext(), selfDraw: false });
+    context,
+  }), flowersForSeat(seat), seatWindOf(seat), game.settings.fanCap, context);
+}
+
+function claimWinResult(discardId) {
+  return claimWinResultFor(game.seat, discardId);
 }
 
 function clearClaim() {
@@ -745,6 +822,12 @@ function clearClaim() {
   game.claimActions = [];
   game.claimTimeLeft = 0;
   renderClaim();
+}
+
+/** Cancel delayed AI reactions once the human has resolved the same tile. */
+function cancelAiClaimsForTile(tileId) {
+  if (!game.pendingAiClaims.length) return;
+  game.pendingAiClaims = game.pendingAiClaims.filter((claim) => claim.tileId !== tileId);
 }
 
 function clearSelfWin() {
@@ -763,22 +846,23 @@ function offerSelfWin(result, kongTile, onDecline) {
   renderSelfWin();
 }
 
-/** Bot discards are random plays from the shared pool; they never read the
- *  player's hand, even after discards start being recycled. */
 function chooseOpponentDiscardKind() {
-  const supply = playableKinds();
-  return supply[Math.floor(Math.random() * supply.length)];
+  return randomTileKind();
 }
 
-function takeHandTiles(kinds) {
+function takeTilesFromList(list, kinds) {
   const needed = countTiles(kinds);
   const chosen = [];
   for (const id of Object.keys(needed)) {
-    const matching = game.hand.filter((tile) => tile.id === id).slice(0, needed[id]);
+    const matching = list.filter((tile) => tile.id === id).slice(0, needed[id]);
     if (matching.length < needed[id]) return null;
     chosen.push(...matching);
   }
   return chosen;
+}
+
+function takeHandTiles(kinds) {
+  return takeTilesFromList(game.hand, kinds);
 }
 
 /** A claim on a played tile is only possible while we are free to react. */
@@ -805,7 +889,8 @@ function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass 
 
   const canCall = canDeclareMeld();
   const canChow = canCall && canChowFrom(bot);
-  const hasReplacement = game.wall.length + game.fish.length > 0;
+  // The shared pool is endless, so a replacement tile is always available.
+  const hasReplacement = true;
   if (canCall && hasReplacement && (counts[discardId] ?? 0) >= 3) {
     const kinds = [discardId, discardId, discardId];
     actions.push({
@@ -836,20 +921,398 @@ function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass 
   return actions;
 }
 
-/** Start the next bot's five-second discard without touching the player's state. */
+/** Test helper: make the next AI discard immediately from its own hand. */
 function nextBotDiscard() {
   if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
-  game.botIndex = (game.botIndex + 1) % game.bots.length;
-  const bot = game.bots[game.botIndex];
-  const tile = takeTileForPlay(chooseOpponentDiscardKind());
-  game.pendingClaim = { tile, bot };
-  game.claimActions = buildClaimActions(tile.id, bot);
-  game.claimTimeLeft = CLAIM_SECONDS;
-  renderClaim();
+  const seats = Object.keys(game.aiStates).map(Number);
+  if (!seats.length) return;
+  const seat = seats[(game.botIndex + 1) % seats.length];
+  game.botIndex += 1;
+  aiChooseAndDiscard(game.aiStates[seat]);
+}
+
+/* ------------------------------------------------------------------ *
+ * Simulated AI players
+ *
+ * An AI seat owns a private hand and its own hook. It fishes from the shared
+ * sea, decides what to discard, and evaluates its own wins. It only receives
+ * public discards — never another seat's concealed hand.
+ * ------------------------------------------------------------------ */
+
+function createAiState(seat) {
+  const dealt = dealTiles(13);
+  return {
+    seat,
+    hand: dealt.hand,
+    flowers: dealt.flowers,
+    melds: [],
+    river: [],
+    lastDraw: null,
+    kongChain: 0,
+    mustDiscard: false,
+    discardTimer: 0,
+    caught: null,
+    fanTotal: 0,
+    bestFan: 0,
+    rod: {
+      angle: (Math.random() - 0.5) * 0.8,
+      dir: Math.random() < 0.5 ? 1 : -1,
+      hookLen: 0,
+      phase: 'swing',
+      wait: 0.5 + Math.random() * 2.5,
+    },
+  };
+}
+
+function isAiSeat(seat) {
+  return Boolean(game.aiStates[seat])
+    || Boolean(game.players.find((player) => player?.seat === seat && player.isBot && !player.isEmpty));
+}
+
+/** AI seats get the same opening flower / 天胡 / 地胡 check as the human seat. */
+function checkAiOpeningWins() {
+  for (const state of Object.values(game.aiStates)) {
+    const seatWind = seatWindOf(state.seat);
+    const context = seatWinContext(state.seat, { opening: true });
+    if (state.flowers.length) {
+      const flowerResult = flowerWinResult(
+        state.flowers, seatWind, game.settings.fanCap, context,
+      );
+      if (flowerResult) {
+        commitAiWin(state.seat, flowerResult);
+        return true;
+      }
+    }
+    let tile = randomTileKind();
+    while (isFlower(tile)) tile = randomTileKind();
+    const result = withFlowers(evaluateHand({
+      concealed: [...state.hand.map((item) => item.id), tile],
+      melds: state.melds,
+      winningTile: tile,
+      context,
+    }), state.flowers, seatWind, game.settings.fanCap, context);
+    if (result.isWin) {
+      commitAiWin(state.seat, result);
+      return true;
+    }
+  }
+  return false;
+}
+
+function canChowFromSeat(seat, discarderSeat) {
+  const wind = seatWindOf(seat);
+  const previous = WINDS[(WINDS.indexOf(wind) + WINDS.length - 1) % WINDS.length];
+  return seatWindOf(discarderSeat) === previous;
+}
+
+function swingAiRod(rod, dt) {
+  const limit = swingLimit();
+  rod.angle += rod.dir * 0.9 * game.hookSpeed * paceFactor() * dt;
+  if (rod.angle > limit) { rod.angle = limit; rod.dir = -1; }
+  else if (rod.angle < -limit) { rod.angle = -limit; rod.dir = 1; }
+}
+
+function aiHookPosition(state) {
+  return hookPositionFor(state.rod.angle, state.rod.hookLen);
+}
+
+function aiCheckCatch(state) {
+  if (state.caught || state.rod.phase === 'reeling') return;
+  const { hookX, hookY } = aiHookPosition(state);
+  for (const fish of game.fish) {
+    if (Math.abs(fish.x - hookX) <= fish.w / 2 + 16
+      && Math.abs(fish.y - hookY) <= fish.h / 2 + 16) {
+      handleCatchRequest({ fishId: fish.id, seat: state.seat });
+      return;
+    }
+  }
+}
+
+function assignCatchToAi(seat, tileId) {
+  const state = game.aiStates[seat];
+  if (!state) return;
+  state.caught = tileId;
+  state.rod.phase = 'reeling';
+  if (isFlower(tileId)) {
+    state.flowers.push(tileId);
+    syncSeatFlowers(seat, state.flowers);
+    const result = flowerWinResult(
+      state.flowers, seatWindOf(seat), game.settings.fanCap, seatWinContext(seat),
+    );
+    if (result) commitAiWin(seat, result);
+    return;
+  }
+  state.hand.push(newTile(tileId));
+  state.hand.sort((a, b) => TILE_IDS.indexOf(a.id) - TILE_IDS.indexOf(b.id));
+  const kongReplacement = state.kongChain > 0;
+  const context = seatWinContext(seat, { kongReplacementChain: state.kongChain });
+  const result = withFlowers(evaluateHand({
+    concealed: state.hand.map((tile) => tile.id),
+    melds: state.melds,
+    winningTile: tileId,
+    context,
+  }), state.flowers, seatWindOf(seat), game.settings.fanCap, context);
+  if (result.isWin) {
+    commitAiWin(seat, result);
+    return;
+  }
+  if (!kongReplacement) state.kongChain = 0;
+  const handCounts = countTiles(state.hand.map((tile) => tile.id));
+  const kongTile = state.melds.length < 4
+    ? Object.keys(handCounts).find((id) => handCounts[id] >= 4)
+    : null;
+  if (kongTile) {
+    let removed = 0;
+    state.hand = state.hand.filter((tile) => {
+      if (tile.id === kongTile && removed < 4) { removed += 1; return false; }
+      return true;
+    });
+    const meld = { tile: kongTile, type: 'kong', tiles: Array(4).fill(kongTile), open: false };
+    state.melds.push(meld);
+    addSeatMeld(seat, meld);
+    if (game.mode === 'multi' && net.isHost) broadcastOrSend({ t: 'meld', seat, meld });
+    state.kongChain += 1;
+    // Like the human seat, a kong owes a replacement draw before any discard.
+    state.caught = null;
+    state.rod.hookLen = 0;
+    state.rod.phase = 'swing';
+    state.rod.wait = 0.4 + Math.random() * 1.4;
+    return;
+  }
+  state.mustDiscard = true;
+  state.discardTimer = 0.6 + Math.random() * 1.2;
+}
+
+function aiChooseAndDiscard(state) {
+  if (!state?.hand.length) {
+    if (state) { state.mustDiscard = false; state.discardTimer = 0; }
+    return;
+  }
+  const context = seatWinContext(state.seat, { selfDraw: false });
+  let best = null;
+  for (const tile of state.hand) {
+    const remaining = state.hand.filter((item) => item.uid !== tile.uid).map((item) => item.id);
+    const waits = findWaits(remaining, state.melds, context, null);
+    if (!best || waits.length > best.waits.length) best = { tile, waits };
+  }
+  const tile = best?.tile ?? state.hand[Math.floor(Math.random() * state.hand.length)];
+  const index = state.hand.findIndex((item) => item.uid === tile.uid);
+  if (index === -1) return;
+  const [discarded] = state.hand.splice(index, 1);
+  state.river.push(discarded);
+  state.lastDraw = null;
+  state.kongChain = 0;
+  state.mustDiscard = false;
+  state.discardTimer = 0;
+  // A claimed fish keeps `caught` and the line extended until the forced
+  // discard; reset both or the next cast would relock and start at full depth.
+  state.caught = null;
+  state.rod.hookLen = 0;
+  state.rod.phase = 'swing';
+  state.rod.wait = 0.4 + Math.random() * 1.4;
+  publishDiscard(state.seat, discarded, true);
+}
+
+function publishDiscard(seat, tile, isBot) {
+  const player = game.players.find((item) => item?.seat === seat);
+  const wind = player?.wind ?? seatWindOf(seat);
+  if (game.mode !== 'multi') {
+    const bot = { name: player?.name ?? seatName(seat), wind, isBot };
+    game.pendingClaim = { tile, bot };
+    game.claimActions = buildClaimActions(tile.id, bot);
+    game.claimTimeLeft = CLAIM_SECONDS;
+    renderClaim();
+  } else if (net.isHost || seat === game.seat) {
+    const msg = {
+      t: 'discard',
+      claimId: `${seat}:${tile.uid}:${game.nextUid++}`,
+      seat,
+      tileId: tile.id,
+      uid: tile.uid,
+      name: seatName(seat),
+      isBot: Boolean(isBot),
+      wind,
+    };
+    if (net.isHost) {
+      net.broadcast(msg);
+      addClaimBox(msg);
+    } else {
+      net.sendToHost(msg);
+    }
+  }
+  scheduleAiClaims(tile, seat);
+}
+
+function bestAiClaim(seat, tileId, discarderSeat) {
+  const state = game.aiStates[seat];
+  if (!state || state.mustDiscard || state.melds.length >= 4) return null;
+  const result = claimWinResultFor(seat, tileId);
+  if (result.isWin) {
+    return {
+      type: 'win',
+      result,
+      fanTotal: state.fanTotal + result.totalFan,
+      bestFan: Math.max(state.bestFan, result.totalFan),
+    };
+  }
+  const counts = countTiles(state.hand.map((tile) => tile.id));
+  if ((counts[tileId] ?? 0) >= 3) return { type: 'kong', kinds: [tileId, tileId, tileId] };
+  if ((counts[tileId] ?? 0) >= 2) return { type: 'pung', kinds: [tileId, tileId] };
+  if (canChowFromSeat(seat, discarderSeat)) {
+    const combo = chowCombinations(tileId, state.hand.map((tile) => tile.id))[0];
+    if (combo) return { type: 'chow', kinds: combo.tiles };
+  }
+  return null;
+}
+
+function scheduleAiClaims(tile, discarderSeat) {
+  if (!Object.keys(game.aiStates).length || game.state === S.WIN || game.state === S.DRAW_GAME) return;
+  const tileId = typeof tile === 'string' ? tile : tile.id;
+  const sourceKey = `${discarderSeat}:${tile.uid ?? tileId}:${game.nextUid++}`;
+  for (const seat of Object.keys(game.aiStates).map(Number)) {
+    if (seat === discarderSeat) continue;
+    const claim = bestAiClaim(seat, tileId, discarderSeat);
+    if (!claim) continue;
+    game.pendingAiClaims.push({
+      ...claim,
+      seat,
+      tileId,
+      sourceKey,
+      claimId: `ai:${seat}:${sourceKey}`,
+      time: AI_CLAIM_DELAY_MIN + Math.random() * AI_CLAIM_DELAY_RANGE,
+    });
+  }
+}
+
+function aiClaimTick(dt) {
+  if (!game.pendingAiClaims.length) return;
+  const due = [];
+  game.pendingAiClaims = game.pendingAiClaims.filter((claim) => {
+    claim.time -= dt;
+    if (claim.time > 0) return true;
+    due.push(claim);
+    return false;
+  });
+  for (const claim of due) {
+    if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
+    handleClaim({
+      t: 'claim',
+      claimId: claim.claimId,
+      sourceKey: claim.sourceKey,
+      seat: claim.seat,
+      tileId: claim.tileId,
+      type: claim.type,
+      kinds: claim.kinds ?? null,
+      result: claim.result ?? null,
+      fanTotal: claim.fanTotal ?? null,
+      bestFan: claim.bestFan ?? null,
+    });
+  }
+}
+
+function applyAiMeldClaim(msg) {
+  const state = game.aiStates[msg.seat];
+  if (!state) return;
+  const removed = takeTilesFromList(state.hand, msg.kinds ?? []);
+  if (!removed) return;
+  state.hand = state.hand.filter((tile) => !removed.includes(tile));
+  const meld = {
+    tile: msg.tileId,
+    type: msg.type,
+    tiles: [...removed.map((tile) => tile.id), msg.tileId],
+    open: true,
+  };
+  state.melds.push(meld);
+  addSeatMeld(msg.seat, meld);
+  state.rod.phase = 'swing';
+  state.rod.hookLen = 0;
+  state.rod.wait = 0.4 + Math.random() * 1.2;
+  if (msg.type === 'kong') {
+    // 明槓 also needs a replacement fish before the forced discard.
+    state.kongChain += 1;
+    state.caught = null;
+    return;
+  }
+  state.mustDiscard = true;
+  state.discardTimer = 0.8 + Math.random() * 1.2;
+}
+
+function commitAiWin(seat, result, fanTotal = null, bestFan = null) {
+  if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
+  game.pendingAiClaims = [];
+  const state = game.aiStates[seat];
+  const total = fanTotal ?? (state?.fanTotal ?? 0) + result.totalFan;
+  const best = bestFan ?? Math.max(state?.bestFan ?? 0, result.totalFan);
+  if (game.mode === 'multi') {
+    if (net.isHost) {
+      net.broadcast({ t: 'win', seat, result, fanTotal: total, bestFan: best, isBot: true });
+    }
+    finishMultiWin(seat, result, total, best);
+    return;
+  }
+  clearClaim();
+  clearSelfWin();
+  setState(S.WIN);
+  const name = seatLabel(seat);
+  setStatus(`${name} 胡牌！${result.totalFan} 番`);
+  showOverlay({
+    title: `${name} 胡牌`,
+    message: `${formatWinBreakdown(result)}\n\n${name}：本局 ${result.totalFan} 番`,
+    tiles: [
+      ...winningTiles(result),
+      ...(result.flowers ?? []).map((id) => ({ id })),
+    ],
+    actions: [{ label: '再玩一局', onClick: restartGame }],
+  });
+}
+
+function aiTick(dt) {
+  if (!Object.keys(game.aiStates).length || game.state === S.WIN || game.state === S.DRAW_GAME) return;
+  const hookRate = game.hookSpeed * paceFactor();
+  for (const state of Object.values(game.aiStates)) {
+    const rod = state.rod;
+    if (state.mustDiscard) {
+      state.discardTimer -= dt;
+      if (state.discardTimer <= 0) aiChooseAndDiscard(state);
+      // Do not fish again until the claimed tile has been discarded.
+      continue;
+    }
+    if (rod.wait > 0) {
+      rod.wait -= dt;
+      if (rod.wait <= 0 && rod.phase === 'swing') rod.phase = 'casting';
+      continue;
+    }
+    if (rod.phase === 'swing') {
+      swingAiRod(rod, dt);
+      rod.phase = 'casting';
+      rod.hookLen = 0;
+    }
+    if (rod.phase === 'casting') {
+      rod.hookLen += 980 * hookRate * dt;
+      aiCheckCatch(state);
+      const maxLen = maxHookLength(rod.angle);
+      if (rod.hookLen >= maxLen) {
+        rod.hookLen = maxLen;
+        rod.phase = 'reeling';
+      }
+    } else if (rod.phase === 'reeling') {
+      aiCheckCatch(state);
+      if (rod.phase === 'reeling') {
+        rod.hookLen -= 820 * hookRate * dt;
+        if (rod.hookLen <= 0) {
+          rod.hookLen = 0;
+          rod.phase = 'swing';
+          rod.wait = 0.4 + Math.random() * 1.4;
+          state.caught = null;
+        }
+      }
+    }
+  }
 }
 
 function declareOpenMeld(type, discardId, handKinds) {
   if (!canDeclareMeld()) return;
+  cancelAiClaimsForTile(discardId);
   const removed = takeHandTiles(handKinds);
   if (!removed) return;
   game.hand = game.hand.filter((tile) => !removed.includes(tile));
@@ -875,7 +1338,6 @@ function declareOpenMeld(type, discardId, handKinds) {
     setState(S.AWAIT_DISCARD);
     setStatus(`${type === 'pung' ? '碰' : '上'}成功！請選一張牌打出。`);
   }
-  nextBotDiscard();
 }
 
 /** Passing removes the buttons but leaves the tile visible for its full 5s. */
@@ -887,6 +1349,7 @@ function passClaim() {
 }
 
 function commitWin(result) {
+  game.pendingAiClaims = [];
   if (game.mode === 'multi') {
     const fanTotal = game.fanTotal + result.totalFan;
     const bestFan = Math.max(game.bestFan, result.totalFan);
@@ -951,9 +1414,10 @@ function winningTiles(result) {
 /* ------------------------------------------------------------------ *
  * Casual multiplayer (PeerJS rooms)
  *
- * Every device runs its own wall, fish and hand. Only human actions are
- * shared: discards, claims, resulting melds and the final result. The room
- * host relays messages and decides a claim by whichever arrives first.
+ * Every device keeps its own concealed hand, but all four seats fish in the
+ * same host-owned sea. Human actions are shared: discards, claims, resulting
+ * melds and the final result. The host relays public messages and decides
+ * catches and claims by whichever request arrives first.
  * ------------------------------------------------------------------ */
 
 function makeRoomCode() {
@@ -1308,28 +1772,10 @@ function applyMultiStart(msg) {
   startGame({ preset: msg });
 }
 
-function sendDiscard(tile) {
-  if (game.mode !== 'multi') return;
-  const msg = {
-    t: 'discard',
-    claimId: `${game.playerId}:${tile.uid}`,
-    seat: game.seat,
-    tileId: tile.id,
-    uid: tile.uid,
-    name: seatName(game.seat),
-    isBot: false,
-    wind: game.players[game.seat]?.wind ?? game.seatWind,
-  };
-  if (net.isHost) {
-    net.broadcast(msg);
-    addClaimBox(msg);
-  } else {
-    net.sendToHost(msg);
-  }
-}
-
 function addClaimBox(entry) {
-  if (game.mode !== 'multi' || entry.seat === game.seat) return;
+  if (game.mode !== 'multi') return;
+  // Keep a host-side box even for the host's own discard: the host needs it to
+  // arbitrate human and AI claims. Rendering still hides that seat's box.
   // One box per opponent: a newer discard replaces that opponent's older one.
   game.claimBoxes = game.claimBoxes.filter((box) => box.seat !== entry.seat);
   game.claimBoxes.push({
@@ -1392,19 +1838,25 @@ function declareOpenMeldMulti(type, discardId, kinds) {
 
 function handleClaim(msg) {
   const box = game.claimBoxes.find((item) => item.claimId === msg.claimId);
-  if (!box || box.resolved) return;
-  box.resolved = true;
+  if (game.mode === 'multi' && (!box || box.resolved)) return;
+  if (!box && !game.aiStates[msg.seat]) return;
+  if (msg.sourceKey) {
+    if (game.claimedKeys.has(msg.sourceKey)) return;
+    game.claimedKeys.add(msg.sourceKey);
+  }
+  if (box) box.resolved = true;
+  const tileId = msg.tileId ?? box?.tileId;
   const meld = msg.type === 'win' ? null : {
-    tile: box.tileId,
+    tile: tileId,
     type: msg.type,
-    tiles: [...(msg.kinds ?? []), box.tileId],
+    tiles: [...(msg.kinds ?? []), tileId],
     open: true,
   };
   const result = {
     t: 'claimResult',
     claimId: msg.claimId,
     seat: msg.seat,
-    tileId: msg.tileId ?? box?.tileId,
+    tileId,
     type: msg.type,
     meld,
     kinds: msg.kinds ?? null,
@@ -1412,7 +1864,7 @@ function handleClaim(msg) {
     fanTotal: msg.fanTotal ?? null,
     bestFan: msg.bestFan ?? null,
   };
-  net.broadcast(result);
+  if (game.mode === 'multi') net.broadcast(result);
   applyClaimResult(result);
 }
 
@@ -1420,11 +1872,17 @@ function applyClaimResult(msg) {
   const box = game.claimBoxes.find((item) => item.claimId === msg.claimId);
   if (box) box.resolved = true;
   if (msg.type === 'win') {
-    finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan);
+    if (game.aiStates[msg.seat] && (net.isHost || game.mode !== 'multi')) {
+      commitAiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan);
+    } else {
+      finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan);
+    }
     return;
   }
   if (msg.seat === game.seat) {
     declareOpenMeldMulti(msg.type, msg.tileId, msg.kinds ?? []);
+  } else if (game.aiStates[msg.seat]) {
+    applyAiMeldClaim(msg);
   } else if (msg.meld) {
     addSeatMeld(msg.seat, msg.meld);
   }
@@ -1584,7 +2042,14 @@ function resetMultiState() {
   game.roomCode = null;
   game.players = [];
   game.claimBoxes = [];
+  game.claimedKeys = new Set();
   game.seatMelds = {};
+  game.seatFlowers = {};
+  game.aiStates = {};
+  game.hookPeers = {};
+  game.pendingCatch = null;
+  game.fish = [];
+  game.pendingAiClaims = [];
   game.mustDiscard = false;
   game.grabPending = false;
   game.pendingMultiStart = null;
@@ -1691,8 +2156,43 @@ function wireNetEvents() {
   net.on('full', () => setRoomMessage('房間已滿，請換一個房間。'));
 
   net.on('discard', (msg) => {
-    if (net.isHost) net.broadcast(msg);
+    if (net.isHost) {
+      net.broadcast(msg);
+      addClaimBox(msg);
+      // Guests' discards are public; the host's AI seats may contest them.
+      scheduleAiClaims({ id: msg.tileId, uid: msg.uid }, msg.seat);
+      return;
+    }
     addClaimBox(msg);
+  });
+
+  net.on('sea', (msg) => applySea(msg));
+
+  net.on('hook', (msg) => {
+    // Guests can only talk to the host; relay their ghost hooks so the other
+    // guests see every seat's rod, not just the host-owned AI rods.
+    if (net.isHost && msg.seat !== game.seat) net.broadcast(msg);
+    applyHook(msg);
+  });
+
+  net.on('catch', (msg) => {
+    if (net.isHost) handleCatchRequest(msg, true);
+  });
+
+  net.on('catchRejected', (msg) => {
+    if (game.pendingCatch !== msg.fishId) return;
+    game.pendingCatch = null;
+    setStatus('這張牌已經被釣走了！');
+  });
+
+  net.on('fishCaught', (msg) => applyFishCaught(msg));
+
+  net.on('flowers', (msg) => {
+    if (!Array.isArray(msg.flowers)) return;
+    game.seatFlowers[msg.seat] = [...msg.flowers];
+    // Only the host relays; guests send their own flowers straight to the host.
+    if (net.isHost && msg.seat !== game.seat) net.broadcast(msg);
+    renderMeldsPanel();
   });
 
   net.on('claim', (msg) => {
@@ -1835,25 +2335,33 @@ function positionClaimBoxes() {
 
 function renderMeldsPanel() {
   if (!ui.meldPanel) return;
-  ui.meldPanel.hidden = game.mode !== 'multi';
-  if (game.mode !== 'multi' || !ui.meldRows) return;
+  const visible = game.state !== S.LOADING && game.players.length > 0;
+  ui.meldPanel.hidden = !visible;
+  if (!visible || !ui.meldRows) return;
   ui.meldRows.innerHTML = '';
-  const players = game.players.length ? game.players : defaultRoomPlayers();
-  for (const player of players) {
-    if (player.seat === game.seat) continue;
+  for (let seat = 0; seat < 4; seat += 1) {
+    const player = game.players.find((item) => item?.seat === seat)
+      ?? (seat === game.seat ? { seat, name: game.playerName } : makeBotPlayer(seat));
     const row = document.createElement('div');
     row.className = 'meld-row';
     const name = document.createElement('span');
     name.className = 'meld-row-name';
-    name.textContent = playerDisplayName(player);
+    name.textContent = `${playerDisplayName(player)}${seat === game.seat ? '（你）' : ''}`;
     row.appendChild(name);
-    const melds = game.seatMelds[player.seat] ?? [];
-    if (!melds.length) {
-      const empty = document.createElement('span');
-      empty.className = 'meld-row-empty';
-      empty.textContent = '—';
-      row.appendChild(empty);
+
+    const flowers = game.seatFlowers[seat] ?? flowersForSeat(seat) ?? [];
+    if (flowers.length) {
+      const label = document.createElement('span');
+      label.className = 'flowers-label';
+      label.textContent = `花 ${flowers.length}`;
+      row.appendChild(label);
+      const set = document.createElement('div');
+      set.className = 'kong-set flower-set';
+      for (const id of flowers) set.appendChild(createTileElement(id, { images: game.images }));
+      row.appendChild(set);
     }
+
+    const melds = game.seatMelds[seat] ?? meldsForSeat(seat) ?? [];
     for (const meld of melds) {
       const label = document.createElement('span');
       label.className = 'flowers-label';
@@ -1870,6 +2378,13 @@ function renderMeldsPanel() {
       });
       row.appendChild(set);
     }
+
+    if (!flowers.length && !melds.length) {
+      const empty = document.createElement('span');
+      empty.className = 'meld-row-empty';
+      empty.textContent = '—';
+      row.appendChild(empty);
+    }
     ui.meldRows.appendChild(row);
   }
 }
@@ -1885,29 +2400,6 @@ function multiTick(dt) {
     if (box.timeLeft <= 0) { box.resolved = true; expired = true; }
   }
   if (expired) renderClaimBoxes();
-
-  if (!net.isHost || game.state === S.WIN || game.state === S.DRAW_GAME) return;
-  game.multiDiscardTimer += dt;
-  if (game.multiDiscardTimer < CLAIM_SECONDS) return;
-  game.multiDiscardTimer = 0;
-  const aiPlayers = game.players.filter((player) => player.isBot);
-  if (!aiPlayers.length) return;
-  const ai = aiPlayers[game.multiAiIndex % aiPlayers.length];
-  game.multiAiIndex += 1;
-  const tile = takeTileForPlay(chooseOpponentDiscardKind());
-  if (!tile) return;
-  const msg = {
-    t: 'discard',
-    claimId: `${game.playerId}:ai:${game.multiAiIndex}:${tile.uid}`,
-    seat: ai.seat,
-    tileId: tile.id,
-    uid: tile.uid,
-    name: ai.name,
-    isBot: true,
-    wind: ai.wind,
-  };
-  net.broadcast(msg);
-  addClaimBox(msg);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1948,20 +2440,21 @@ function swingLimit() {
   return Math.atan2(available, WORLD_H - ROD_BASE_Y);
 }
 
-function hookPosition() {
+function hookPositionFor(angle, hookLen) {
   const baseX = view.width / 2;
-  const tipX = baseX + Math.sin(game.rodAngle) * ROD_LENGTH;
-  const tipY = ROD_BASE_Y + Math.cos(game.rodAngle) * ROD_LENGTH;
+  const tipX = baseX + Math.sin(angle) * ROD_LENGTH;
+  const tipY = ROD_BASE_Y + Math.cos(angle) * ROD_LENGTH;
   // Safety net after a resize; normal play is bounded by swingLimit() so the
   // hook never visibly sits still against the edge.
   const hookX = Math.max(TILE_W, Math.min(
     view.width - TILE_W,
-    tipX + Math.sin(game.rodAngle) * game.hookLen,
+    tipX + Math.sin(angle) * hookLen,
   ));
-  return {
-    baseX, tipX, tipY, hookX,
-    hookY: tipY + Math.cos(game.rodAngle) * game.hookLen,
-  };
+  return { baseX, tipX, tipY, hookX, hookY: tipY + Math.cos(angle) * hookLen };
+}
+
+function hookPosition() {
+  return hookPositionFor(game.rodAngle, game.hookLen);
 }
 
 /** Distant mountain ridges above the waterline. */
@@ -2154,7 +2647,7 @@ function fishFaceDown(f) {
 function drawFish() {
   const t = performance.now() / 1000;
   for (const f of game.fish) {
-    drawTile(ctx, f.id, f.x, f.y, f.w, f.h, {
+    drawTile(ctx, f.tileId, f.x, f.y, f.w, f.h, {
       images: game.images,
       shadow: true,
       // Hooked tiles are drawn face-up by drawRod(), so the flash never hides
@@ -2164,6 +2657,47 @@ function drawFish() {
       // extra life. Never mirror the face, even for fish swimming left.
       rotation: f.rotation + Math.sin(t * 2.4 + f.phase) * 0.07,
     });
+  }
+}
+
+function drawGhostRod(seat, position, phase) {
+  const baseX = view.width / 2;
+  const tipX = baseX + (position.hookX - baseX) * 0.08;
+  const tipY = ROD_BASE_Y + (position.hookY - ROD_BASE_Y) * 0.08;
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = seat % 2 ? '#ffd27f' : '#a9e5ff';
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(baseX, ROD_BASE_Y);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
+  ctx.strokeStyle = '#e8f4f8';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(position.hookX, position.hookY);
+  ctx.stroke();
+  ctx.font = '40px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🪝', position.hookX, position.hookY);
+  ctx.restore();
+}
+
+function renderGhostRods() {
+  const now = performance.now();
+  for (const seat of Object.keys(game.hookPeers)) {
+    if (now - game.hookPeers[seat].seen > 1500) delete game.hookPeers[seat];
+  }
+  for (const state of Object.values(game.aiStates)) {
+    drawGhostRod(state.seat, aiHookPosition(state), state.rod.phase);
+  }
+  for (const [seat, hook] of Object.entries(game.hookPeers)) {
+    const value = Number(seat);
+    if (value === game.seat || game.aiStates[value]) continue;
+    drawGhostRod(value, { hookX: hook.x * view.width, hookY: hook.y }, hook.phase);
   }
 }
 
@@ -2203,10 +2737,11 @@ function draw(dt) {
   ctx.setTransform(view.dpr * view.scale, 0, 0, view.dpr * view.scale, 0, 0);
   drawBackground();
   drawFish();
+  renderGhostRods();
   drawRod();
   positionClaimBar();
   positionClaimBoxes();
-  if (!paused()) {
+  if (!paused() && fishAuthority()) {
     game.spawnTimer += dt;
     if (game.spawnTimer >= SPAWN_INTERVAL) {
       game.spawnTimer = 0;
@@ -2236,12 +2771,11 @@ function gameLoop(timestamp) {
       }
     }
     if (game.state !== S.WIN && game.state !== S.DRAW_GAME) {
-      if (game.mode === 'multi') {
-        multiTick(dt);
-      } else {
-        updateClaimTimer(dt);
-        if (game.wall.length && !game.pendingClaim) nextBotDiscard();
-      }
+      if (game.mode === 'multi') multiTick(dt);
+      else updateClaimTimer(dt);
+      aiTick(dt);
+      aiClaimTick(dt);
+      broadcastHookState(dt);
     }
     const hookRate = game.hookSpeed * paceFactor();
     if (game.state === S.AWAIT_CAST) {
@@ -2269,16 +2803,84 @@ function gameLoop(timestamp) {
       }
     }
     updateFish(dt);
+    if (game.mode === 'multi' && net.isHost) {
+      game.seaClock += dt;
+      if (game.seaClock >= SEA_BROADCAST_INTERVAL) {
+        game.seaClock = 0;
+        broadcastSeaSnapshot();
+      }
+    }
   }
   draw(dt);
   requestAnimationFrame(gameLoop);
 }
 
+function broadcastSeaSnapshot() {
+  if (game.mode !== 'multi' || !net.isHost) return;
+  net.broadcast({
+    t: 'sea',
+    worldWidth: view.width,
+    fish: game.fish.map((fish) => ({
+      id: fish.id,
+      tileId: fish.tileId,
+      x: fish.x / view.width,
+      y: fish.y,
+      vx: fish.vx / view.width,
+      vy: fish.vy,
+      rotation: fish.rotation,
+      phase: fish.phase,
+      age: fish.age,
+      memoryFlip: fish.memoryFlip,
+    })),
+  });
+}
+
+function applySea(msg) {
+  if (net.isHost || !Array.isArray(msg.fish)) return;
+  const scale = view.width / (msg.worldWidth || view.width);
+  game.fish = msg.fish.map((fish) => ({
+    id: fish.id,
+    tileId: fish.tileId,
+    x: fish.x * scale,
+    y: fish.y,
+    vx: fish.vx * scale,
+    vy: fish.vy,
+    w: TILE_W,
+    h: TILE_H,
+    rotation: fish.rotation,
+    phase: fish.phase,
+    age: fish.age,
+    memoryFlip: fish.memoryFlip,
+  }));
+}
+
+function broadcastHookState(dt) {
+  if (game.mode !== 'multi') return;
+  game.hookClock += dt;
+  if (game.hookClock < HOOK_BROADCAST_INTERVAL) return;
+  game.hookClock = 0;
+  const own = hookPosition();
+  net.broadcast({ t: 'hook', seat: game.seat, x: own.hookX / view.width, y: own.hookY, phase: game.state });
+  for (const state of Object.values(game.aiStates)) {
+    const position = aiHookPosition(state);
+    net.broadcast({
+      t: 'hook', seat: state.seat,
+      x: position.hookX / view.width, y: position.hookY, phase: state.rod.phase,
+    });
+  }
+}
+
+function applyHook(msg) {
+  if (msg.seat === game.seat) return;
+  game.hookPeers[msg.seat] = {
+    x: msg.x, y: msg.y, phase: msg.phase, seen: performance.now(),
+  };
+}
+
 function spawnFish(count) {
-  if (paused() || game.state === S.LOADING || game.state === S.WIN || game.state === S.DRAW_GAME) return;
+  if (!fishAuthority() || paused() || game.state === S.LOADING
+    || game.state === S.WIN || game.state === S.DRAW_GAME) return;
   for (let i = 0; i < count && game.fish.length < MAX_FISH; i += 1) {
-    const kind = chooseFishKind();
-    const tile = takeTileForPlay(kind);
     const direction = Math.random() < 0.5 ? 1 : -1;
     const speed = (85 + Math.random() * 95) * difficulty();
     // A little per-tile variance means two fish never drift in lockstep.
@@ -2286,7 +2888,8 @@ function spawnFish(count) {
     const minY = WATER_TOP + TILE_H / 2 + 30;
     const maxY = WATER_BOTTOM - TILE_H / 2 - 10;
     game.fish.push({
-      id: tile.id,
+      id: `f${++game.fishSeq}`,
+      tileId: randomTileKind(),
       x: direction > 0 ? -TILE_W : view.width + TILE_W,
       y: minY + Math.random() * (maxY - minY),
       vx: speed * speedFactor * direction,
@@ -2298,24 +2901,23 @@ function spawnFish(count) {
       memoryFlip: Math.random() < MEMORY_FLIP_CHANCE,
     });
   }
+  broadcastSeaSnapshot();
 }
 
 function updateFish(dt) {
+  if (!fishAuthority()) return;
   const minY = WATER_TOP + TILE_H / 2 + 16;
   const maxY = WATER_BOTTOM - TILE_H / 2 - 6;
-  game.fish = game.fish.filter((f) => {
-    f.age += dt;
-    f.x += f.vx * dt;
-    f.y += f.vy * dt;
-    if (f.y < minY || f.y > maxY) {
-      f.y = Math.min(maxY, Math.max(minY, f.y));
-      f.vy *= -1;
+  game.fish = game.fish.filter((fish) => {
+    fish.age += dt;
+    fish.x += fish.vx * dt;
+    fish.y += fish.vy * dt;
+    if (fish.y < minY || fish.y > maxY) {
+      fish.y = Math.min(maxY, Math.max(minY, fish.y));
+      fish.vy *= -1;
     }
-    if (f.x < -TILE_W * 2 || f.x > view.width + TILE_W * 2) {
-      game.wall.push(f.id); // 游走的魚把牌放回牌牆，保持 144 張
-      return false;
-    }
-    return true;
+    // The endless pool never recycles fish; they simply swim off screen.
+    return fish.x >= -TILE_W * 2 && fish.x <= view.width + TILE_W * 2;
   });
 }
 
@@ -2455,7 +3057,7 @@ function updateClaimTimer(dt = 0) {
   if (ui.claimProgress) {
     ui.claimProgress.style.width = `${game.claimTimeLeft / CLAIM_SECONDS * 100}%`;
   }
-  if (dt > 0 && game.claimTimeLeft <= 0) nextBotDiscard();
+  if (dt > 0 && game.claimTimeLeft <= 0) clearClaim();
 }
 
 function renderFlowers() {
@@ -2552,10 +3154,10 @@ function renderMelds() {
 
 function analyzeDiscards() {
   game.discardInfo = new Map();
-  const availability = countTiles([...game.wall, ...game.fish.map((f) => f.id)]);
+  // The shared pool is endless, so wait hints are not limited by tile counts.
   for (const tile of game.hand) {
     const after = game.hand.filter((t) => t.uid !== tile.uid).map((t) => t.id);
-    const waits = findWaits(after, game.melds, winContext(), availability);
+    const waits = findWaits(after, game.melds, winContext(), null);
     game.discardInfo.set(tile.uid, {
       good: waits.length > 0,
       waits: waits.map((id) => ({ id })),
@@ -2573,7 +3175,6 @@ function appendHintText(text) {
 
 function renderTarget() {
   ui.target.innerHTML = '';
-  const availability = countTiles([...game.wall, ...game.fish.map((f) => f.id)]);
 
   if (game.state === S.AWAIT_DISCARD) {
     const tile = game.hand[game.selectedDiscard];
@@ -2593,7 +3194,8 @@ function renderTarget() {
     return;
   }
 
-  const waits = findWaits(concealedIds(), game.melds, winContext(), availability);
+  // The pool is endless, so waits are never limited by remaining tile counts.
+  const waits = findWaits(concealedIds(), game.melds, winContext(), null);
   if (!waits.length) return; // No need to clutter the middle of the screen.
   ui.target.appendChild(Object.assign(document.createElement('span'), {
     textContent: '胡牌聽牌：',
@@ -2938,8 +3540,8 @@ if (new URLSearchParams(location.search).has('test')) {
     setState, resolveDraw, declareKong, commitWin, endDrawGame, startGame,
     renderHand, renderTarget, updateHUD, findKongTile, hookPosition, music,
     paceFactor, GAME_SECONDS, MIN_GAME_SECONDS, MAX_GAME_SECONDS, setGameSeconds, formatClock, parseClock,
-    HAIDI_SECONDS, winContext, openingWinContext, checkCatch, getAssistTiles, analyzeDiscards, selectDiscard,
-    finishReel, renderFlowers, checkInitialSelfDraw,
+    HAIDI_SECONDS, winContext, openingWinContext, checkCatch, randomTileKind, analyzeDiscards, selectDiscard,
+    finishReel, renderFlowers, checkInitialSelfDraw, checkAiOpeningWins,
     MEMORY_FLIP_CHANCE, MEMORY_FLIP_DELAY, MEMORY_FLIP_DURATION, CLAIM_SECONDS, fishFaceDown,
     discard, nextBotDiscard, passClaim, buildClaimActions, chooseOpponentDiscardKind,
     previousWind, canChowFrom, botLabel, positionClaimBar,
@@ -2948,6 +3550,8 @@ if (new URLSearchParams(location.search).has('test')) {
     showMenu, startFromMenu, quitToMenu, net, openRoom, joinRoom, askRoomCode, setPlayerName,
     voteRematch, showMultiEndOverlay,
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,
+    renderMeldsPanel, handleCatchRequest, applyFishCaught, applySea, applyHook,
+    aiTick, createAiState, publishDiscard, scheduleAiClaims, bestAiClaim,
   };
 }
 

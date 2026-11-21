@@ -337,8 +337,9 @@ export function decompose(concealed, meldCount = 0) {
   if (tiles.length < 2 || (tiles.length - 2) % 3 !== 0) return [];
   const requiredSets = (tiles.length - 2) / 3;
   if (requiredSets + meldCount > 4) return [];
+  // The fishing game draws from an endless weighted pool, so a tile kind may
+  // appear more than four times. Any repeated kind can still form sets/pairs.
   const counts = countTiles(tiles);
-  if (Object.values(counts).some((n) => n > 4)) return [];
 
   const results = [];
   const seen = new Set();
@@ -388,8 +389,9 @@ export function isThirteenOrphans(tiles) {
 
 export function isSevenPairs(tiles) {
   if (tiles.length !== 14) return false;
+  // With no four-copy limit, four identical tiles may supply two pairs.
   const counts = countTiles(tiles);
-  return Object.keys(counts).length === 7 && Object.values(counts).every((n) => n === 2);
+  return Object.values(counts).every((n) => n % 2 === 0);
 }
 
 export function isNineGates(tiles) {
@@ -882,6 +884,16 @@ export function createWall(rng = Math.random) {
   for (const id of TILE_IDS) for (let i = 0; i < 4; i += 1) wall.push(id);
   for (const id of FLOWER_IDS) wall.push(id);
   return shuffle(wall, rng);
+}
+
+/** Weighted endless pool: ordinary kinds 4:1 against each flower kind. */
+const WEIGHTED_TILE_KINDS = Object.freeze([
+  ...TILE_IDS.flatMap((id) => [id, id, id, id]),
+  ...FLOWER_IDS,
+]);
+
+export function randomTileKind(rng = Math.random) {
+  return WEIGHTED_TILE_KINDS[Math.floor(rng() * WEIGHTED_TILE_KINDS.length)];
 }
 
 export function shuffle(array, rng = Math.random) {
