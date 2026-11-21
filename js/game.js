@@ -8,6 +8,7 @@ import {
   createTileElement, tileName,
 } from './tiles.js';
 import { createMusic } from './audio.js';
+import { createNet, randomPlayerId } from './net.js';
 import {
   WINDS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, createWall, countTiles,
   evaluateHand, findWaits, getAssistTiles, formatWinBreakdown,
@@ -30,6 +31,17 @@ const ui = {
   fanCount: el('fanCount'), bestFanCount: el('bestFanCount'),
   exposedKongs: el('exposedKongs'),
   overlay: el('overlay'), patternsBody: el('patternsBody'),
+  claimBoxes: el('claimBoxes'),
+  meldPanel: el('meldPanel'), meldRows: el('meldRows'),
+  menu: el('menuScreen'), menuStart: el('menuStart'), menuTiles: el('menuTiles'),
+  menuRecord: el('menuRecord'), menuHost: el('menuHost'), menuJoin: el('menuJoin'),
+  menuRoomCode: el('menuRoomCode'),
+  room: el('roomScreen'), roomCode: el('roomCode'), roomLink: el('roomLink'),
+  roomCopy: el('roomCopy'), roomPlayers: el('roomPlayers'),
+  roomHostControls: el('roomHostControls'), roomGuestInfo: el('roomGuestInfo'),
+  roomHookSpeed: el('roomHookSpeed'), roomHookSpeedValue: el('roomHookSpeedValue'),
+  roomGameDuration: el('roomGameDuration'), roomGameDurationValue: el('roomGameDurationValue'),
+  roomStart: el('roomStart'), roomLeave: el('roomLeave'), roomMessage: el('roomMessage'),
   settingsSound: el('settingsSound'),
   musicVolume: el('musicVolume'), musicVolumeValue: el('musicVolumeValue'),
   gameDuration: el('gameDuration'), gameDurationValue: el('gameDurationValue'),
@@ -38,6 +50,9 @@ const ui = {
 };
 
 const music = createMusic();
+const net = createNet();
+const MULTI_CLAIM_SECONDS = 5;
+const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 const S = Object.freeze({
   LOADING: 'LOADING',
@@ -116,7 +131,23 @@ const game = {
   claimActions: [], claimTimeLeft: 0,
   pendingSelfWin: null,     // { result, kongTile, onDecline } — inline 胡牌／過 prompt
   declinedFlowerWin: false, // 七花已拒絕；只接受八花，之後手牌胡加上花糊
+  // Multiplayer (PeerJS room). Each device still runs its own local game.
+  mode: 'solo',             // 'solo' | 'multi'
+  role: 'none',             // 'host' | 'guest'
+  seat: 0,                  // 0 = room host, 1–3 = guests / AI fill-ins
+  playerId: null,
+  roomCode: null,
+  players: [],              // [{ seat, name, wind, isBot, playerId }]
+  roomSettings: { hookSpeed: 1, gameSeconds: GAME_SECONDS },
+  claimBoxes: [],           // multiplayer claim slots (one per recent discard)
+  seatMelds: {},            // seat -> meld[], used by the 副露 panel
+  mustDiscard: false,       // after 碰／上／明槓, block further claims until discard
+  multiDiscardTimer: 0,
+  multiAiIndex: 0,
+  pendingMultiStart: null,
 };
+
+game.roomSettings = { hookSpeed: game.hookSpeed, gameSeconds: game.settings.gameSeconds };
 
 function readNumber(key) {
   try { return Number(localStorage.getItem(key)) || 0; } catch { return 0; }
@@ -373,7 +404,7 @@ function chooseFishKind() {
   return fallback();
 }
 
-function startGame({ keepTurn = false } = {}) {
+function startGame({ keepTurn = false, preset = null } = {}) {
   const nextTurn = keepTurn ? game.turn : 1;
   game.wall = createWall();
   game.hand = [];
@@ -390,11 +421,31 @@ function startGame({ keepTurn = false } = {}) {
   game.spawnTimer = 0;
   game.pendingResult = null;
   game.declinedFlowerWin = false;
+  game.claimBoxes = [];
+  game.seatMelds = {};
+  game.mustDiscard = false;
   clearClaim();
   clearSelfWin();
-  game.roundWind = WINDS[Math.floor(Math.random() * WINDS.length)];
-  game.seatWind = WINDS[(WINDS.indexOf(game.roundWind) + 1 + Math.floor(Math.random() * 3)) % 4];
-  game.bots = createBots();
+  if (preset) {
+    game.roundWind = preset.roundWind;
+    game.seatWind = WINDS[(WINDS.indexOf(preset.seatWind) + game.seat) % WINDS.length];
+    game.players = preset.players.map((player) => ({
+      ...player,
+      wind: WINDS[(WINDS.indexOf(preset.seatWind) + player.seat) % WINDS.length],
+    }));
+  } else {
+    game.roundWind = WINDS[Math.floor(Math.random() * WINDS.length)];
+    game.seatWind = WINDS[(WINDS.indexOf(game.roundWind) + 1 + Math.floor(Math.random() * 3)) % WINDS.length];
+    game.players = [
+      { seat: 0, name: '你', wind: game.seatWind, isBot: false, playerId: game.playerId },
+      ...createBots().map((bot, index) => ({
+        seat: index + 1, name: bot.name, wind: bot.wind, isBot: true, playerId: null,
+      })),
+    ];
+  }
+  game.bots = game.players
+    .filter((player) => player.seat !== game.seat)
+    .map((player) => ({ name: player.name, wind: player.wind }));
   game.botIndex = -1;
   // 花牌不進手牌：起手摸到就先亮出，再補一張，直到補滿 13 張普通牌。
   let openingFlowerWin = null;
@@ -450,11 +501,24 @@ function continueAfterOpeningFlowerDecline() {
   } else {
     setState(S.AWAIT_CAST);
   }
-  nextBotDiscard();
+  if (game.mode === 'multi') {
+    game.multiDiscardTimer = 0;
+    game.multiAiIndex = 0;
+    setMultiUIVisibility(true);
+  } else {
+    nextBotDiscard();
+  }
 }
 
 /** Restarting a hand keeps the 巡 counter and its difficulty pace. */
-const restartGame = () => startGame({ keepTurn: true });
+function restartGame() {
+  if (game.mode === 'multi') {
+    if (net.isHost) startMultiGame();
+    else setStatus('請等待房主重新開始。');
+    return;
+  }
+  startGame({ keepTurn: true });
+}
 
 function sortHand() {
   game.hand.sort((a, b) => TILE_IDS.indexOf(a.id) - TILE_IDS.indexOf(b.id));
@@ -585,7 +649,10 @@ function declareKong(kind) {
     return true;
   });
   if (removed !== 4) return;
-  game.melds.push({ tile: kind, type: 'kong', tiles: [kind, kind, kind, kind] });
+  const meld = { tile: kind, type: 'kong', tiles: [kind, kind, kind, kind] };
+  game.melds.push(meld);
+  addSeatMeld(game.seat, meld);
+  if (game.mode === 'multi') broadcastOrSend({ t: 'meld', seat: game.seat, meld });
   const previousChain = game.lastDraw?.source === 'kong' ? game.kongChain : 0;
   game.kongChain = previousChain + 1;
   // No automatic replacement: the player hooks the next tile, which becomes
@@ -606,9 +673,12 @@ function discard(uid) {
   game.lastDraw = null;
   game.kongChain = 0;
   game.turn += 1;
+  game.mustDiscard = false;
   // With bots discarding independently, nothing else advances the player's
   // turn after a discard. Return to casting so fishing can continue.
   setState(S.AWAIT_CAST);
+  sendDiscard(tile);
+  if (game.mode === 'multi') renderClaimBoxes();
 }
 
 /* ------------------------------------------------------------------ *
@@ -688,36 +758,43 @@ function takeHandTiles(kinds) {
   return chosen;
 }
 
-function buildClaimActions(discardId, bot = game.pendingClaim?.bot) {
+function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass = false) {
   const hand = concealedIds();
   const counts = countTiles(hand);
   const actions = [];
   const win = claimWinResult(discardId);
-  if (win.isWin) actions.push({ label: '胡牌', onClick: () => commitWin(win) });
+  if (win.isWin) actions.push({ label: '胡牌', type: 'win', result: win, onClick: () => commitWin(win) });
 
   const canCall = hand.length >= 4;
   const canChow = canCall && canChowFrom(bot);
   const hasReplacement = game.wall.length + game.fish.length > 0;
   if (canCall && hasReplacement && (counts[discardId] ?? 0) >= 3) {
+    const kinds = [discardId, discardId, discardId];
     actions.push({
       label: `明槓 ${tileName(discardId)}`,
-      onClick: () => declareOpenMeld('kong', discardId, [discardId, discardId, discardId]),
+      type: 'kong', kinds,
+      onClick: () => declareOpenMeld('kong', discardId, kinds),
     });
   }
   if (canCall && (counts[discardId] ?? 0) >= 2) {
+    const kinds = [discardId, discardId];
     actions.push({
       label: `碰 ${tileName(discardId)}`,
-      onClick: () => declareOpenMeld('pung', discardId, [discardId, discardId]),
+      type: 'pung', kinds,
+      onClick: () => declareOpenMeld('pung', discardId, kinds),
     });
   }
   for (const combo of chowCombinations(discardId, hand)) {
     if (!canChow) break;
     actions.push({
       label: `上 ${combo.tiles.map(tileName).join('')}`,
+      type: 'chow', kinds: combo.tiles,
       onClick: () => declareOpenMeld('chow', discardId, combo.tiles),
     });
   }
-  actions.push({ label: '過', primary: false, onClick: passClaim });
+  // The 過 button does nothing that the five-second timeout doesn't already do,
+  // so claim boxes never show it (single player included).
+  if (includePass) actions.push({ label: '過', primary: false, onClick: passClaim });
   return actions;
 }
 
@@ -737,12 +814,15 @@ function declareOpenMeld(type, discardId, handKinds) {
   const removed = takeHandTiles(handKinds);
   if (!removed) return;
   game.hand = game.hand.filter((tile) => !removed.includes(tile));
-  game.melds.push({
+  const meld = {
     tile: discardId,
     type,
     tiles: [...removed.map((tile) => tile.id), discardId],
     open: true,
-  });
+  };
+  game.melds.push(meld);
+  addSeatMeld(game.seat, meld);
+  if (game.mode === 'multi') broadcastOrSend({ t: 'meld', seat: game.seat, meld });
   clearClaim();
   clearSelfWin();
   game.lastDraw = null;
@@ -766,6 +846,19 @@ function passClaim() {
 }
 
 function commitWin(result) {
+  if (game.mode === 'multi') {
+    const fanTotal = game.fanTotal + result.totalFan;
+    const bestFan = Math.max(game.bestFan, result.totalFan);
+    game.fanTotal = fanTotal;
+    game.bestFan = bestFan;
+    save('mf-fantotal', fanTotal);
+    save('mf-bestfan', bestFan);
+    clearClaim();
+    clearSelfWin();
+    broadcastOrSend({ t: 'win', seat: game.seat, result, fanTotal, bestFan });
+    finishMultiWin(game.seat, result, fanTotal, bestFan);
+    return;
+  }
   game.fanTotal += result.totalFan;
   if (result.totalFan > game.bestFan) {
     game.bestFan = result.totalFan;
@@ -812,6 +905,667 @@ function winningTiles(result) {
     }),
     ...result.concealed.map((id) => ({ id, faceDown: false })),
   ];
+}
+
+/* ------------------------------------------------------------------ *
+ * Casual multiplayer (PeerJS rooms)
+ *
+ * Every device runs its own wall, fish and hand. Only human actions are
+ * shared: discards, claims, resulting melds and the final result. The room
+ * host relays messages and decides a claim by whichever arrives first.
+ * ------------------------------------------------------------------ */
+
+function makeRoomCode() {
+  return Array.from({ length: 4 }, () => ROOM_CHARS[Math.floor(Math.random() * ROOM_CHARS.length)]).join('');
+}
+
+function normalizeRoomCode(text) {
+  return String(text ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+}
+
+function defaultRoomPlayers() {
+  const wind = game.seatWind ?? 'E';
+  return [
+    { seat: 0, name: '房主', wind, isBot: false, playerId: game.playerId },
+    ...BOT_NAMES.map((name, index) => ({
+      seat: index + 1,
+      name,
+      wind: WINDS[(WINDS.indexOf(wind) + index + 1) % WINDS.length],
+      isBot: true,
+      playerId: null,
+    })),
+  ];
+}
+
+function setRoomMessage(text) {
+  if (ui.roomMessage) ui.roomMessage.textContent = text;
+}
+
+function setMultiUIVisibility(visible) {
+  if (!visible) {
+    if (ui.claimBoxes) { ui.claimBoxes.hidden = true; ui.claimBoxes.innerHTML = ''; }
+    if (ui.meldPanel) ui.meldPanel.hidden = true;
+    if (ui.meldRows) ui.meldRows.innerHTML = '';
+    return;
+  }
+  renderClaimBoxes();
+  renderMeldsPanel();
+}
+
+function refreshMultiBots() {
+  if (game.mode !== 'multi') return;
+  game.bots = game.players
+    .filter((player) => player.seat !== game.seat)
+    .map((player) => ({ name: player.name, wind: player.wind }));
+}
+
+function broadcastOrSend(msg) {
+  if (net.isHost) net.broadcast(msg);
+  else net.sendToHost(msg);
+}
+
+function roomLink(code) {
+  return `${location.origin}${location.pathname}?room=${code}`;
+}
+
+async function openRoom() {
+  if (!net.available) {
+    setRoomMessage('多人功能無法使用：請重新整理頁面。');
+    return;
+  }
+  game.mode = 'multi';
+  game.role = 'host';
+  game.seat = 0;
+  game.playerId = randomPlayerId();
+  game.roomCode = makeRoomCode();
+  game.players = defaultRoomPlayers();
+  game.roomSettings = { hookSpeed: game.hookSpeed, gameSeconds: game.settings.gameSeconds };
+  setRoomMessage('正在建立房間…');
+  closeModal('menuScreen');
+  openModal('roomScreen');
+  renderRoom();
+  try {
+    await net.startHost(game.roomCode);
+    setRoomMessage('房間已建立，等待好友加入。');
+    renderRoom();
+  } catch (error) {
+    setRoomMessage(error?.message === 'room-timeout'
+      ? '建立房間失敗，請再試一次。'
+      : '無法連線到配對服務，請檢查網路後再試。');
+  }
+}
+
+async function joinRoom() {
+  const code = normalizeRoomCode(ui.menuRoomCode?.value);
+  if (code.length !== 4) {
+    setRoomMessage('請輸入四位房間代碼。');
+    closeModal('menuScreen');
+    openModal('roomScreen');
+    return;
+  }
+  if (!net.available) {
+    setRoomMessage('多人功能無法使用：請重新整理頁面。');
+    closeModal('menuScreen');
+    openModal('roomScreen');
+    return;
+  }
+  game.mode = 'multi';
+  game.role = 'guest';
+  game.playerId = randomPlayerId();
+  game.roomCode = code;
+  setRoomMessage('正在加入房間…');
+  closeModal('menuScreen');
+  openModal('roomScreen');
+  renderRoom();
+  try {
+    await net.joinRoom(code, game.playerId);
+    setRoomMessage('已加入房間，等待房主開始。');
+    renderRoom();
+  } catch (error) {
+    console.warn('[mf] 加入房間失敗：', error);
+    setRoomMessage(error?.message === 'room-timeout'
+      ? '找不到這個房間，請確認代碼是否正確。'
+      : '無法連線到房間，請檢查網路後再試。');
+  }
+}
+
+function renderRoom() {
+  if (!ui.room) return;
+  if (ui.roomCode) ui.roomCode.textContent = game.roomCode ?? '—';
+  if (ui.roomLink) ui.roomLink.value = game.roomCode ? roomLink(game.roomCode) : '';
+  const isHost = net.isHost && game.role === 'host';
+  if (ui.roomHostControls) ui.roomHostControls.hidden = !isHost;
+  if (ui.roomStart) ui.roomStart.hidden = !isHost;
+  if (ui.roomGuestInfo) {
+    ui.roomGuestInfo.hidden = isHost;
+    if (!isHost) {
+      ui.roomGuestInfo.textContent = `房主設定：鉤速 ${game.roomSettings.hookSpeed.toFixed(1)}×・每局 ${formatClock(game.roomSettings.gameSeconds)}`;
+    }
+  }
+  if (ui.roomHookSpeed) {
+    ui.roomHookSpeed.value = String(game.roomSettings.hookSpeed);
+    ui.roomHookSpeedValue.textContent = `${Number(game.roomSettings.hookSpeed).toFixed(1)}×`;
+  }
+  if (ui.roomGameDuration) {
+    ui.roomGameDuration.value = String(game.roomSettings.gameSeconds);
+    ui.roomGameDurationValue.textContent = formatClock(game.roomSettings.gameSeconds);
+  }
+  if (ui.roomPlayers) {
+    ui.roomPlayers.innerHTML = '';
+    const players = game.players.length ? game.players : defaultRoomPlayers();
+    for (const player of players) {
+      const row = document.createElement('div');
+      row.className = `room-player${player.seat === game.seat ? ' you' : ''}`;
+      const label = document.createElement('span');
+      label.textContent = `${player.seat === game.seat ? '你' : player.name}（${player.wind ?? ''}）`;
+      const role = document.createElement('span');
+      role.className = 'room-player-role';
+      role.textContent = player.isBot ? 'AI 補位' : player.seat === 0 ? '房主' : '好友';
+      row.append(label, role);
+      ui.roomPlayers.appendChild(row);
+    }
+  }
+}
+
+function copyRoomLink() {
+  const link = ui.roomLink?.value ?? '';
+  if (!link) return;
+  navigator.clipboard?.writeText(link).then(
+    () => setRoomMessage('分享連結已複製。'),
+    () => { ui.roomLink?.select(); setRoomMessage('請手動複製上方連結。'); },
+  );
+}
+
+function updateRoomSettings() {
+  if (!net.isHost || game.mode !== 'multi') return;
+  game.roomSettings = {
+    hookSpeed: Number(ui.roomHookSpeed.value),
+    gameSeconds: Number(ui.roomGameDuration.value),
+  };
+  net.broadcast({ t: 'settings', settings: game.roomSettings });
+  renderRoom();
+}
+
+function startMultiGame() {
+  if (game.mode !== 'multi' || !net.isHost) return;
+  const seatWind = WINDS[Math.floor(Math.random() * WINDS.length)];
+  const msg = {
+    t: 'start',
+    settings: { ...game.roomSettings },
+    roundWind: WINDS[Math.floor(Math.random() * WINDS.length)],
+    seatWind,
+    players: game.players.map((player) => ({
+      seat: player.seat,
+      name: player.name,
+      isBot: Boolean(player.isBot),
+      playerId: player.playerId,
+    })),
+  };
+  game.pendingMultiStart = msg;
+  net.broadcast(msg);
+  applyMultiStart(msg);
+}
+
+function applyMultiStart(msg) {
+  if (game.mode !== 'multi') return;
+  game.pendingMultiStart = msg;
+  game.roomSettings = { ...msg.settings };
+  game.hookSpeed = msg.settings.hookSpeed;
+  game.settings.gameSeconds = msg.settings.gameSeconds;
+  closeModal('roomScreen');
+  updateSettingsUI();
+  startGame({ preset: msg });
+}
+
+function sendDiscard(tile) {
+  if (game.mode !== 'multi') return;
+  const msg = {
+    t: 'discard',
+    claimId: `${game.playerId}:${tile.uid}`,
+    seat: game.seat,
+    tileId: tile.id,
+    uid: tile.uid,
+    name: game.players[game.seat]?.name ?? (game.seat === 0 ? '房主' : '好友'),
+    wind: game.players[game.seat]?.wind ?? game.seatWind,
+  };
+  if (net.isHost) {
+    net.broadcast(msg);
+    addClaimBox(msg);
+  } else {
+    net.sendToHost(msg);
+  }
+}
+
+function addClaimBox(entry) {
+  if (game.mode !== 'multi' || entry.seat === game.seat) return;
+  // One box per opponent: a newer discard replaces that opponent's older one.
+  game.claimBoxes = game.claimBoxes.filter((box) => box.seat !== entry.seat);
+  game.claimBoxes.push({
+    ...entry, timeLeft: MULTI_CLAIM_SECONDS, resolved: false, awaiting: false,
+  });
+  renderClaimBoxes();
+}
+
+function sendClaimMessage(msg) {
+  if (net.isHost) handleClaim(msg);
+  else net.sendToHost(msg);
+}
+
+function claimFromBox(box, action) {
+  if (game.mustDiscard || box.resolved || box.awaiting) return;
+  box.awaiting = true;
+  renderClaimBoxes();
+  const msg = {
+    t: 'claim',
+    claimId: box.claimId,
+    seat: game.seat,
+    tileId: box.tileId,
+    type: action.type,
+    kinds: action.kinds ?? null,
+  };
+  if (action.type === 'win') {
+    msg.result = action.result;
+    msg.fanTotal = game.fanTotal + action.result.totalFan;
+    msg.bestFan = Math.max(game.bestFan, action.result.totalFan);
+  }
+  // Wait for the host's first-press-wins ruling before touching our own hand.
+  sendClaimMessage(msg);
+}
+
+function declareOpenMeldMulti(type, discardId, kinds) {
+  if (!Array.isArray(kinds) || !kinds.length) return;
+  const removed = takeHandTiles(kinds);
+  if (!removed) return;
+  game.hand = game.hand.filter((tile) => !removed.includes(tile));
+  const meld = {
+    tile: discardId,
+    type,
+    tiles: [...removed.map((tile) => tile.id), discardId],
+    open: true,
+  };
+  game.melds.push(meld);
+  addSeatMeld(game.seat, meld);
+  clearClaim();
+  clearSelfWin();
+  game.lastDraw = null;
+  game.kongChain = 0;
+  game.mustDiscard = true;
+  setState(type === 'kong' ? S.AWAIT_CAST : S.AWAIT_DISCARD);
+  setStatus(`${type === 'pung' ? '碰' : type === 'chow' ? '上' : '明槓'}成功！請先打出一張牌。`);
+}
+
+function handleClaim(msg) {
+  const box = game.claimBoxes.find((item) => item.claimId === msg.claimId);
+  if (!box || box.resolved) return;
+  box.resolved = true;
+  const meld = msg.type === 'win' ? null : {
+    tile: box.tileId,
+    type: msg.type,
+    tiles: [...(msg.kinds ?? []), box.tileId],
+    open: true,
+  };
+  const result = {
+    t: 'claimResult',
+    claimId: msg.claimId,
+    seat: msg.seat,
+    tileId: msg.tileId ?? box?.tileId,
+    type: msg.type,
+    meld,
+    kinds: msg.kinds ?? null,
+    result: msg.result ?? null,
+    fanTotal: msg.fanTotal ?? null,
+    bestFan: msg.bestFan ?? null,
+  };
+  net.broadcast(result);
+  applyClaimResult(result);
+}
+
+function applyClaimResult(msg) {
+  const box = game.claimBoxes.find((item) => item.claimId === msg.claimId);
+  if (box) box.resolved = true;
+  if (msg.type === 'win') {
+    finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan);
+    return;
+  }
+  if (msg.seat === game.seat) {
+    declareOpenMeldMulti(msg.type, msg.tileId, msg.kinds ?? []);
+  } else if (msg.meld) {
+    addSeatMeld(msg.seat, msg.meld);
+  }
+  renderClaimBoxes();
+}
+
+function addSeatMeld(seat, meld) {
+  if (!game.seatMelds[seat]) game.seatMelds[seat] = [];
+  game.seatMelds[seat].push(meld);
+  renderMeldsPanel();
+}
+
+function winnerName(seat) {
+  if (seat === game.seat) return '你';
+  return game.players.find((player) => player.seat === seat)?.name ?? `座位 ${seat + 1}`;
+}
+
+function finishMultiWin(seat, result, fanTotal, bestFan) {
+  if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
+  if (seat === game.seat) {
+    game.fanTotal = fanTotal ?? game.fanTotal + (result?.totalFan ?? 0);
+    game.bestFan = bestFan ?? Math.max(game.bestFan, result?.totalFan ?? 0);
+    save('mf-fantotal', game.fanTotal);
+    save('mf-bestfan', game.bestFan);
+  }
+  clearClaim();
+  clearSelfWin();
+  game.claimBoxes = [];
+  renderClaimBoxes();
+  setState(S.WIN);
+  const name = winnerName(seat);
+  setStatus(`${name} 胡牌！${result?.totalFan ?? 0} 番`);
+  showOverlay({
+    title: seat === game.seat ? '🎉 胡牌成功！' : `${name} 胡牌`,
+    message: `${formatWinBreakdown(result)}\n\n${name}：累計 ${fanTotal ?? game.fanTotal} 番　最佳 ${bestFan ?? game.bestFan} 番`,
+    tiles: [
+      ...winningTiles(result),
+      ...(result?.flowers ?? []).map((id) => ({ id })),
+    ],
+    actions: [{ label: '回到主選單', onClick: leaveMultiRoom }],
+  });
+}
+
+function applyMultiDraw() {
+  if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
+  clearClaim();
+  clearSelfWin();
+  game.claimBoxes = [];
+  renderClaimBoxes();
+  game.timeLeft = 0;
+  setState(S.DRAW_GAME);
+  setStatus('時間到，流局。');
+  updateTimer();
+  showOverlay({
+    title: '流局',
+    message: '時間到，沒有胡牌。',
+    actions: [{ label: '回到主選單', onClick: leaveMultiRoom }],
+  });
+}
+
+function resetMultiState() {
+  net.close();
+  game.mode = 'solo';
+  game.role = 'none';
+  game.seat = 0;
+  game.roomCode = null;
+  game.players = [];
+  game.claimBoxes = [];
+  game.seatMelds = {};
+  game.mustDiscard = false;
+  game.pendingMultiStart = null;
+  game.state = S.LOADING;
+  setMultiUIVisibility(false);
+  closeModal('roomScreen');
+  updateSettingsUI();
+}
+
+function leaveMultiRoom() {
+  if (game.mode !== 'multi') return;
+  net.broadcast({ t: 'leave', seat: game.seat, playerId: game.playerId });
+  resetMultiState();
+  showMenu();
+}
+
+function wireNetEvents() {
+  net.on('guestOpen', (msg, conn) => {
+    if (!net.isHost || game.mode !== 'multi') return;
+    const seat = [1, 2, 3].find((value) => game.players[value - 1]?.isBot);
+    if (!seat) {
+      conn.send({ t: 'full' });
+      return;
+    }
+    game.players[seat - 1] = {
+      ...game.players[seat - 1],
+      isBot: false,
+      playerId: conn.peer,
+      name: `好友${seat}`,
+    };
+    conn.send({
+      t: 'welcome', seat, players: game.players, settings: game.roomSettings,
+    });
+    net.broadcast({ t: 'players', players: game.players });
+    refreshMultiBots();
+    renderRoom();
+    renderMeldsPanel();
+  });
+
+  net.on('join', (msg, conn) => {
+    if (!net.isHost) return;
+    const player = game.players.find((item) => item.playerId === conn.peer);
+    if (player) player.gamePlayerId = msg.playerId;
+  });
+
+  net.on('welcome', (msg) => {
+    game.seat = msg.seat;
+    game.players = msg.players.map((player) => ({ ...player }));
+    game.roomSettings = { ...msg.settings };
+    refreshMultiBots();
+    setRoomMessage(`你的座位：${msg.seat === 0 ? '你' : `好友${msg.seat}`}`);
+    renderRoom();
+  });
+
+  net.on('players', (msg) => {
+    game.players = msg.players.map((player) => ({ ...player }));
+    refreshMultiBots();
+    renderRoom();
+    renderMeldsPanel();
+  });
+
+  net.on('settings', (msg) => {
+    game.roomSettings = { ...msg.settings };
+    renderRoom();
+  });
+
+  net.on('start', (msg) => {
+    if (net.isHost) return;
+    applyMultiStart(msg);
+  });
+
+  net.on('full', () => setRoomMessage('房間已滿，請換一個房間。'));
+
+  net.on('discard', (msg) => {
+    if (net.isHost) net.broadcast(msg);
+    addClaimBox(msg);
+  });
+
+  net.on('claim', (msg) => {
+    if (net.isHost) handleClaim(msg);
+  });
+
+  net.on('claimResult', (msg) => applyClaimResult(msg));
+
+  net.on('meld', (msg) => {
+    if (msg.seat !== game.seat && msg.meld) addSeatMeld(msg.seat, msg.meld);
+  });
+
+  net.on('win', (msg) => {
+    if (net.isHost && msg.seat !== game.seat) net.broadcast(msg);
+    finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan);
+  });
+
+  net.on('draw', () => {
+    if (net.isHost) net.broadcast({ t: 'draw' });
+    applyMultiDraw();
+  });
+
+  function fillSeatWithBot(player) {
+    if (!player || player.seat === 0) return;
+    player.isBot = true;
+    player.playerId = null;
+    player.name = BOT_NAMES[player.seat - 1] ?? `好友${player.seat}`;
+    net.broadcast({ t: 'players', players: game.players });
+    refreshMultiBots();
+    renderRoom();
+    renderMeldsPanel();
+  }
+
+  net.on('leave', (msg) => {
+    if (!net.isHost) return;
+    fillSeatWithBot(game.players.find((item) => item.seat === msg.seat));
+  });
+
+  net.on('guestClose', (msg) => {
+    if (!net.isHost) return;
+    fillSeatWithBot(game.players.find((item) => item.playerId === msg.peerId));
+  });
+
+  net.on('hostClose', () => {
+    if (game.mode !== 'multi' || game.role !== 'guest') return;
+    resetMultiState();
+    showMenu();
+    showOverlay({
+      title: '房主已離開',
+      message: '房主已離開，請重新開房間',
+      actions: [{ label: '返回主選單', onClick: () => ui.overlay.classList.remove('show') }],
+    });
+  });
+
+  net.on('error', ({ error }) => {
+    if (!ui.room?.classList.contains('show')) return;
+    setRoomMessage(error?.message === 'peer-unavailable'
+      ? '找不到這個房間，請確認代碼是否正確。'
+      : '連線發生問題，請稍後再試。');
+  });
+}
+
+function renderClaimBoxes() {
+  if (!ui.claimBoxes) return;
+  const boxes = game.mode === 'multi'
+    ? game.claimBoxes.filter((box) => box.seat !== game.seat && !box.resolved)
+    : [];
+  ui.claimBoxes.hidden = boxes.length === 0;
+  ui.claimBoxes.innerHTML = '';
+  for (const box of boxes) {
+    const node = document.createElement('div');
+    node.className = 'claim-box';
+    const who = document.createElement('span');
+    who.className = 'claim-label';
+    who.textContent = `${box.name}（${TILE_INFO[box.wind]?.name ?? box.wind}）打出`;
+    const tile = document.createElement('span');
+    tile.className = 'claim-tile';
+    addTileTo(tile, box.tileId);
+    const timer = document.createElement('span');
+    timer.className = 'claim-timer';
+    timer.textContent = `${box.timeLeft.toFixed(1)} 秒`;
+    const actions = document.createElement('span');
+    actions.className = 'claim-actions';
+    const bot = { name: box.name, wind: box.wind };
+    for (const action of buildClaimActions(box.tileId, bot, false)) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = action.label;
+      button.disabled = game.mustDiscard || box.awaiting;
+      button.addEventListener('click', () => claimFromBox(box, action));
+      actions.appendChild(button);
+    }
+    const progress = document.createElement('span');
+    progress.className = 'claim-progress';
+    progress.style.width = `${box.timeLeft / MULTI_CLAIM_SECONDS * 100}%`;
+    node.append(who, tile, timer, actions, progress);
+    box.timerEl = timer;
+    box.progressEl = progress;
+    ui.claimBoxes.appendChild(node);
+  }
+  positionClaimBoxes();
+}
+
+function positionClaimBoxes() {
+  if (!ui.claimBoxes || ui.claimBoxes.hidden) return;
+  const rect = canvas.getBoundingClientRect();
+  const scale = canvas.clientHeight / WORLD_H;
+  const seaTop = rect.top + WATER_TOP * scale;
+  const margin = 8;
+  const width = ui.claimBoxes.firstElementChild?.offsetWidth ?? 220;
+  const height = ui.claimBoxes.offsetHeight;
+  const left = Math.max(rect.left + margin, rect.right - margin - width);
+  const top = Math.max(rect.top + margin, Math.min(
+    window.innerHeight - height - margin,
+    seaTop - height - 12,
+  ));
+  ui.claimBoxes.style.left = `${left}px`;
+  ui.claimBoxes.style.top = `${top}px`;
+}
+
+function renderMeldsPanel() {
+  if (!ui.meldPanel) return;
+  ui.meldPanel.hidden = game.mode !== 'multi';
+  if (game.mode !== 'multi' || !ui.meldRows) return;
+  ui.meldRows.innerHTML = '';
+  const players = game.players.length ? game.players : defaultRoomPlayers();
+  for (const player of players) {
+    const row = document.createElement('div');
+    row.className = 'meld-row';
+    const name = document.createElement('span');
+    name.className = 'meld-row-name';
+    name.textContent = player.seat === game.seat ? '你' : player.name;
+    row.appendChild(name);
+    const melds = game.seatMelds[player.seat] ?? [];
+    if (!melds.length) {
+      const empty = document.createElement('span');
+      empty.className = 'meld-row-empty';
+      empty.textContent = '—';
+      row.appendChild(empty);
+    }
+    for (const meld of melds) {
+      const label = document.createElement('span');
+      label.className = 'flowers-label';
+      label.textContent = meldLabel(meld);
+      row.appendChild(label);
+      const set = document.createElement('div');
+      set.className = 'kong-set';
+      const concealed = isConcealedKong(meld);
+      meld.tiles.forEach((id, index) => {
+        set.appendChild(createTileElement(id, {
+          images: game.images,
+          faceDown: concealed && (index === 0 || index === 3),
+        }));
+      });
+      row.appendChild(set);
+    }
+    ui.meldRows.appendChild(row);
+  }
+}
+
+function multiTick(dt) {
+  if (game.mode !== 'multi') return;
+  let expired = false;
+  for (const box of game.claimBoxes) {
+    if (box.resolved) continue;
+    box.timeLeft = Math.max(0, box.timeLeft - dt);
+    if (box.timerEl) box.timerEl.textContent = `${box.timeLeft.toFixed(1)} 秒`;
+    if (box.progressEl) box.progressEl.style.width = `${box.timeLeft / MULTI_CLAIM_SECONDS * 100}%`;
+    if (box.timeLeft <= 0) { box.resolved = true; expired = true; }
+  }
+  if (expired) renderClaimBoxes();
+
+  if (!net.isHost || game.state === S.WIN || game.state === S.DRAW_GAME) return;
+  game.multiDiscardTimer += dt;
+  if (game.multiDiscardTimer < CLAIM_SECONDS) return;
+  game.multiDiscardTimer = 0;
+  const aiPlayers = game.players.filter((player) => player.isBot);
+  if (!aiPlayers.length) return;
+  const ai = aiPlayers[game.multiAiIndex % aiPlayers.length];
+  game.multiAiIndex += 1;
+  const tile = takeTileForPlay(chooseOpponentDiscardKind());
+  if (!tile) return;
+  const msg = {
+    t: 'discard',
+    claimId: `${game.playerId}:ai:${game.multiAiIndex}:${tile.uid}`,
+    seat: ai.seat,
+    tileId: tile.id,
+    uid: tile.uid,
+    name: ai.name,
+    wind: ai.wind,
+  };
+  net.broadcast(msg);
+  addClaimBox(msg);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1109,6 +1863,7 @@ function draw(dt) {
   drawFish();
   drawRod();
   positionClaimBar();
+  positionClaimBoxes();
   if (!paused()) {
     game.spawnTimer += dt;
     if (game.spawnTimer >= SPAWN_INTERVAL) {
@@ -1130,11 +1885,21 @@ function gameLoop(timestamp) {
     if (game.state !== S.WIN && game.state !== S.DRAW_GAME) {
       game.timeLeft = Math.max(0, game.timeLeft - dt);
       updateTimer();
-      if (game.timeLeft <= 0) { endDrawGame(); }
+      if (game.timeLeft <= 0) {
+        if (game.mode === 'multi') {
+          if (net.isHost) { net.broadcast({ t: 'draw' }); applyMultiDraw(); }
+        } else {
+          endDrawGame();
+        }
+      }
     }
     if (game.state !== S.WIN && game.state !== S.DRAW_GAME) {
-      updateClaimTimer(dt);
-      if (game.wall.length && !game.pendingClaim) nextBotDiscard();
+      if (game.mode === 'multi') {
+        multiTick(dt);
+      } else {
+        updateClaimTimer(dt);
+        if (game.wall.length && !game.pendingClaim) nextBotDiscard();
+      }
     }
     const hookRate = game.hookSpeed * paceFactor();
     if (game.state === S.AWAIT_CAST) {
@@ -1536,8 +2301,44 @@ function showOverlay({ title, message, tiles = [], actions = [] }) {
 function openModal(id) { el(id)?.classList.add('show'); }
 function closeModal(id) { el(id)?.classList.remove('show'); }
 function closeTopModal() {
-  const open = [...document.querySelectorAll('.modal.show')].filter((m) => m !== ui.loading);
+  const open = [...document.querySelectorAll('.modal.show')]
+    .filter((m) => m !== ui.loading && m !== ui.menu);
   if (open.length) closeModal(open[open.length - 1].id);
+}
+
+/** Title screen shown after assets load, before the first round is dealt. */
+function showMenu() {
+  if (ui.menuTiles) {
+    ui.menuTiles.innerHTML = '';
+    for (const id of ['m1', 'm2', 'm3', 'p2', 'p3', 'p4', 's7', 's7']) {
+      addTileTo(ui.menuTiles, id);
+    }
+  }
+  if (ui.menuRecord) ui.menuRecord.textContent = `最佳紀錄：${game.bestFan} 番`;
+  ui.menu?.classList.add('show');
+}
+
+/** Leave the title screen and begin a fresh round. */
+function startFromMenu() {
+  closeModal('menuScreen');
+  unlockMusic();
+  startGame();
+}
+
+/** Quit the current round from settings and return to the title screen. */
+function quitToMenu() {
+  closeModal('settingsPanel');
+  closeModal('roomScreen');
+  clearClaim();
+  clearSelfWin();
+  game.pendingResult = null;
+  if (game.mode === 'multi') {
+    net.broadcast({ t: 'leave', seat: game.seat, playerId: game.playerId });
+    resetMultiState();
+  } else {
+    game.state = S.LOADING;
+  }
+  showMenu();
 }
 
 function buildPatternTable() {
@@ -1578,6 +2379,14 @@ function updateSettingsUI() {
   ui.musicVolumeValue.textContent = `${Math.round(game.settings.musicVolume * 100)}%`;
   ui.hookSpeed.value = String(game.hookSpeed);
   ui.hookSpeedValue.textContent = `${game.hookSpeed.toFixed(1)}×`;
+  // The room host picks these before the round starts; nobody may change them
+  // mid-game or the four screens would drift apart.
+  const locked = game.mode === 'multi';
+  for (const input of [ui.hookSpeed, ui.gameDuration, ui.gameDurationText]) {
+    if (!input) continue;
+    input.disabled = locked;
+    input.closest('.field')?.classList.toggle('disabled', locked);
+  }
 }
 
 function setSoundEnabled(value) {
@@ -1634,6 +2443,7 @@ function applySettings() {
  * ------------------------------------------------------------------ */
 
 function wireInput() {
+  wireNetEvents();
   // Browsers require a user gesture before audio can play.
   document.addEventListener('pointerdown', unlockMusic);
   document.addEventListener('keydown', unlockMusic);
@@ -1645,16 +2455,29 @@ function wireInput() {
     event.preventDefault();
     startCast();
   });
+  ui.menuStart.addEventListener('click', startFromMenu);
+  ui.menuHost.addEventListener('click', openRoom);
+  ui.menuJoin.addEventListener('click', joinRoom);
+  ui.roomStart.addEventListener('click', startMultiGame);
+  ui.roomLeave.addEventListener('click', leaveMultiRoom);
+  ui.roomCopy.addEventListener('click', copyRoomLink);
+  ui.roomHookSpeed.addEventListener('input', updateRoomSettings);
+  ui.roomGameDuration.addEventListener('input', updateRoomSettings);
+  el('menuHelp').addEventListener('click', () => openModal('helpPanel'));
+  el('menuSettings').addEventListener('click', () => openModal('settingsPanel'));
+  el('menuCredits').addEventListener('click', () => openModal('creditsPanel'));
   el('restartBtn').addEventListener('click', () => { closeTopModal(); restartGame(); });
   el('helpBtn').addEventListener('click', () => openModal('helpPanel'));
   el('settingsBtn').addEventListener('click', () => openModal('settingsPanel'));
   el('creditsBtn').addEventListener('click', () => openModal('creditsPanel'));
+  el('settingsQuit').addEventListener('click', quitToMenu);
   for (const button of document.querySelectorAll('[data-close]')) {
     button.addEventListener('click', () => closeModal(button.dataset.close));
   }
   for (const modal of document.querySelectorAll('.modal')) {
     modal.addEventListener('pointerdown', (event) => {
-      if (event.target === modal && modal.id !== 'overlay' && modal.id !== 'loading') {
+      if (event.target === modal && modal.id !== 'overlay'
+        && modal.id !== 'loading' && modal.id !== 'menuScreen') {
         closeModal(modal.id);
       }
     });
@@ -1721,7 +2544,13 @@ async function boot() {
   buildPatternTable();
   resizeCanvas();
   ui.loading.classList.remove('show');
-  startGame();
+  showMenu();
+  // A shared ?room=XXXX link drops straight into that room's lobby.
+  const roomParam = normalizeRoomCode(new URLSearchParams(location.search).get('room'));
+  if (roomParam.length === 4 && game.mode === 'solo') {
+    if (ui.menuRoomCode) ui.menuRoomCode.value = roomParam;
+    joinRoom();
+  }
   requestAnimationFrame(gameLoop);
 }
 
@@ -1741,6 +2570,7 @@ if (new URLSearchParams(location.search).has('test')) {
     previousWind, canChowFrom, botLabel, positionClaimBar,
     chowCombinations, claimWinResult, declareOpenMeld, renderMelds, renderClaim,
     renderSelfWin, clearSelfWin, positionSelfWinBar, setMusicVolume,
+    showMenu, startFromMenu, quitToMenu, net, openRoom, joinRoom,
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,
   };
 }

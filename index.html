@@ -25,6 +25,7 @@
   <span id="selfWinTile" class="claim-tile"></span>
   <span id="selfWinActions" class="claim-actions"></span>
 </div>
+<div id="claimBoxes" class="claim-boxes" hidden aria-label="對手出牌與宣告"></div>
 
 <header id="hud" class="panel">
   <div class="hud-bar">
@@ -50,6 +51,10 @@
     <div id="flowers" class="flowers"></div>
     <div id="exposedKongs" class="meld-list"></div>
   </div>
+  <details id="meldPanel" class="meld-panel" open hidden>
+    <summary>各家副露</summary>
+    <div id="meldRows" class="meld-rows"></div>
+  </details>
   <div id="hand" class="hand" aria-label="手牌"></div>
   <div id="target" class="target" aria-live="polite"></div>
 </header>
@@ -60,6 +65,58 @@
   <div class="modal-card small">
     <h1>香港麻雀釣魚</h1>
     <p>載入中… <span id="loadingProgress"></span></p>
+  </div>
+</div>
+
+<div id="menuScreen" class="modal menu-screen" role="dialog" aria-modal="true" aria-label="主選單">
+  <div class="modal-card menu-card">
+    <h1 class="menu-title">香港麻雀釣魚</h1>
+    <p class="menu-subtitle">拋竿釣牌，湊成你的胡牌。</p>
+    <div id="menuTiles" class="menu-tiles" aria-hidden="true"></div>
+    <div class="menu-actions">
+      <button id="menuStart" class="primary" type="button">單機遊戲</button>
+      <button id="menuHost" class="secondary" type="button">開新房間</button>
+      <button id="menuJoin" class="secondary" type="button">加入房間</button>
+      <label class="room-code-input">房間代碼
+        <input id="menuRoomCode" type="text" maxlength="4" autocomplete="off" aria-label="房間代碼" placeholder="例如 7K2Q" />
+      </label>
+      <button id="menuHelp" class="secondary" type="button">玩法說明</button>
+      <button id="menuSettings" class="secondary" type="button">設定</button>
+      <button id="menuCredits" class="secondary" type="button">資料來源</button>
+    </div>
+    <p id="menuRecord" class="menu-record"></p>
+  </div>
+</div>
+
+<div id="roomScreen" class="modal room-screen" role="dialog" aria-modal="true" aria-label="多人房間">
+  <div class="modal-card room-card">
+    <h1 class="room-title">多人房間</h1>
+    <p id="roomCode" class="room-code">—</p>
+    <label class="room-share">分享連結
+      <input id="roomLink" type="text" readonly aria-label="分享連結" />
+    </label>
+    <button id="roomCopy" class="secondary" type="button">複製連結</button>
+    <div id="roomPlayers" class="room-players"></div>
+    <div id="roomHostControls" class="room-host-controls">
+      <label class="field">鉤速
+        <span class="duration-controls">
+          <input id="roomHookSpeed" type="range" min="0.5" max="2" step="0.1" value="1" aria-label="房間鉤子速度" />
+          <b id="roomHookSpeedValue">1.0×</b>
+        </span>
+      </label>
+      <label class="field">每局時間
+        <span class="duration-controls">
+          <input id="roomGameDuration" type="range" min="30" max="1800" step="1" value="300" aria-label="房間每局時間滑桿" />
+          <b id="roomGameDurationValue">05:00</b>
+        </span>
+      </label>
+    </div>
+    <p id="roomGuestInfo" class="room-guest-info">房主正在設定鉤速與時間…</p>
+    <div class="room-actions">
+      <button id="roomStart" class="primary" type="button" hidden>開始遊戲</button>
+      <button id="roomLeave" class="secondary" type="button">離開房間</button>
+    </div>
+    <p id="roomMessage" class="room-message"></p>
   </div>
 </div>
 
@@ -74,7 +131,7 @@
     <ol class="help-list">
       <li>開始時有 13 張手牌。點擊畫面或按 <kbd>空白鍵</kbd> 拋竿；鉤子出去或收回時碰到魚都會鉤起牌。約每七張魚有一張會在出現三秒後翻到背面、三秒後再翻回正面考驗記憶；鉤起時一定是正面。</li>
       <li>打牌階段滑鼠移過手牌即可選牌，也可按 <kbd>←</kbd> <kbd>→</kbd> 選擇、按 <kbd>Enter</kbd> 打出，或直接點手牌。</li>
-      <li>允行、一心、念慈三位對手會不停按門風順序輪流每五秒打出一張牌；該牌的圖片、出牌者與門風、以及胡／碰／上／明槓／過按鈕都顯示在釣竿右側，桿子仍會繼續擺動，你可照常拋竿與打牌。胡、碰、明槓可向任一對手宣告；上只能向你的上家（前一個門風）宣告；逾時自動放棄。</li>
+      <li>允行、一心、念慈三位對手（多人時為其他玩家）會按門風順序輪流每五秒打出一張牌；該牌的圖片、出牌者與門風，以及胡／碰／上／明槓按鈕會顯示在釣竿右側（多人時每位對手各有一欄），桿子仍會繼續擺動，你可照常拋竿與打牌。胡、碰、明槓可向任一對手宣告；上只能向你的上家（前一個門風）宣告；逾時自動放棄。</li>
       <li>自己釣牌成胡時，釣竿左側會出現「胡牌／過」提示：選「胡牌」才會結算，選「過」則打出一張牌繼續。集齊七張花牌時也可選「過」拒絕花糊，之後只接受八花胡牌，並於手牌胡牌時加計花糊番。</li>
       <li>AI 輔助發牌固定永遠開啟：新出現的魚約七成會配合你手上的牌。</li>
       <li>畫面會顯示胡牌聽牌；打牌階段會顯示目前選中的牌打出後的聽牌。設定的每局時間到仍未胡牌即為「流局」。累計番數與最佳番數會記錄在本機瀏覽器中。</li>
@@ -117,6 +174,9 @@
         <b id="musicVolumeValue">32%</b>
       </span>
     </label>
+    <div class="settings-quit">
+      <button id="settingsQuit" class="quit-btn" type="button">回到主選單</button>
+    </div>
     <p class="hint-text">每局時間可在 00:30–30:00 調整：拖曳滑桿或直接輸入「分:秒」（例如 05:00、0:30、30:00），調整後立即重新計時。竿子的左右擺動、出鉤與收鉤速度可用「鉤速」滑桿調整，並會隨巡數與時間逐漸加快；「重來這局」會保留目前巡數。背景音樂音量可在此調整，0% 即靜音。</p>
   </div>
 </section>
@@ -139,6 +199,7 @@
   </div>
 </section>
 
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js" onerror="this.onerror=null;this.src='js/vendor/peerjs.min.js'"></script>
 <script type="module" src="js/game.js"></script>
 </body>
 </html>
