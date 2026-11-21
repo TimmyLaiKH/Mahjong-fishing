@@ -21,7 +21,7 @@
   <span id="claimProgress" class="claim-progress"></span>
 </div>
 <div id="selfWinBar" class="claim-bar self-win-bar" hidden aria-label="胡牌宣告">
-  <span class="claim-label">可以胡牌！</span>
+  <span id="selfWinLabel" class="claim-label">可以胡牌！</span>
   <span id="selfWinTile" class="claim-tile"></span>
   <span id="selfWinActions" class="claim-actions"></span>
 </div>
@@ -115,6 +115,7 @@
     <label class="player-name-input room-player-name">玩家名稱
       <input id="roomPlayerName" type="text" maxlength="12" autocomplete="off" aria-label="玩家名稱" value="幼羚" />
     </label>
+    <div id="roomAvatars" class="room-avatars" aria-label="玩家頭像"></div>
     <div id="roomPlayers" class="room-players"></div>
     <div id="roomHostControls" class="room-host-controls">
       <label class="field">鉤速

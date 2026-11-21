@@ -25,7 +25,8 @@ const ui = {
   claimBar: el('claimBar'), claimWho: el('claimWho'), claimTile: el('claimTile'),
   claimTimer: el('claimTimer'), claimActions: el('claimActions'),
   claimProgress: el('claimProgress'),
-  selfWinBar: el('selfWinBar'), selfWinTile: el('selfWinTile'), selfWinActions: el('selfWinActions'),
+  selfWinBar: el('selfWinBar'), selfWinLabel: el('selfWinLabel'),
+  selfWinTile: el('selfWinTile'), selfWinActions: el('selfWinActions'),
   roundWind: el('roundWind'), seatWind: el('seatWind'),
   timer: el('timer'), turnCount: el('turnCount'),
   fanCount: el('fanCount'), bestFanCount: el('bestFanCount'),
@@ -40,7 +41,7 @@ const ui = {
   joinSubmit: el('joinSubmit'), joinBack: el('joinBack'),
   room: el('roomScreen'), roomCode: el('roomCode'), roomLink: el('roomLink'),
   roomPlayerName: el('roomPlayerName'), settingsPlayerName: el('settingsPlayerName'),
-  roomCopy: el('roomCopy'), roomPlayers: el('roomPlayers'),
+  roomCopy: el('roomCopy'), roomPlayers: el('roomPlayers'), roomAvatars: el('roomAvatars'),
   roomHostControls: el('roomHostControls'), roomGuestInfo: el('roomGuestInfo'),
   roomHookSpeed: el('roomHookSpeed'), roomHookSpeedValue: el('roomHookSpeedValue'),
   roomGameDuration: el('roomGameDuration'), roomGameDurationValue: el('roomGameDurationValue'),
@@ -57,6 +58,7 @@ const music = createMusic();
 const net = createNet();
 const MULTI_CLAIM_SECONDS = 5;
 const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const AVATAR_COLORS = ['#a9e5ff', '#ffd27f', '#c8a9ff', '#ff9b9b'];
 // Codes that failed to produce a live host this session. PeerJS can leave a
 // stale id registered for a while after the host leaves, so never retry them.
 const deadRooms = new Set();
@@ -439,6 +441,9 @@ function checkInitialSelfDraw() {
 }
 
 function startGame({ keepTurn = false, preset = null } = {}) {
+  // A fresh hand spawns a fresh sea. Any in-flight host pause belongs to the
+  // old round — never apply its elapsed time to brand-new fish.
+  hostSeaPausedAt = 0;
   const nextTurn = keepTurn ? game.turn : 1;
   // Uids must be allocated before dealing so AI hands and discards never reuse
   // a human tile's uid (claim ids and click handlers depend on uniqueness).
@@ -556,14 +561,8 @@ function continueAfterOpeningFlowerDecline() {
   updateHUD();
   const kongTile = findKongTile();
   if (kongTile) {
-    showOverlay({
-      title: '開槓',
-      message: '起手就有四張相同的牌，是否開暗槓？',
-      actions: [
-        { label: '開槓', onClick: () => declareKong(kongTile) },
-        { label: '不開槓', primary: false, onClick: () => setState(S.AWAIT_CAST) },
-      ],
-    });
+    // Inline on the left of the rod, just like the self-win prompt.
+    offerSelfWin(null, kongTile, () => setState(S.AWAIT_CAST));
   } else {
     setState(S.AWAIT_CAST);
   }
@@ -743,30 +742,11 @@ function resolveDraw() {
     return;
   }
   if (kongTile) {
-    showResolveOverlay(result, kongTile);
+    // Inline on the left of the rod, no blocking screen popup.
+    offerSelfWin(null, kongTile, () => setState(S.AWAIT_DISCARD));
   } else {
     setState(S.AWAIT_DISCARD);
   }
-}
-
-function showResolveOverlay(result, kongTile) {
-  const actions = [];
-  if (result.isWin) actions.push({ label: '胡牌', onClick: () => commitWin(result) });
-  if (kongTile) actions.push({ label: `開槓（${tileName(kongTile)}）`, onClick: () => declareKong(kongTile) });
-  actions.push({
-    label: result.isWin ? '繼續摸牌' : '打出牌',
-    primary: false,
-    onClick: () => setState(S.AWAIT_DISCARD),
-  });
-  showOverlay({
-    title: result.isWin ? '可以胡牌！' : '暗槓機會',
-    message: [
-      result.isWin ? formatWinBreakdown(result) : `手上有四張 ${tileName(kongTile)}，要開暗槓嗎？`,
-      kongTile && result.isWin ? `\n亦有四張 ${tileName(kongTile)} 可以開槓。` : '',
-    ].join('\n'),
-    tiles: result.isWin ? winningTiles(result) : [],
-    actions,
-  });
 }
 
 function declareKong(kind) {
@@ -888,10 +868,12 @@ function clearSelfWin() {
   if (ui.selfWinActions) ui.selfWinActions.innerHTML = '';
 }
 
-/** Show the inline 胡牌／過 prompt beside the rod instead of a modal. */
+/** Show the inline 胡牌／開槓／過 prompt beside the rod instead of a modal. */
 function offerSelfWin(result, kongTile, onDecline) {
   game.pendingSelfWin = { result, kongTile, onDecline };
-  setStatus('可以胡牌！選擇胡牌或過。');
+  setStatus(result?.isWin
+    ? '可以胡牌！選擇胡牌或過。'
+    : `手上有四張 ${tileName(kongTile)}，要開暗槓嗎？`);
   renderSelfWin();
 }
 
@@ -1855,6 +1837,19 @@ function renderRoom() {
   if (ui.roomGameDurationText
     && document.activeElement !== ui.roomGameDurationText) {
     ui.roomGameDurationText.value = formatClock(game.roomSettings.gameSeconds);
+  }
+  if (ui.roomAvatars) {
+    ui.roomAvatars.innerHTML = '';
+    const players = game.players.length ? game.players : defaultRoomPlayers();
+    for (let seat = 0; seat < 4; seat += 1) {
+      const player = players.find((item) => item?.seat === seat);
+      const avatar = document.createElement('span');
+      avatar.className = 'room-avatar';
+      avatar.style.background = AVATAR_COLORS[seat];
+      if (!player || player.isEmpty) avatar.classList.add('empty');
+      avatar.textContent = '🧍';
+      ui.roomAvatars.appendChild(avatar);
+    }
   }
   if (ui.roomPlayers) {
     ui.roomPlayers.innerHTML = '';
@@ -3231,7 +3226,6 @@ function renderGhostRods() {
 /** Four small player avatars beside the rod, in seat order (0–3). */
 function drawPlayerAvatars() {
   const baseX = view.width / 2;
-  const colors = ['#a9e5ff', '#ffd27f', '#c8a9ff', '#ff9b9b'];
   const spread = Math.min(160, view.width / 10);
   const offsets = [-spread, -spread * 0.45, spread * 0.45, spread];
   const y = 52;
@@ -3240,27 +3234,16 @@ function drawPlayerAvatars() {
   ctx.textBaseline = 'middle';
   for (let seat = 0; seat < 4; seat += 1) {
     const player = game.players.find((item) => item?.seat === seat);
-    const isYou = seat === game.seat;
     const empty = !player || player.isEmpty;
     const x = baseX + offsets[seat];
     ctx.globalAlpha = empty ? 0.3 : 1;
-    // Colored disc so each seat is recognizable at a glance.
     ctx.beginPath();
     ctx.arc(x, y, 26, 0, Math.PI * 2);
-    ctx.fillStyle = colors[seat];
+    ctx.fillStyle = AVATAR_COLORS[seat];
     ctx.fill();
-    if (isYou) {
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = '#fff';
-      ctx.stroke();
-    }
     ctx.font = '30px sans-serif';
     ctx.fillStyle = '#06384a';
     ctx.fillText('🧍', x, y + 1);
-    ctx.font = 'bold 18px sans-serif';
-    ctx.fillStyle = '#fff';
-    const label = isYou ? '你' : (player?.name ?? seatName(seat)).slice(0, 2);
-    ctx.fillText(label, x, y + 40);
   }
   ctx.restore();
 }
@@ -3614,7 +3597,7 @@ function renderClaim() {
   positionClaimBar();
 }
 
-/** Inline 胡牌／過 prompt on the left of the rod for a completed self-draw. */
+/** Inline 胡牌／開槓／過 prompt on the left of the rod. */
 function renderSelfWin() {
   if (!ui.selfWinBar) return;
   const pending = game.pendingSelfWin;
@@ -3624,20 +3607,24 @@ function renderSelfWin() {
   if (ui.selfWinActions) ui.selfWinActions.innerHTML = '';
   if (!pending) return;
 
-  if (ui.selfWinTile && pending.result.winningTile) {
-    addTileTo(ui.selfWinTile, pending.result.winningTile);
+  const isWin = Boolean(pending.result?.isWin);
+  const kongOnly = !isWin && Boolean(pending.kongTile);
+  if (ui.selfWinLabel) ui.selfWinLabel.textContent = kongOnly ? '暗槓機會' : '可以胡牌！';
+  const tileId = isWin ? pending.result.winningTile : pending.kongTile;
+  if (ui.selfWinTile && tileId) addTileTo(ui.selfWinTile, tileId);
+
+  const actions = [];
+  if (isWin) {
+    actions.push({ label: '胡牌', onClick: () => { clearSelfWin(); commitWin(pending.result); } });
   }
-  const actions = [
-    { label: '胡牌', onClick: () => { clearSelfWin(); commitWin(pending.result); } },
-  ];
   if (pending.kongTile) {
     actions.push({
-      label: `開槓（${tileName(pending.kongTile)}）`,
+      label: kongOnly ? '開槓' : `開槓（${tileName(pending.kongTile)}）`,
       onClick: () => { clearSelfWin(); declareKong(pending.kongTile); },
     });
   }
   actions.push({
-    label: '過',
+    label: kongOnly ? '不開槓' : '過',
     primary: false,
     onClick: () => {
       const decline = pending.onDecline;

@@ -486,6 +486,13 @@ body.waiting-room #meldPanel { visibility: hidden; }
 .room-share { display: grid; gap: 4px; font-size: 0.85em; text-align: left; }
 .room-share input { width: 100%; font-size: 0.85em; }
 .room-card #roomCopy { margin: 8px 0; }
+.room-avatars { display: flex; justify-content: center; gap: 12px; margin: 12px 0 4px; }
+.room-avatar {
+  width: 44px; height: 44px; border-radius: 50%; color: #06384a;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 24px; line-height: 1;
+}
+.room-avatar.empty { opacity: 0.3; }
 .room-players { display: grid; gap: 4px; margin: 12px 0; text-align: left; }
 .room-player {
   display: flex;
