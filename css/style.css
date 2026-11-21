@@ -439,9 +439,14 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
 .player-name-input input { width: 100%; }
 .room-player-name, .settings-player-name { margin: 8px 0; }
 .room-screen {
-  background: linear-gradient(rgba(3, 22, 32, 0.55), rgba(3, 22, 32, 0.88)),
+  background: linear-gradient(rgba(3, 22, 32, 0.94), rgba(3, 22, 32, 0.98)),
     url('../assets/bg/underwater.jpg') center / cover;
 }
+body.waiting-room #game,
+body.waiting-room #hud,
+body.waiting-room #status,
+body.waiting-room #claimBoxes,
+body.waiting-room #meldPanel { visibility: hidden; }
 .room-card { width: min(92vw, 460px); text-align: center; }
 .room-title { margin: 0; font-size: clamp(24px, 5vw, 34px); }
 .room-code {
@@ -465,7 +470,7 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
 .room-player.you { background: rgba(140, 29, 29, 0.12); font-weight: 700; }
 .room-player-role { color: #666; font-size: 0.85em; }
 .room-host-controls { margin: 10px 0; text-align: left; }
-.room-guest-info, .room-message { color: #555; font-size: 0.85em; }
+.room-guest-info, .room-message, .room-wait-hint { color: #555; font-size: 0.85em; }
 .room-actions { display: grid; gap: 8px; margin-top: 12px; }
 .room-actions button.primary { background: #c62828; color: #fff; border-color: #ffcdd2; }
 .room-actions button.secondary { background: #fff; color: #8c1d1d; border-color: #8c1d1d; }

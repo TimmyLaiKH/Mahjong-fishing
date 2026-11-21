@@ -78,16 +78,27 @@
         <input id="menuPlayerName" type="text" maxlength="12" autocomplete="off" aria-label="玩家名稱" value="幼羚" />
       </label>
       <button id="menuStart" class="primary" type="button">單機遊戲</button>
-      <button id="menuHost" class="secondary" type="button">開新房間</button>
-      <button id="menuJoin" class="secondary" type="button">加入房間</button>
-      <label class="room-code-input">房間代碼
-        <input id="menuRoomCode" type="text" maxlength="4" autocomplete="off" aria-label="房間代碼" placeholder="例如 7K2Q" />
-      </label>
+      <button id="menuHost" class="secondary" type="button">多人遊戲: 開新房間</button>
+      <button id="menuJoin" class="secondary" type="button">多人遊戲: 加入房間</button>
       <button id="menuHelp" class="secondary" type="button">玩法說明</button>
       <button id="menuSettings" class="secondary" type="button">設定</button>
       <button id="menuCredits" class="secondary" type="button">資料來源</button>
     </div>
     <p id="menuRecord" class="menu-record"></p>
+  </div>
+</div>
+
+<div id="joinScreen" class="modal room-screen" role="dialog" aria-modal="true" aria-label="加入房間">
+  <div class="modal-card small">
+    <h2>加入房間</h2>
+    <label class="room-code-input">房間代碼
+      <input id="joinRoomCode" type="text" maxlength="4" autocomplete="off" aria-label="房間代碼" placeholder="例如 7K2Q" />
+    </label>
+    <p id="joinMessage" class="room-message"></p>
+    <div class="room-actions">
+      <button id="joinSubmit" class="primary" type="button">加入房間</button>
+      <button id="joinBack" class="secondary" type="button">返回主選單</button>
+    </div>
   </div>
 </div>
 
@@ -118,6 +129,7 @@
       </label>
     </div>
     <p id="roomGuestInfo" class="room-guest-info">房主正在設定鉤速與時間…</p>
+    <p class="room-wait-hint">所有人加入後，請等待房主按下「開始遊戲」。</p>
     <div class="room-actions">
       <button id="roomStart" class="primary" type="button" hidden>開始遊戲</button>
       <button id="roomLeave" class="secondary" type="button">離開房間</button>

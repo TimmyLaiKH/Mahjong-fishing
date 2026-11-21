@@ -35,7 +35,9 @@ const ui = {
   meldPanel: el('meldPanel'), meldRows: el('meldRows'),
   menu: el('menuScreen'), menuStart: el('menuStart'), menuTiles: el('menuTiles'),
   menuRecord: el('menuRecord'), menuHost: el('menuHost'), menuJoin: el('menuJoin'),
-  menuRoomCode: el('menuRoomCode'), menuPlayerName: el('menuPlayerName'),
+  menuPlayerName: el('menuPlayerName'),
+  join: el('joinScreen'), joinRoomCode: el('joinRoomCode'), joinMessage: el('joinMessage'),
+  joinSubmit: el('joinSubmit'), joinBack: el('joinBack'),
   room: el('roomScreen'), roomCode: el('roomCode'), roomLink: el('roomLink'),
   roomPlayerName: el('roomPlayerName'), settingsPlayerName: el('settingsPlayerName'),
   roomCopy: el('roomCopy'), roomPlayers: el('roomPlayers'),
@@ -149,6 +151,9 @@ const game = {
   multiDiscardTimer: 0,
   multiAiIndex: 0,
   pendingMultiStart: null,
+  rematchVotes: [],         // seats that agreed to another round
+  rematchRequired: [],      // human seats that must agree
+  rematchMessage: '',
 };
 
 game.roomSettings = { hookSpeed: game.hookSpeed, gameSeconds: game.settings.gameSeconds };
@@ -210,6 +215,7 @@ function createBots() {
   return BOT_NAMES.map((name, offset) => ({
     name,
     wind: WINDS[(start + offset + 1) % WINDS.length],
+    isBot: true,
   }));
 }
 function previousWind() {
@@ -221,7 +227,7 @@ function canChowFrom(bot) {
 function botLabel(bot) {
   if (!bot) return '';
   const role = canChowFrom(bot) ? '上家・' : '';
-  return `${bot.name}（${role}${TILE_INFO[bot.wind].name}）`;
+  return `${withAiTag(bot.name, bot.isBot)}（${role}${TILE_INFO[bot.wind].name}）`;
 }
 
 const concealedIds = () => game.hand.map((t) => t.id);
@@ -449,7 +455,7 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   }
   game.bots = game.players
     .filter((player) => player.seat !== game.seat)
-    .map((player) => ({ name: player.name, wind: player.wind }));
+    .map((player) => ({ name: player.name, wind: player.wind, isBot: true }));
   game.botIndex = -1;
   // 花牌不進手牌：起手摸到就先亮出，再補一張，直到補滿 13 張普通牌。
   let openingFlowerWin = null;
@@ -956,6 +962,20 @@ function seatName(seat) {
     ?? (seat === 0 ? DEFAULT_PLAYER_NAME : BOT_NAMES[seat - 1] ?? `好友${seat}`);
 }
 
+/** Player-facing name: AI seats are always marked so nobody mistakes them for friends. */
+function withAiTag(name, isBot) {
+  return isBot ? `${name} (AI)` : name;
+}
+
+function playerDisplayName(player) {
+  return withAiTag(player?.name ?? seatName(player?.seat ?? 0), Boolean(player?.isBot));
+}
+
+function seatLabel(seat) {
+  const player = game.players.find((item) => item.seat === seat);
+  return withAiTag(seatName(seat), Boolean(player?.isBot));
+}
+
 function setPlayerName(value, notify = true) {
   const name = normalizePlayerName(value);
   game.playerName = name;
@@ -1005,7 +1025,7 @@ function refreshMultiBots() {
   if (game.mode !== 'multi') return;
   game.bots = game.players
     .filter((player) => player.seat !== game.seat)
-    .map((player) => ({ name: player.name, wind: player.wind }));
+    .map((player) => ({ name: player.name, wind: player.wind, isBot: Boolean(player.isBot) }));
 }
 
 function broadcastOrSend(msg) {
@@ -1015,6 +1035,17 @@ function broadcastOrSend(msg) {
 
 function roomLink(code) {
   return `${location.origin}${location.pathname}?room=${code}`;
+}
+
+function setWaitingRoom(visible) {
+  document.body.classList.toggle('waiting-room', visible);
+}
+
+function askRoomCode() {
+  if (ui.joinMessage) ui.joinMessage.textContent = '';
+  closeModal('menuScreen');
+  openModal('joinScreen');
+  ui.joinRoomCode?.focus();
 }
 
 async function openRoom() {
@@ -1031,7 +1062,9 @@ async function openRoom() {
   game.roomSettings = { hookSpeed: game.hookSpeed, gameSeconds: game.settings.gameSeconds };
   setRoomMessage('正在建立房間…');
   closeModal('menuScreen');
+  closeModal('joinScreen');
   openModal('roomScreen');
+  setWaitingRoom(true);
   renderRoom();
   try {
     await net.startHost(game.roomCode);
@@ -1045,17 +1078,20 @@ async function openRoom() {
 }
 
 async function joinRoom() {
-  const code = normalizeRoomCode(ui.menuRoomCode?.value);
+  const code = normalizeRoomCode(ui.joinRoomCode?.value);
   if (code.length !== 4) {
-    setRoomMessage('請輸入四位房間代碼。');
-    closeModal('menuScreen');
-    openModal('roomScreen');
+    if (ui.joinMessage) ui.joinMessage.textContent = '請輸入四位房間代碼。';
+    openModal('joinScreen');
+    ui.joinRoomCode?.focus();
     return;
   }
+  if (ui.joinRoomCode) ui.joinRoomCode.value = code;
   if (!net.available) {
     setRoomMessage('多人功能無法使用：請重新整理頁面。');
     closeModal('menuScreen');
+    closeModal('joinScreen');
     openModal('roomScreen');
+    setWaitingRoom(true);
     return;
   }
   game.mode = 'multi';
@@ -1064,11 +1100,13 @@ async function joinRoom() {
   game.roomCode = code;
   setRoomMessage('正在加入房間…');
   closeModal('menuScreen');
+  closeModal('joinScreen');
   openModal('roomScreen');
+  setWaitingRoom(true);
   renderRoom();
   try {
     await net.joinRoom(code, game.playerId, game.playerCustomName ? game.playerName : null);
-    setRoomMessage('已加入房間，等待房主開始。');
+    setRoomMessage('已加入房間，等待房主開始遊戲。');
     renderRoom();
   } catch (error) {
     console.warn('[mf] 加入房間失敗：', error);
@@ -1106,7 +1144,7 @@ function renderRoom() {
       const row = document.createElement('div');
       row.className = `room-player${player.seat === game.seat ? ' you' : ''}`;
       const label = document.createElement('span');
-      label.textContent = `${player.name}（${player.wind ?? ''}）`;
+      label.textContent = `${playerDisplayName(player)}（${player.wind ?? ''}）`;
       const role = document.createElement('span');
       role.className = 'room-player-role';
       role.textContent = player.seat === game.seat ? '你'
@@ -1162,7 +1200,13 @@ function applyMultiStart(msg) {
   game.roomSettings = { ...msg.settings };
   game.hookSpeed = msg.settings.hookSpeed;
   game.settings.gameSeconds = msg.settings.gameSeconds;
+  game.rematchVotes = [];
+  game.rematchRequired = [];
+  game.rematchMessage = '';
+  closeModal('joinScreen');
   closeModal('roomScreen');
+  ui.overlay.classList.remove('show');
+  setWaitingRoom(false);
   updateSettingsUI();
   startGame({ preset: msg });
 }
@@ -1176,6 +1220,7 @@ function sendDiscard(tile) {
     tileId: tile.id,
     uid: tile.uid,
     name: seatName(game.seat),
+    isBot: false,
     wind: game.players[game.seat]?.wind ?? game.seatWind,
   };
   if (net.isHost) {
@@ -1191,7 +1236,9 @@ function addClaimBox(entry) {
   // One box per opponent: a newer discard replaces that opponent's older one.
   game.claimBoxes = game.claimBoxes.filter((box) => box.seat !== entry.seat);
   game.claimBoxes.push({
-    ...entry, timeLeft: MULTI_CLAIM_SECONDS, resolved: false, awaiting: false,
+    ...entry,
+    isBot: entry.isBot ?? Boolean(game.players.find((player) => player.seat === entry.seat)?.isBot),
+    timeLeft: MULTI_CLAIM_SECONDS, resolved: false, awaiting: false,
   });
   renderClaimBoxes();
 }
@@ -1292,7 +1339,98 @@ function addSeatMeld(seat, meld) {
 }
 
 function winnerName(seat) {
-  return seatName(seat);
+  return seatLabel(seat);
+}
+
+function humanSeats() {
+  return game.players.filter((player) => !player.isBot).map((player) => player.seat);
+}
+
+function showMultiEndOverlay(title, message, tiles = []) {
+  if (game.mode !== 'multi') {
+    showOverlay({ title, message, tiles, actions: [{ label: '再玩一局', onClick: restartGame }] });
+    return;
+  }
+  game.rematchVotes = [];
+  game.rematchRequired = humanSeats();
+  game.rematchMessage = message;
+  showOverlay({
+    title,
+    message,
+    tiles,
+    actions: [
+      {
+        label: '再來一局',
+        keepOpen: true,
+        pendingLabel: '已同意，等待其他玩家…',
+        onClick: voteRematch,
+      },
+      { label: '回到主選單', primary: false, onClick: leaveMultiRoom },
+    ],
+  });
+}
+
+function updateRematchOverlay() {
+  if (!ui.overlay.classList.contains('show') || !game.rematchMessage) return;
+  const body = ui.overlay.querySelector('.breakdown');
+  if (!body) return;
+  const required = game.rematchRequired.length ? game.rematchRequired : humanSeats();
+  const names = required.map((seat) => {
+    const mark = game.rematchVotes.includes(seat) ? '✓' : '○';
+    return `${mark}${seatLabel(seat)}`;
+  }).join('　');
+  body.textContent = `${game.rematchMessage}\n\n再來一局投票：${names}（${game.rematchVotes.length}/${required.length}）`;
+  const button = ui.overlay.querySelector('[data-keep-open]');
+  if (button && game.rematchVotes.includes(game.seat)) {
+    button.disabled = true;
+    button.textContent = button.dataset.pendingLabel;
+  }
+}
+
+function broadcastRematchStatus() {
+  if (!net.isHost) return;
+  net.broadcast({
+    t: 'rematchStatus',
+    votes: [...game.rematchVotes],
+    required: [...game.rematchRequired],
+  });
+  updateRematchOverlay();
+}
+
+function checkRematchReady() {
+  if (!net.isHost || ![S.WIN, S.DRAW_GAME].includes(game.state)) return;
+  const required = game.rematchRequired.length ? game.rematchRequired : humanSeats();
+  if (!required.length || !required.every((seat) => game.rematchVotes.includes(seat))) return;
+  game.rematchVotes = [];
+  game.rematchRequired = [];
+  game.rematchMessage = '';
+  ui.overlay.classList.remove('show');
+  startMultiGame();
+}
+
+function addRematchVote(seat) {
+  if (!game.rematchVotes.includes(seat)) game.rematchVotes.push(seat);
+}
+
+function voteRematch() {
+  if (game.mode !== 'multi' || ![S.WIN, S.DRAW_GAME].includes(game.state)) return;
+  addRematchVote(game.seat);
+  if (net.isHost) {
+    broadcastRematchStatus();
+    checkRematchReady();
+  } else {
+    net.sendToHost({ t: 'rematch', seat: game.seat, playerId: game.playerId });
+    updateRematchOverlay();
+  }
+}
+
+function refreshRematchParticipants() {
+  if (!net.isHost || ![S.WIN, S.DRAW_GAME].includes(game.state)) return;
+  const humans = humanSeats();
+  game.rematchRequired = humans;
+  game.rematchVotes = game.rematchVotes.filter((seat) => humans.includes(seat));
+  broadcastRematchStatus();
+  checkRematchReady();
 }
 
 function finishMultiWin(seat, result, fanTotal, bestFan) {
@@ -1310,15 +1448,14 @@ function finishMultiWin(seat, result, fanTotal, bestFan) {
   setState(S.WIN);
   const name = winnerName(seat);
   setStatus(`${name} 胡牌！${result?.totalFan ?? 0} 番`);
-  showOverlay({
-    title: seat === game.seat ? '🎉 胡牌成功！' : `${name} 胡牌`,
-    message: `${formatWinBreakdown(result)}\n\n${name}：累計 ${fanTotal ?? game.fanTotal} 番　最佳 ${bestFan ?? game.bestFan} 番`,
-    tiles: [
+  showMultiEndOverlay(
+    seat === game.seat ? '🎉 胡牌成功！' : `${name} 胡牌`,
+    `遊戲結束。${formatWinBreakdown(result)}\n\n${name}：累計 ${fanTotal ?? game.fanTotal} 番　最佳 ${bestFan ?? game.bestFan} 番`,
+    [
       ...winningTiles(result),
       ...(result?.flowers ?? []).map((id) => ({ id })),
     ],
-    actions: [{ label: '回到主選單', onClick: leaveMultiRoom }],
-  });
+  );
 }
 
 function applyMultiDraw() {
@@ -1331,11 +1468,7 @@ function applyMultiDraw() {
   setState(S.DRAW_GAME);
   setStatus('時間到，流局。');
   updateTimer();
-  showOverlay({
-    title: '流局',
-    message: '時間到，沒有胡牌。',
-    actions: [{ label: '回到主選單', onClick: leaveMultiRoom }],
-  });
+  showMultiEndOverlay('流局', '遊戲結束。時間到，沒有胡牌。');
 }
 
 function resetMultiState() {
@@ -1357,6 +1490,8 @@ function resetMultiState() {
   game.pendingMultiStart = null;
   game.state = S.LOADING;
   setMultiUIVisibility(false);
+  setWaitingRoom(false);
+  closeModal('joinScreen');
   closeModal('roomScreen');
   updateSettingsUI();
 }
@@ -1476,6 +1611,22 @@ function wireNetEvents() {
     applyMultiDraw();
   });
 
+  net.on('rematch', (msg, conn) => {
+    if (!net.isHost || ![S.WIN, S.DRAW_GAME].includes(game.state)) return;
+    const player = game.players.find((item) => item.seat === msg.seat && item.playerId === conn.peer);
+    if (!player || player.isBot) return;
+    addRematchVote(msg.seat);
+    broadcastRematchStatus();
+    checkRematchReady();
+  });
+
+  net.on('rematchStatus', (msg) => {
+    if (game.mode !== 'multi') return;
+    game.rematchVotes = Array.isArray(msg.votes) ? [...msg.votes] : [];
+    game.rematchRequired = Array.isArray(msg.required) ? [...msg.required] : humanSeats();
+    updateRematchOverlay();
+  });
+
   function fillSeatWithBot(player) {
     if (!player || player.seat === 0) return;
     player.isBot = true;
@@ -1485,6 +1636,7 @@ function wireNetEvents() {
     refreshMultiBots();
     renderRoom();
     renderMeldsPanel();
+    refreshRematchParticipants();
   }
 
   net.on('leave', (msg) => {
@@ -1528,7 +1680,7 @@ function renderClaimBoxes() {
     node.className = 'claim-box';
     const who = document.createElement('span');
     who.className = 'claim-label';
-    who.textContent = `${box.name}（${TILE_INFO[box.wind]?.name ?? box.wind}）打出`;
+    who.textContent = `${withAiTag(box.name, box.isBot)}（${TILE_INFO[box.wind]?.name ?? box.wind}）打出`;
     const tile = document.createElement('span');
     tile.className = 'claim-tile';
     addTileTo(tile, box.tileId);
@@ -1586,7 +1738,7 @@ function renderMeldsPanel() {
     row.className = 'meld-row';
     const name = document.createElement('span');
     name.className = 'meld-row-name';
-    name.textContent = player.name;
+    name.textContent = playerDisplayName(player);
     row.appendChild(name);
     const melds = game.seatMelds[player.seat] ?? [];
     if (!melds.length) {
@@ -1644,6 +1796,7 @@ function multiTick(dt) {
     tileId: tile.id,
     uid: tile.uid,
     name: ai.name,
+    isBot: true,
     wind: ai.wind,
   };
   net.broadcast(msg);
@@ -2369,7 +2522,17 @@ function showOverlay({ title, message, tiles = [], actions = [] }) {
     button.type = 'button';
     button.textContent = action.label;
     if (action.primary === false) button.style.background = '#456';
+    if (action.keepOpen) {
+      button.dataset.keepOpen = '1';
+      button.dataset.pendingLabel = action.pendingLabel ?? '已同意';
+    }
     button.addEventListener('click', () => {
+      if (action.keepOpen) {
+        button.disabled = true;
+        button.textContent = button.dataset.pendingLabel;
+        action.onClick();
+        return;
+      }
       ui.overlay.classList.remove('show');
       action.onClick();
     });
@@ -2410,6 +2573,7 @@ function startFromMenu() {
 /** Quit the current round from settings and return to the title screen. */
 function quitToMenu() {
   closeModal('settingsPanel');
+  closeModal('joinScreen');
   closeModal('roomScreen');
   clearClaim();
   clearSelfWin();
@@ -2540,7 +2704,15 @@ function wireInput() {
   });
   ui.menuStart.addEventListener('click', startFromMenu);
   ui.menuHost.addEventListener('click', openRoom);
-  ui.menuJoin.addEventListener('click', joinRoom);
+  ui.menuJoin.addEventListener('click', askRoomCode);
+  ui.joinSubmit.addEventListener('click', joinRoom);
+  ui.joinBack.addEventListener('click', () => {
+    closeModal('joinScreen');
+    showMenu();
+  });
+  ui.joinRoomCode.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); joinRoom(); }
+  });
   for (const input of [ui.menuPlayerName, ui.roomPlayerName, ui.settingsPlayerName]) {
     if (!input) continue;
     input.addEventListener('change', commitPlayerNameInput);
@@ -2567,7 +2739,7 @@ function wireInput() {
   for (const modal of document.querySelectorAll('.modal')) {
     modal.addEventListener('pointerdown', (event) => {
       if (event.target === modal && modal.id !== 'overlay'
-        && modal.id !== 'loading' && modal.id !== 'menuScreen') {
+        && modal.id !== 'loading' && modal.id !== 'menuScreen' && modal.id !== 'joinScreen') {
         closeModal(modal.id);
       }
     });
@@ -2638,7 +2810,7 @@ async function boot() {
   // A shared ?room=XXXX link drops straight into that room's lobby.
   const roomParam = normalizeRoomCode(new URLSearchParams(location.search).get('room'));
   if (roomParam.length === 4 && game.mode === 'solo') {
-    if (ui.menuRoomCode) ui.menuRoomCode.value = roomParam;
+    if (ui.joinRoomCode) ui.joinRoomCode.value = roomParam;
     joinRoom();
   }
   requestAnimationFrame(gameLoop);
@@ -2660,7 +2832,8 @@ if (new URLSearchParams(location.search).has('test')) {
     previousWind, canChowFrom, botLabel, positionClaimBar,
     chowCombinations, claimWinResult, declareOpenMeld, renderMelds, renderClaim,
     renderSelfWin, clearSelfWin, positionSelfWinBar, setMusicVolume,
-    showMenu, startFromMenu, quitToMenu, net, openRoom, joinRoom, setPlayerName,
+    showMenu, startFromMenu, quitToMenu, net, openRoom, joinRoom, askRoomCode, setPlayerName,
+    voteRematch, showMultiEndOverlay,
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,
   };
 }
