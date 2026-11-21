@@ -1,0 +1,10 @@
+{
+  "name": "mahjong-fishing",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Static Hong Kong mahjong fishing game",
+  "scripts": {
+    "test": "node tests/rules.test.mjs"
+  }
+}

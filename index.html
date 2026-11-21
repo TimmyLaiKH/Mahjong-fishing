@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#06384a" />
+<title>香港麻雀釣魚</title>
+<link rel="icon" href="assets/tiles/faces/E.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<canvas id="game" aria-label="釣魚遊戲畫面"></canvas>
+<div id="claimBar" class="claim-bar" hidden aria-label="對手出牌與宣告">
+  <span id="claimWho" class="claim-label">對手打出</span>
+  <span id="claimTile" class="claim-tile"></span>
+  <span id="claimTimer" class="claim-timer">5.0 秒</span>
+  <span id="claimActions" class="claim-actions"></span>
+  <span id="claimProgress" class="claim-progress"></span>
+</div>
+<div id="selfWinBar" class="claim-bar self-win-bar" hidden aria-label="胡牌宣告">
+  <span class="claim-label">可以胡牌！</span>
+  <span id="selfWinTile" class="claim-tile"></span>
+  <span id="selfWinActions" class="claim-actions"></span>
+</div>
+
+<header id="hud" class="panel">
+  <div class="hud-bar">
+    <div id="game-options" class="option-row">
+      <button id="settingsBtn" class="chip" type="button">設定</button>
+      <button id="helpBtn" class="chip" type="button">玩法說明</button>
+      <button id="restartBtn" class="chip" type="button">重來這局</button>
+    </div>
+    <div id="timer" class="timer" aria-label="剩餘時間">05:00</div>
+    <div class="hud-right">
+      <div id="counters" class="counters">
+        <span>圈風 <b id="roundWind">東</b></span>
+        <span>門風 <b id="seatWind">南</b></span>
+        <span>巡 <b id="turnCount">1</b></span>
+        <span>番數 <b id="fanCount">0</b></span>
+        <span>最佳 <b id="bestFanCount">0</b></span>
+      </div>
+    </div>
+  </div>
+
+  <div id="status" role="status" aria-live="polite"></div>
+  <div id="tilesMeta" class="tiles-meta" aria-label="花牌與暗槓">
+    <div id="flowers" class="flowers"></div>
+    <div id="exposedKongs" class="meld-list"></div>
+  </div>
+  <div id="hand" class="hand" aria-label="手牌"></div>
+  <div id="target" class="target" aria-live="polite"></div>
+</header>
+
+<button id="creditsBtn" class="credits-link" type="button">資料來源</button>
+
+<div id="loading" class="modal show" role="status">
+  <div class="modal-card small">
+    <h1>香港麻雀釣魚</h1>
+    <p>載入中… <span id="loadingProgress"></span></p>
+  </div>
+</div>
+
+<div id="overlay" class="modal" role="dialog" aria-modal="true"></div>
+
+<section id="helpPanel" class="modal" role="dialog" aria-modal="true" aria-label="玩法說明">
+  <div class="modal-card wide">
+    <div class="modal-head">
+      <h2>玩法說明</h2>
+      <button class="close-btn" data-close="helpPanel" type="button" aria-label="關閉">✕</button>
+    </div>
+    <ol class="help-list">
+      <li>開始時有 13 張手牌。點擊畫面或按 <kbd>空白鍵</kbd> 拋竿；鉤子出去或收回時碰到魚都會鉤起牌。約每七張魚有一張會在出現三秒後翻到背面、三秒後再翻回正面考驗記憶；鉤起時一定是正面。</li>
+      <li>打牌階段滑鼠移過手牌即可選牌，也可按 <kbd>←</kbd> <kbd>→</kbd> 選擇、按 <kbd>Enter</kbd> 打出，或直接點手牌。</li>
+      <li>允行、一心、念慈三位對手會不停按門風順序輪流每五秒打出一張牌；該牌的圖片、出牌者與門風、以及胡／碰／上／明槓／過按鈕都顯示在釣竿右側，桿子仍會繼續擺動，你可照常拋竿與打牌。胡、碰、明槓可向任一對手宣告；上只能向你的上家（前一個門風）宣告；逾時自動放棄。</li>
+      <li>自己釣牌成胡時，釣竿左側會出現「胡牌／過」提示：選「胡牌」才會結算，選「過」則打出一張牌繼續。集齊七張花牌時也可選「過」拒絕花糊，之後只接受八花胡牌，並於手牌胡牌時加計花糊番。</li>
+      <li>AI 輔助發牌固定永遠開啟：新出現的魚約七成會配合你手上的牌。</li>
+      <li>畫面會顯示胡牌聽牌；打牌階段會顯示目前選中的牌打出後的聽牌。設定的每局時間到仍未胡牌即為「流局」。累計番數與最佳番數會記錄在本機瀏覽器中。</li>
+    </ol>
+    <h3>常見香港麻雀牌型一覽</h3>
+    <p class="hint-text">範例牌型由規則引擎產生並經測試驗證；番數無上限。</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>牌型</th><th>說明</th><th>番數</th><th>範例</th></tr></thead>
+        <tbody id="patternsBody"></tbody>
+      </table>
+    </div>
+    <p class="hint-text">釣到的牌視為自摸；碰、上、明槓只不計門前清，自摸仍按胡牌來源計算。暗槓視作暗刻，四張中首尾兩張蓋牌表示暗槓。倒數 5 秒內自摸或胡對手打出牌都計「海底撈月」（1 番；自摸另計）。</p>
+  </div>
+</section>
+
+<section id="settingsPanel" class="modal" role="dialog" aria-modal="true" aria-label="設定">
+  <div class="modal-card small">
+    <div class="modal-head">
+      <h2>設定</h2>
+      <button class="close-btn" data-close="settingsPanel" type="button" aria-label="關閉">✕</button>
+    </div>
+    <label class="field">鉤速
+      <span class="duration-controls">
+        <input id="hookSpeed" type="range" min="0.5" max="2" step="0.1" value="1" aria-label="鉤子速度" />
+        <b id="hookSpeedValue">1.0×</b>
+      </span>
+    </label>
+    <label class="field">每局時間
+      <span class="duration-controls">
+        <input id="gameDuration" type="range" min="30" max="1800" step="1" value="300" aria-label="每局時間滑桿" />
+        <b id="gameDurationValue">05:00</b>
+        <input id="gameDurationText" class="duration-text" type="text" inputmode="numeric" value="05:00" aria-label="輸入每局時間（分:秒）" />
+      </span>
+    </label>
+    <label class="field check"><input id="settingsSound" type="checkbox" checked /> 背景音樂（隨機中國風器樂）</label>
+    <label class="field">音樂音量
+      <span class="duration-controls">
+        <input id="musicVolume" type="range" min="0" max="100" step="1" value="32" aria-label="背景音樂音量" />
+        <b id="musicVolumeValue">32%</b>
+      </span>
+    </label>
+    <p class="hint-text">每局時間可在 00:30–30:00 調整：拖曳滑桿或直接輸入「分:秒」（例如 05:00、0:30、30:00），調整後立即重新計時。竿子的左右擺動、出鉤與收鉤速度可用「鉤速」滑桿調整，並會隨巡數與時間逐漸加快；「重來這局」會保留目前巡數。背景音樂音量可在此調整，0% 即靜音。</p>
+  </div>
+</section>
+
+<section id="creditsPanel" class="modal" role="dialog" aria-modal="true" aria-label="資料來源">
+  <div class="modal-card small">
+    <div class="modal-head">
+      <h2>資料來源</h2>
+      <button class="close-btn" data-close="creditsPanel" type="button" aria-label="關閉">✕</button>
+    </div>
+    <p>Background: Olivier Dugornay / Ifremer, CC BY 4.0, via Wikimedia Commons.</p>
+    <p><a href="https://commons.wikimedia.org/wiki/File:Soleil_%C3%A0_travers_un_paysage_sous-marin_de_Bretagne_%28Ifremer_00378-48922_-_902%29.jpg" target="_blank" rel="noopener noreferrer">背景原圖（Wikimedia Commons）</a>　·　<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a></p>
+    <p>Tiles: FluffyStuff / Lilia Chen May Wither, CC0.</p>
+    <p><a href="https://github.com/FluffyStuff/riichi-mahjong-tiles" target="_blank" rel="noopener noreferrer">牌面素材（FluffyStuff）</a>　·　<a href="https://github.com/DrCMWither/mahjong-tiles" target="_blank" rel="noopener noreferrer">花牌素材（Lilia Chen May Wither）</a>　·　<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0 1.0</a></p>
+    <p>Music: neolein / f-r-a-g-i-l-e / Ehved, CC0, via Freesound.</p>
+    <p>背景音樂：四段 CC0 中國風器樂，來自 Freesound（neolein、f-r-a-g-i-l-e、Ehved）。</p>
+    <p><a href="https://freesound.org/s/573972/" target="_blank" rel="noopener noreferrer">A ride through chinese valley</a>　·　<a href="https://freesound.org/s/521367/" target="_blank" rel="noopener noreferrer">blossom valley in paradise</a>　·　<a href="https://freesound.org/s/666269/" target="_blank" rel="noopener noreferrer">lotus guzheng chops Cm</a>　·　<a href="https://freesound.org/s/565196/" target="_blank" rel="noopener noreferrer">Erhu Melodic Loop</a>　·　<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0 1.0</a></p>
+    <p>花牌與番數規則：<a href="https://zh.wikipedia.org/wiki/%E9%A6%99%E6%B8%AF%E9%BA%BB%E9%9B%80%E8%83%A1%E7%89%8C%E5%88%97%E8%A1%A8" target="_blank" rel="noopener noreferrer">香港麻雀番牌列表（維基百科）</a>。</p>
+    <p>詳見 <code>CREDITS.md</code>。</p>
+  </div>
+</section>
+
+<script type="module" src="js/game.js"></script>
+</body>
+</html>
