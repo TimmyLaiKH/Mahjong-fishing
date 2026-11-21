@@ -561,7 +561,7 @@ td:last-child { min-width: 220px; }
 }
 
 @media (max-width: 480px) {
-  :root { --tile-h: clamp(38px, 10vw, 44px); --ui-font: 12px; --hud-height: clamp(410px, 64vh, 450px); }
+  :root { --tile-h: clamp(38px, 10vw, 44px); --ui-font: 12px; --hud-height: clamp(416px, 64vh, 450px); }
   .hud-bar { gap: 4px 8px; }
   .option-row, .hud-right { gap: 4px; }
   .timer { font-size: 24px; padding: 1px 6px; border-width: 1px; }
