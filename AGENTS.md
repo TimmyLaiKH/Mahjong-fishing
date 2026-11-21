@@ -36,7 +36,7 @@ Browser checks should use a cache-busting query such as `?test=1&v=42`. `window.
 
 ## Layout notes
 
-- The canvas uses a logical world height of 1080 and reference width 1920. Its CSS `top` is synced to the HUD bottom with `ResizeObserver` so the rod/hook are never hidden. The HUD has a fixed CSS height (`--hud-height`) and scrolls its variable sections internally; meld toggles, flowers and hand contents must never resize the HUD or the sea.
+- The canvas uses a logical world height of 1080 and reference width 1920. Its CSS `top` is synced to the HUD bottom with `ResizeObserver` so the rod/hook are never hidden. The HUD has a fixed CSS height (`--hud-height`) sized to fit the always-expanded meld rows, flowers, hand and discard preview without scrolling; HUD contents must never resize the HUD or the sea.
 - Keep the resting hook at the waterline (`ROD_BASE_Y + ROD_LENGTH === WATER_TOP`). Compute full-cast depth from the current rod angle with `maxHookLength()` so the hook reaches `WORLD_H` at every allowed angle, and keep `swingLimit()` bounded by the on-screen horizontal margin.
 - The shoreline is drawn in canvas: mountains, houses, bamboo and a grassy bank. No external image assets are needed for scenery.
 
