@@ -148,6 +148,7 @@ const game = {
   claimBoxes: [],           // multiplayer claim slots (one per recent discard)
   seatMelds: {},            // seat -> meld[], used by the 副露 panel
   mustDiscard: false,       // after 碰／上／明槓, block further claims until discard
+  grabPending: false,       // from casting until the grabbed tile is discarded
   multiDiscardTimer: 0,
   multiAiIndex: 0,
   pendingMultiStart: null,
@@ -434,6 +435,7 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   game.claimBoxes = [];
   game.seatMelds = {};
   game.mustDiscard = false;
+  game.grabPending = false;
   clearClaim();
   clearSelfWin();
   if (preset) {
@@ -454,7 +456,7 @@ function startGame({ keepTurn = false, preset = null } = {}) {
     ];
   }
   game.bots = game.players
-    .filter((player) => player.seat !== game.seat)
+    .filter((player) => player && !player.isEmpty && player.seat !== game.seat)
     .map((player) => ({ name: player.name, wind: player.wind, isBot: true }));
   game.botIndex = -1;
   // 花牌不進手牌：起手摸到就先亮出，再補一張，直到補滿 13 張普通牌。
@@ -542,7 +544,11 @@ function findKongTile() {
 function startCast() {
   if (game.state !== S.AWAIT_CAST || paused()) return;
   game.hookLen = 0;
+  // Lock claims from the moment the hook drops: a grabbed tile must be
+  // discarded before 碰／上／明槓, even while it is still on the line.
+  game.grabPending = true;
   setState(S.CASTING);
+  if (game.mode === 'multi') renderClaimBoxes();
 }
 
 function checkCatch() {
@@ -575,6 +581,8 @@ function checkCatch() {
 
 function finishReel() {
   if (game.lastDraw?.source === 'flower') {
+    // Flowers never enter the hand, so there is no forced discard afterwards.
+    game.grabPending = false;
     game.flowers.push(game.lastDraw.id);
     const immediate = flowerWinResult(
       game.flowers, game.seatWind, game.settings.fanCap, winContext(),
@@ -684,9 +692,14 @@ function discard(uid) {
   game.kongChain = 0;
   game.turn += 1;
   game.mustDiscard = false;
+  game.grabPending = false;
   // With bots discarding independently, nothing else advances the player's
   // turn after a discard. Return to casting so fishing can continue.
   setState(S.AWAIT_CAST);
+  if (game.mode !== 'multi' && game.pendingClaim) {
+    game.claimActions = buildClaimActions(game.pendingClaim.tile.id, game.pendingClaim.bot);
+    renderClaim();
+  }
   sendDiscard(tile);
   if (game.mode === 'multi') renderClaimBoxes();
 }
@@ -768,14 +781,29 @@ function takeHandTiles(kinds) {
   return chosen;
 }
 
+/** A claim on a played tile is only possible while we are free to react. */
+function canDeclareClaim() {
+  if (game.mustDiscard) return false;
+  return ![S.LOADING, S.RESOLVE_DRAW, S.WIN, S.DRAW_GAME].includes(game.state);
+}
+
+/** Pung/chow/kong additionally require a pending discard and room for a
+ *  fourth set; a hand can never hold more than four melds plus a pair. */
+function canDeclareMeld() {
+  if (!canDeclareClaim() || game.grabPending || game.state === S.AWAIT_DISCARD) return false;
+  return game.melds.length < 4 && game.hand.length >= 4;
+}
+
 function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass = false) {
   const hand = concealedIds();
   const counts = countTiles(hand);
   const actions = [];
-  const win = claimWinResult(discardId);
-  if (win.isWin) actions.push({ label: '胡牌', type: 'win', result: win, onClick: () => commitWin(win) });
+  if (canDeclareClaim()) {
+    const win = claimWinResult(discardId);
+    if (win.isWin) actions.push({ label: '胡牌', type: 'win', result: win, onClick: () => commitWin(win) });
+  }
 
-  const canCall = hand.length >= 4;
+  const canCall = canDeclareMeld();
   const canChow = canCall && canChowFrom(bot);
   const hasReplacement = game.wall.length + game.fish.length > 0;
   if (canCall && hasReplacement && (counts[discardId] ?? 0) >= 3) {
@@ -821,6 +849,7 @@ function nextBotDiscard() {
 }
 
 function declareOpenMeld(type, discardId, handKinds) {
+  if (!canDeclareMeld()) return;
   const removed = takeHandTiles(handKinds);
   if (!removed) return;
   game.hand = game.hand.filter((tile) => !removed.includes(tile));
@@ -837,6 +866,8 @@ function declareOpenMeld(type, discardId, handKinds) {
   clearSelfWin();
   game.lastDraw = null;
   game.kongChain = 0;
+  // The replacement draw (or forced discard) must happen before another claim.
+  game.grabPending = true;
   if (type === 'kong') {
     game.kongChain = 1;
     setState(S.AWAIT_CAST);
@@ -933,18 +964,71 @@ function normalizeRoomCode(text) {
   return String(text ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
 }
 
+function botNameForSeat(seat) {
+  return BOT_NAMES[seat - 1] ?? `好友${seat}`;
+}
+
+function windForSeat(seat) {
+  const base = WINDS.indexOf(game.seatWind ?? 'E');
+  return WINDS[(base + seat) % WINDS.length];
+}
+
+function makeBotPlayer(seat) {
+  return {
+    seat,
+    name: botNameForSeat(seat),
+    wind: windForSeat(seat),
+    isBot: true,
+    isEmpty: false,
+    playerId: null,
+  };
+}
+
+function makeEmptyPlayer(seat) {
+  return {
+    seat,
+    name: '空位',
+    wind: windForSeat(seat),
+    isBot: false,
+    isEmpty: true,
+    playerId: null,
+  };
+}
+
 function defaultRoomPlayers() {
-  const wind = game.seatWind ?? 'E';
   return [
-    { seat: 0, name: game.playerName, wind, isBot: false, playerId: game.playerId },
-    ...BOT_NAMES.map((name, index) => ({
-      seat: index + 1,
-      name,
-      wind: WINDS[(WINDS.indexOf(wind) + index + 1) % WINDS.length],
-      isBot: true,
-      playerId: null,
-    })),
+    { seat: 0, name: game.playerName, wind: game.seatWind ?? 'E', isBot: false, isEmpty: false, playerId: game.playerId },
+    ...[1, 2, 3].map(makeEmptyPlayer),
   ];
+}
+
+function fillEmptySeatsWithBots() {
+  if (!net.isHost || game.mode !== 'multi') return false;
+  let changed = false;
+  for (let seat = 1; seat <= 3; seat += 1) {
+    if (game.players[seat]?.isEmpty) {
+      game.players[seat] = makeBotPlayer(seat);
+      changed = true;
+    }
+  }
+  if (changed) {
+    net.broadcast({ t: 'players', players: game.players });
+    refreshMultiBots();
+    renderRoom();
+    renderMeldsPanel();
+  }
+  return changed;
+}
+
+function toggleAiSeat(seat) {
+  if (!net.isHost || game.mode !== 'multi') return;
+  const player = game.players[seat];
+  if (!player || player.seat !== seat || !player.isBot && !player.isEmpty) return;
+  game.players[seat] = player.isBot ? makeEmptyPlayer(seat) : makeBotPlayer(seat);
+  net.broadcast({ t: 'players', players: game.players });
+  refreshMultiBots();
+  renderRoom();
+  renderMeldsPanel();
 }
 
 function setRoomMessage(text) {
@@ -968,11 +1052,13 @@ function withAiTag(name, isBot) {
 }
 
 function playerDisplayName(player) {
+  if (player?.isEmpty) return '空位';
   return withAiTag(player?.name ?? seatName(player?.seat ?? 0), Boolean(player?.isBot));
 }
 
 function seatLabel(seat) {
   const player = game.players.find((item) => item.seat === seat);
+  if (player?.isEmpty) return '空位';
   return withAiTag(seatName(seat), Boolean(player?.isBot));
 }
 
@@ -1024,7 +1110,7 @@ function setMultiUIVisibility(visible) {
 function refreshMultiBots() {
   if (game.mode !== 'multi') return;
   game.bots = game.players
-    .filter((player) => player.seat !== game.seat)
+    .filter((player) => player && !player.isEmpty && player.seat !== game.seat)
     .map((player) => ({ name: player.name, wind: player.wind, isBot: Boolean(player.isBot) }));
 }
 
@@ -1147,9 +1233,19 @@ function renderRoom() {
       label.textContent = `${playerDisplayName(player)}（${player.wind ?? ''}）`;
       const role = document.createElement('span');
       role.className = 'room-player-role';
-      role.textContent = player.seat === game.seat ? '你'
-        : player.isBot ? 'AI 補位' : player.seat === 0 ? '房主' : '好友';
+      role.textContent = player.isEmpty ? '等待加入'
+        : player.seat === game.seat ? '你'
+          : player.isBot ? 'AI 補位' : player.seat === 0 ? '房主' : '好友';
       row.append(label, role);
+      if (isHost && player.seat !== 0 && (player.isEmpty || player.isBot)) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'room-seat-btn';
+        button.dataset.seat = String(player.seat);
+        button.textContent = player.isBot ? '移除 AI' : '加入 AI';
+        button.addEventListener('click', () => toggleAiSeat(player.seat));
+        row.appendChild(button);
+      }
       ui.roomPlayers.appendChild(row);
     }
   }
@@ -1176,6 +1272,7 @@ function updateRoomSettings() {
 
 function startMultiGame() {
   if (game.mode !== 'multi' || !net.isHost) return;
+  fillEmptySeatsWithBots();
   const seatWind = WINDS[Math.floor(Math.random() * WINDS.length)];
   const msg = {
     t: 'start',
@@ -1249,7 +1346,8 @@ function sendClaimMessage(msg) {
 }
 
 function claimFromBox(box, action) {
-  if (game.mustDiscard || box.resolved || box.awaiting) return;
+  if (box.resolved || box.awaiting) return;
+  if (action.type === 'win' ? !canDeclareClaim() : !canDeclareMeld()) return;
   box.awaiting = true;
   renderClaimBoxes();
   const msg = {
@@ -1270,7 +1368,7 @@ function claimFromBox(box, action) {
 }
 
 function declareOpenMeldMulti(type, discardId, kinds) {
-  if (!Array.isArray(kinds) || !kinds.length) return;
+  if (!canDeclareMeld() || !Array.isArray(kinds) || !kinds.length) return;
   const removed = takeHandTiles(kinds);
   if (!removed) return;
   game.hand = game.hand.filter((tile) => !removed.includes(tile));
@@ -1287,6 +1385,7 @@ function declareOpenMeldMulti(type, discardId, kinds) {
   game.lastDraw = null;
   game.kongChain = 0;
   game.mustDiscard = true;
+  game.grabPending = true;
   setState(type === 'kong' ? S.AWAIT_CAST : S.AWAIT_DISCARD);
   setStatus(`${type === 'pung' ? '碰' : type === 'chow' ? '上' : '明槓'}成功！請先打出一張牌。`);
 }
@@ -1343,7 +1442,7 @@ function winnerName(seat) {
 }
 
 function humanSeats() {
-  return game.players.filter((player) => !player.isBot).map((player) => player.seat);
+  return game.players.filter((player) => player && !player.isBot && !player.isEmpty).map((player) => player.seat);
 }
 
 function showMultiEndOverlay(title, message, tiles = []) {
@@ -1487,6 +1586,7 @@ function resetMultiState() {
   game.claimBoxes = [];
   game.seatMelds = {};
   game.mustDiscard = false;
+  game.grabPending = false;
   game.pendingMultiStart = null;
   game.state = S.LOADING;
   setMultiUIVisibility(false);
@@ -1506,16 +1606,20 @@ function leaveMultiRoom() {
 function wireNetEvents() {
   net.on('guestOpen', (msg, conn) => {
     if (!net.isHost || game.mode !== 'multi') return;
-    const seat = [1, 2, 3].find((value) => game.players[value - 1]?.isBot);
+    // Real players take priority over AI seats: joining kicks an AI first so
+    // a room where the host added bots still has space for friends.
+    const seat = [1, 2, 3].find((value) => game.players[value]?.isBot)
+      ?? [1, 2, 3].find((value) => game.players[value]?.isEmpty);
     if (!seat) {
       conn.send({ t: 'full' });
       return;
     }
-    game.players[seat - 1] = {
-      ...game.players[seat - 1],
+    game.players[seat] = {
+      ...game.players[seat],
       isBot: false,
+      isEmpty: false,
       playerId: conn.peer,
-      name: BOT_NAMES[seat - 1] ?? `好友${seat}`,
+      name: botNameForSeat(seat),
     };
     conn.send({
       t: 'welcome', seat, players: game.players, settings: game.roomSettings,
@@ -1613,8 +1717,11 @@ function wireNetEvents() {
 
   net.on('rematch', (msg, conn) => {
     if (!net.isHost || ![S.WIN, S.DRAW_GAME].includes(game.state)) return;
-    const player = game.players.find((item) => item.seat === msg.seat && item.playerId === conn.peer);
-    if (!player || player.isBot) return;
+    // The seat alone identifies the voter. Connection ids and the guest's own
+    // random id are not guaranteed to match after reconnects, so requiring
+    // them here can silently swallow the last vote and block the new round.
+    const player = game.players.find((item) => item.seat === msg.seat && !item.isBot && !item.isEmpty);
+    if (!player) return;
     addRematchVote(msg.seat);
     broadcastRematchStatus();
     checkRematchReady();
@@ -2247,6 +2354,11 @@ function renderClaim() {
   }
   if (ui.claimWho) ui.claimWho.textContent = `${botLabel(game.pendingClaim.bot)}打出`;
   for (const action of game.claimActions) {
+    // A meld locks claims until the forced discard is made; recompute here so
+    // a pending bot tile never offers an illegal second call in the same turn.
+    const allowed = action.type === 'win' ? canDeclareClaim()
+      : action.type ? canDeclareMeld() : true;
+    if (!allowed) continue;
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = action.label;
@@ -2739,7 +2851,8 @@ function wireInput() {
   for (const modal of document.querySelectorAll('.modal')) {
     modal.addEventListener('pointerdown', (event) => {
       if (event.target === modal && modal.id !== 'overlay'
-        && modal.id !== 'loading' && modal.id !== 'menuScreen' && modal.id !== 'joinScreen') {
+        && modal.id !== 'loading' && modal.id !== 'menuScreen'
+        && modal.id !== 'joinScreen' && modal.id !== 'roomScreen') {
         closeModal(modal.id);
       }
     });

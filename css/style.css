@@ -470,7 +470,24 @@ body.waiting-room #meldPanel { visibility: hidden; }
 .room-player.you { background: rgba(140, 29, 29, 0.12); font-weight: 700; }
 .room-player-role { color: #666; font-size: 0.85em; }
 .room-host-controls { margin: 10px 0; text-align: left; }
-.room-guest-info, .room-message, .room-wait-hint { color: #555; font-size: 0.85em; }
+.room-guest-info, .room-message { color: #555; font-size: 0.85em; }
+.room-wait-hint {
+  margin: 8px 0 4px;
+  font-size: clamp(16px, 2.4vw, 22px);
+  font-weight: 700;
+  line-height: 1.4;
+  color: #8c1d1d;
+}
+.room-seat-btn {
+  padding: 2px 8px;
+  font-size: 0.8em;
+  font-weight: 700;
+  color: #8c1d1d;
+  background: #fff;
+  border: 1px solid #8c1d1d;
+  border-radius: 6px;
+  cursor: pointer;
+}
 .room-actions { display: grid; gap: 8px; margin-top: 12px; }
 .room-actions button.primary { background: #c62828; color: #fff; border-color: #ffcdd2; }
 .room-actions button.secondary { background: #fff; color: #8c1d1d; border-color: #8c1d1d; }
