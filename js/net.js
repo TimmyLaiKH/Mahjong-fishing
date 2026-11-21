@@ -102,9 +102,9 @@ export function createNet() {
     if (conn?.open) conn.send(msg);
   }
 
-  function broadcast(msg) {
-    for (const conn of guests.values()) {
-      if (conn.open) conn.send(msg);
+  function broadcast(msg, exceptPeerId = null) {
+    for (const [peerId, conn] of guests) {
+      if (conn.open && peerId !== exceptPeerId) conn.send(msg);
     }
   }
 

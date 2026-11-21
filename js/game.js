@@ -20,7 +20,7 @@ const ctx = canvas.getContext('2d');
 const el = (id) => document.getElementById(id);
 const ui = {
   loading: el('loading'), loadingProgress: el('loadingProgress'),
-  hud: el('hud'), status: el('status'), hand: el('hand'), target: el('target'),
+  hud: el('hud'), status: el('status'), toast: el('toast'), hand: el('hand'), target: el('target'),
   tilesMeta: el('tilesMeta'), flowers: el('flowers'),
   claimBar: el('claimBar'), claimWho: el('claimWho'), claimTile: el('claimTile'),
   claimTimer: el('claimTimer'), claimActions: el('claimActions'),
@@ -122,6 +122,11 @@ const game = {
   timeDeadline: 0,          // host: wall-clock end time, so hidden tabs still count down
   timeBase: GAME_SECONDS,   // guest: most recent host-approved remaining time
   timeSyncAt: 0,            // guest: Date.now() when timeBase was received
+  clockOffset: 0,           // guest: host clock minus local clock, for claim deadlines
+  leavingRoom: false,       // ignore hostClose while we are the one leaving
+  joinOutcome: null,        // pending | joined | full | closed
+  joinTimer: null,
+  toastTimer: null,
   // Only fan totals are tracked — there is no fan-to-points conversion.
   fanTotal: readNumber('mf-fantotal'), bestFan: readNumber('mf-bestfan'),
   settings: {
@@ -165,6 +170,7 @@ const game = {
   restartActive: false,     // mid-game restart vote opened by any human seat
   restartVotes: [],
   restartRequired: [],
+  restartRequester: null,
   restartMessage: '',
 };
 
@@ -302,6 +308,25 @@ function setStatus(text, bump = false) {
   resizeCanvas();
 }
 
+/** Small transient notice for room events such as a player leaving. */
+function showToast(text, ms = 4500) {
+  if (!ui.toast) return;
+  ui.toast.textContent = text;
+  ui.toast.classList.add('show');
+  if (game.toastTimer) clearTimeout(game.toastTimer);
+  game.toastTimer = setTimeout(() => {
+    ui.toast.classList.remove('show');
+    game.toastTimer = null;
+  }, ms);
+}
+
+function clearNotices() {
+  if (game.toastTimer) clearTimeout(game.toastTimer);
+  game.toastTimer = null;
+  if (ui.toast) ui.toast.classList.remove('show');
+  setStatus('');
+}
+
 /* ------------------------------------------------------------------ *
  * Endless weighted pool and opening deals
  * ------------------------------------------------------------------ */
@@ -436,6 +461,7 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   game.restartActive = false;
   game.restartVotes = [];
   game.restartRequired = [];
+  game.restartRequester = null;
   game.restartMessage = '';
   game.kongChain = 0;
   game.lastDraw = null;
@@ -1058,7 +1084,9 @@ function aiHookPosition(state) {
 }
 
 function aiCheckCatch(state) {
-  if (state.caught || state.rod.phase === 'reeling') return;
+  // Reeling is when most catches happen (the hook sweeps back through the
+  // whole sea), so only the already-caught flag may skip the check.
+  if (state.caught) return;
   const { hookX, hookY } = aiHookPosition(state);
   for (const fish of game.fish) {
     if (Math.abs(fish.x - hookX) <= fish.w / 2 + 16
@@ -1156,6 +1184,9 @@ function publishDiscard(seat, tile, isBot) {
   const sourceKey = `${seat}:${tile.uid ?? tile.id}:${game.nextUid++}`;
   const entry = {
     t: 'discard',
+    // Host wall-clock deadline; every device converts it to its own clock so
+    // the five-second claim boxes expire at the same moment everywhere.
+    deadline: Date.now() + MULTI_CLAIM_SECONDS * 1000,
     claimId: sourceKey,
     sourceKey,
     seat,
@@ -1337,15 +1368,15 @@ function aiTick(dt) {
       rod.hookLen = 0;
     }
     if (rod.phase === 'casting') {
-      // Let the hook reach the sea floor (and hence the screen edge at the
-      // swing limit) before grabbing anything; catches on the way back are
-      // still allowed.
+      // Check for contact on every frame on the way down (just like the
+      // player), but keep extending to the sea floor when nothing is caught so
+      // the ghost rod visibly reaches the bottom corners.
       const maxLen = maxHookLength(rod.angle);
       rod.hookLen = Math.min(maxLen, rod.hookLen + 980 * hookRate * dt);
-      if (rod.hookLen >= maxLen) {
+      aiCheckCatch(state);
+      if (rod.phase === 'casting' && rod.hookLen >= maxLen) {
         rod.hookLen = maxLen;
-        aiCheckCatch(state);
-        if (rod.phase === 'casting') rod.phase = 'reeling';
+        rod.phase = 'reeling';
       }
     } else if (rod.phase === 'reeling') {
       aiCheckCatch(state);
@@ -1648,11 +1679,43 @@ function askRoomCode() {
   ui.joinRoomCode?.focus();
 }
 
+function clearJoinWatchdog() {
+  if (game.joinTimer) clearTimeout(game.joinTimer);
+  game.joinTimer = null;
+}
+
+/** A rejected/closed room must never leave a half-joined room screen behind. */
+function rejectJoin(title, message) {
+  if (game.joinOutcome === 'joined') return;
+  game.joinOutcome = 'failed';
+  clearJoinWatchdog();
+  resetMultiState();
+  showMenu();
+  if (ui.joinMessage) ui.joinMessage.textContent = message;
+  showOverlay({
+    title,
+    message,
+    actions: [{
+      label: '返回',
+      primary: false,
+      onClick: () => { ui.overlay.classList.remove('show'); askRoomCode(); },
+    }],
+  });
+}
+
 async function openRoom() {
   if (!net.available) {
     setRoomMessage('多人功能無法使用：請重新整理頁面。');
     return;
   }
+  clearJoinWatchdog();
+  ui.overlay.classList.remove('show');
+  clearNotices();
+  game.pendingResult = null;
+  game.state = S.LOADING;
+  game.timeLeft = game.settings.gameSeconds;
+  game.timeDeadline = 0;
+  game.clockOffset = 0;
   game.mode = 'multi';
   game.role = 'host';
   game.seat = 0;
@@ -1694,6 +1757,15 @@ async function joinRoom() {
     setWaitingRoom(true);
     return;
   }
+  clearJoinWatchdog();
+  ui.overlay.classList.remove('show');
+  clearNotices();
+  game.pendingResult = null;
+  game.state = S.LOADING;
+  game.timeLeft = game.settings.gameSeconds;
+  game.timeDeadline = 0;
+  game.clockOffset = 0;
+  game.joinOutcome = 'pending';
   game.mode = 'multi';
   game.role = 'guest';
   game.playerId = randomPlayerId();
@@ -1706,11 +1778,19 @@ async function joinRoom() {
   renderRoom();
   try {
     await net.joinRoom(code, game.playerId, game.playerCustomName ? game.playerName : null);
+    if (game.joinOutcome !== 'pending') return;
     setRoomMessage('已加入房間，等待房主開始遊戲。');
     renderRoom();
+    // A stale PeerJS id can accept a data channel even after the host left.
+    // Without a welcome there is nobody to start the game, so treat it as a
+    // closed room instead of trapping the player in an unusable lobby.
+    game.joinTimer = setTimeout(() => {
+      if (game.joinOutcome === 'pending') rejectJoin('房間已關閉', '房間已關閉，請重新開房間。');
+    }, 6000);
   } catch (error) {
     console.warn('[mf] 加入房間失敗：', error);
-    setRoomMessage(error?.message === 'room-timeout'
+    if (game.joinOutcome !== 'pending') return;
+    rejectJoin('無法加入房間', error?.message === 'room-timeout'
       ? '找不到這個房間，請確認代碼是否正確。'
       : '無法連線到房間，請檢查網路後再試。');
   }
@@ -1863,6 +1943,14 @@ function broadcastHostTime() {
   }
 }
 
+/** Convert the host's wall-clock deadline to this device's clock. */
+function claimDeadline(entry) {
+  if (Number.isFinite(entry.deadline)) {
+    return net.isHost ? entry.deadline : entry.deadline - game.clockOffset;
+  }
+  return Date.now() + MULTI_CLAIM_SECONDS * 1000;
+}
+
 function addClaimBox(entry) {
   // Keep a host-side box even for the host's own discard: the host needs it to
   // arbitrate human and AI claims. Rendering still hides that seat's box.
@@ -1871,6 +1959,7 @@ function addClaimBox(entry) {
   game.claimBoxes.push({
     ...entry,
     isBot: entry.isBot ?? Boolean(game.players.find((player) => player.seat === entry.seat)?.isBot),
+    expiresAt: claimDeadline(entry),
     timeLeft: MULTI_CLAIM_SECONDS, resolved: false, awaiting: false,
   });
   renderClaimBoxes();
@@ -2080,9 +2169,16 @@ function restartVoteMessage() {
   const required = game.restartRequired.length ? game.restartRequired : humanSeats();
   const names = required.map((seat) => {
     const mark = game.restartVotes.includes(seat) ? '✓' : '○';
-    return `${mark}${seatLabel(seat)}`;
+    return `${mark}${seatLabel(seat)}${seat === game.seat ? '（你）' : ''}`;
   }).join('　');
-  const reason = game.restartMessage || '有玩家要求重新開始。';
+  // The requester is a seat, not a pre-rendered sentence: "你" must only appear
+  // on that player's own screen.
+  const requester = game.restartRequester;
+  const reason = requester === null
+    ? (game.restartMessage || '有玩家要求重新開始。')
+    : requester === game.seat
+      ? '你要求重新開始這一局。'
+      : `${seatLabel(requester)} 要求重新開始這一局。`;
   return `${reason}\n\n重新開始投票：${names}（${game.restartVotes.length}/${required.length}）`;
 }
 
@@ -2120,6 +2216,7 @@ function broadcastRestartStatus() {
     active: game.restartActive,
     votes: [...game.restartVotes],
     required: [...game.restartRequired],
+    requester: game.restartRequester,
     message: game.restartMessage,
   });
   updateRestartOverlay();
@@ -2136,9 +2233,8 @@ function startRestartVote(requester) {
   game.restartActive = true;
   game.restartRequired = humans;
   game.restartVotes = humans.includes(requester) ? [requester] : [];
-  game.restartMessage = requester === game.seat
-    ? '你要求重新開始這一局。'
-    : `${seatLabel(requester)} 要求重新開始這一局。`;
+  game.restartRequester = requester;
+  game.restartMessage = '';
   showRestartVoteOverlay();
   broadcastRestartStatus();
   checkRestartReady();
@@ -2151,6 +2247,7 @@ function checkRestartReady() {
   game.restartActive = false;
   game.restartVotes = [];
   game.restartRequired = [];
+  game.restartRequester = null;
   game.restartMessage = '';
   ui.overlay.classList.remove('show');
   net.broadcast({ t: 'restartNow' });
@@ -2162,6 +2259,7 @@ function cancelRestartVote() {
   game.restartActive = false;
   game.restartVotes = [];
   game.restartRequired = [];
+  game.restartRequester = null;
   game.restartMessage = '';
   ui.overlay.classList.remove('show');
   broadcastRestartStatus();
@@ -2262,15 +2360,20 @@ function applyMultiDraw() {
 }
 
 function resetMultiState() {
+  // Mark the intentional exit before closing the PeerJS peer: its close event
+  // can fire synchronously and would otherwise show 房主已離開 to the leaver.
+  game.leavingRoom = true;
   net.close();
+  clearJoinWatchdog();
+  game.joinOutcome = null;
+  game.mode = 'solo';
+  game.role = 'none';
   if (!game.playerCustomName) {
     game.playerName = DEFAULT_PLAYER_NAME;
     for (const input of [ui.menuPlayerName, ui.roomPlayerName, ui.settingsPlayerName]) {
       if (input) input.value = DEFAULT_PLAYER_NAME;
     }
   }
-  game.mode = 'solo';
-  game.role = 'none';
   game.seat = 0;
   game.roomCode = null;
   game.players = [];
@@ -2286,17 +2389,32 @@ function resetMultiState() {
   game.mustDiscard = false;
   game.grabPending = false;
   game.pendingMultiStart = null;
+  game.timeLeft = game.settings.gameSeconds;
+  game.timeDeadline = 0;
+  game.timeBase = game.settings.gameSeconds;
+  game.timeSyncAt = 0;
+  game.clockOffset = 0;
+  game.restartActive = false;
+  game.restartVotes = [];
+  game.restartRequired = [];
+  game.restartRequester = null;
+  game.pendingResult = null;
+  ui.overlay.classList.remove('show');
+  clearNotices();
   game.state = S.LOADING;
   setMultiUIVisibility(false);
   setWaitingRoom(false);
   closeModal('joinScreen');
   closeModal('roomScreen');
   updateSettingsUI();
+  game.leavingRoom = false;
 }
 
 function leaveMultiRoom() {
   if (game.mode !== 'multi') return;
-  net.broadcast({ t: 'leave', seat: game.seat, playerId: game.playerId });
+  net.broadcast({
+    t: 'leave', seat: game.seat, playerId: game.playerId, name: game.playerName,
+  });
   resetMultiState();
   showMenu();
 }
@@ -2363,6 +2481,9 @@ function wireNetEvents() {
   });
 
   net.on('welcome', (msg) => {
+    if (game.mode !== 'multi' || game.role !== 'guest') return;
+    game.joinOutcome = 'joined';
+    clearJoinWatchdog();
     game.seat = msg.seat;
     adoptPlayersList(msg.players);
     game.roomSettings = { ...msg.settings };
@@ -2386,14 +2507,19 @@ function wireNetEvents() {
     applyMultiStart(msg);
   });
 
-  net.on('full', () => setRoomMessage('房間已滿，請換一個房間。'));
+  net.on('full', () => rejectJoin('房間已滿', '房間已滿，請換一個房間。'));
 
   net.on('discard', (msg) => {
     if (net.isHost) {
+      // A guest's message reaches us after its own deadline was stamped; use
+      // the host's clock from this point on so arbitration stays consistent.
+      msg.deadline = Date.now() + MULTI_CLAIM_SECONDS * 1000;
       net.broadcast(msg);
       addClaimBox(msg);
       // Guests' discards are public; the host's AI seats may contest them.
-      scheduleAiClaims({ id: msg.tileId, uid: msg.uid }, msg.seat);
+      // Reuse the same sourceKey as the public claim box so a human and an AI
+      // can never both win the same discard.
+      scheduleAiClaims({ id: msg.tileId, uid: msg.uid }, msg.seat, msg.sourceKey);
       return;
     }
     addClaimBox(msg);
@@ -2403,6 +2529,7 @@ function wireNetEvents() {
 
   net.on('time', (msg) => {
     if (net.isHost || game.mode !== 'multi' || !Number.isFinite(msg.timeLeft)) return;
+    if (Number.isFinite(msg.sentAt)) game.clockOffset = msg.sentAt - Date.now();
     syncRemoteTime(msg.timeLeft);
   });
 
@@ -2499,6 +2626,7 @@ function wireNetEvents() {
     game.restartActive = Boolean(msg.active);
     game.restartVotes = Array.isArray(msg.votes) ? [...msg.votes] : [];
     game.restartRequired = Array.isArray(msg.required) ? [...msg.required] : humanSeats();
+    game.restartRequester = Number.isInteger(msg.requester) ? msg.requester : null;
     game.restartMessage = typeof msg.message === 'string' ? msg.message : '';
     if (!game.restartActive) {
       ui.overlay.classList.remove('show');
@@ -2512,6 +2640,7 @@ function wireNetEvents() {
     game.restartActive = false;
     game.restartVotes = [];
     game.restartRequired = [];
+    game.restartRequester = null;
     game.restartMessage = '';
     ui.overlay.classList.remove('show');
   });
@@ -2529,18 +2658,34 @@ function wireNetEvents() {
     refreshRematchParticipants();
   }
 
-  net.on('leave', (msg) => {
+  net.on('leave', (msg, conn) => {
     if (!net.isHost) return;
+    const name = typeof msg.name === 'string' && msg.name.trim()
+      ? msg.name : seatLabel(msg.seat);
+    const text = `${name} 已離開房間。`;
+    showToast(text);
+    net.broadcast({ t: 'notice', message: text }, conn?.peer);
     fillSeatWithBot(game.players.find((item) => item.seat === msg.seat));
+  });
+
+  net.on('notice', (msg) => {
+    if (typeof msg.message === 'string') showToast(msg.message);
   });
 
   net.on('guestClose', (msg) => {
     if (!net.isHost) return;
-    fillSeatWithBot(game.players.find((item) => item.playerId === msg.peerId));
+    const leaving = game.players.find((item) => item.playerId === msg.peerId);
+    if (!leaving) return;
+    // A tab can close without sending `leave`; notify the remaining seats in
+    // that case too. An explicit leave has already cleared the playerId above.
+    const text = `${leaving.name || seatLabel(leaving.seat)} 已離開房間。`;
+    showToast(text);
+    net.broadcast({ t: 'notice', message: text });
+    fillSeatWithBot(leaving);
   });
 
   net.on('hostClose', () => {
-    if (game.mode !== 'multi' || game.role !== 'guest') return;
+    if (game.leavingRoom || game.mode !== 'multi' || game.role !== 'guest') return;
     resetMultiState();
     showMenu();
     showOverlay({
@@ -2551,10 +2696,14 @@ function wireNetEvents() {
   });
 
   net.on('error', ({ error }) => {
+    if (game.joinOutcome === 'pending') {
+      rejectJoin('無法加入房間', error?.message === 'peer-unavailable'
+        ? '找不到這個房間，請確認代碼是否正確。'
+        : '無法連線到房間，請檢查網路後再試。');
+      return;
+    }
     if (!ui.room?.classList.contains('show')) return;
-    setRoomMessage(error?.message === 'peer-unavailable'
-      ? '找不到這個房間，請確認代碼是否正確。'
-      : '連線發生問題，請稍後再試。');
+    setRoomMessage('連線發生問題，請稍後再試。');
   });
 }
 
@@ -2672,11 +2821,12 @@ function renderMeldsPanel() {
   }
 }
 
-function tickClaimBoxes(dt) {
+function tickClaimBoxes() {
   let expired = false;
+  const now = Date.now();
   for (const box of game.claimBoxes) {
     if (box.resolved) continue;
-    box.timeLeft = Math.max(0, box.timeLeft - dt);
+    box.timeLeft = Math.max(0, (box.expiresAt - now) / 1000);
     if (box.timerEl) box.timerEl.textContent = `${box.timeLeft.toFixed(1)} 秒`;
     if (box.progressEl) box.progressEl.style.width = `${box.timeLeft / MULTI_CLAIM_SECONDS * 100}%`;
     if (box.timeLeft <= 0) { box.resolved = true; expired = true; }
@@ -3042,7 +3192,9 @@ function gameLoop(timestamp) {
   lastFrame = timestamp;
   // Multiplayer time is wall-clock based: a host changing tabs cannot pause it,
   // and every guest counts down from the last host sync on its own clock.
-  if (game.state !== S.WIN && game.state !== S.DRAW_GAME) {
+  // LOADING is excluded too: a room lobby must never inherit a previous
+  // round's expired deadline and immediately declare 流局.
+  if (![S.LOADING, S.WIN, S.DRAW_GAME].includes(game.state)) {
     if (game.mode === 'multi') {
       game.timeLeft = net.isHost ? hostTimeLeft() : guestTimeLeft();
       updateTimer();
@@ -3056,9 +3208,11 @@ function gameLoop(timestamp) {
       if (game.timeLeft <= 0) endDrawGame();
     }
   }
+  // Claim deadlines are wall-clock based and must stay identical on every
+  // screen, so they tick even while a tab's animation loop is throttled.
+  tickClaimBoxes();
   if (!paused()) {
     if (game.state !== S.WIN && game.state !== S.DRAW_GAME) {
-      tickClaimBoxes(dt);
       if (game.mode !== 'multi') updateClaimTimer(dt);
       aiTick(dt);
       aiClaimTick(dt);
@@ -3090,6 +3244,7 @@ function gameLoop(timestamp) {
       }
     }
     updateFish(dt);
+    updateRemoteFish(dt);
     if (game.mode === 'multi' && net.isHost) {
       game.seaClock += dt;
       if (game.seaClock >= SEA_BROADCAST_INTERVAL) {
@@ -3107,6 +3262,7 @@ function broadcastSeaSnapshot() {
   net.broadcast({
     t: 'sea',
     worldWidth: view.width,
+    sentAt: Date.now(),
     fish: game.fish.map((fish) => ({
       id: fish.id,
       tileId: fish.tileId,
@@ -3125,22 +3281,46 @@ function broadcastSeaSnapshot() {
 function applySea(msg) {
   if (net.isHost || !Array.isArray(msg.fish)) return;
   // The host publishes x/vx normalised to its own canvas width. Convert them
-  // to this device's canvas; multiplying by the width *ratio* left every fish
-  // at x≈0..1 on guests, i.e. stuck against the left edge.
-  game.fish = msg.fish.map((fish) => ({
-    id: fish.id,
-    tileId: fish.tileId,
-    x: fish.x * view.width,
-    y: fish.y,
-    vx: fish.vx * view.width,
-    vy: fish.vy,
-    w: TILE_W,
-    h: TILE_H,
-    rotation: fish.rotation,
-    phase: fish.phase,
-    age: fish.age,
-    memoryFlip: fish.memoryFlip,
-  }));
+  // to this device's canvas. Keep each fish's current position and only move
+  // the snapshot target: hard-snapping ten times a second looked like jitter.
+  const previous = new Map(game.fish.map((fish) => [fish.id, fish]));
+  game.fish = msg.fish.map((fish) => {
+    const old = previous.get(fish.id);
+    const x = fish.x * view.width;
+    return {
+      id: fish.id,
+      tileId: fish.tileId,
+      x: old ? old.x : x,
+      y: old ? old.y : fish.y,
+      vx: fish.vx * view.width,
+      vy: fish.vy,
+      w: TILE_W,
+      h: TILE_H,
+      rotation: fish.rotation,
+      phase: fish.phase,
+      age: fish.age,
+      memoryFlip: fish.memoryFlip,
+      targetX: x,
+      targetY: fish.y,
+      targetAt: Date.now(),
+    };
+  });
+}
+
+/** Guests extrapolate between host snapshots instead of waiting/jittering. */
+function updateRemoteFish(dt) {
+  if (game.mode !== 'multi' || net.isHost) return;
+  const minY = WATER_TOP + TILE_H / 2 + 16;
+  const maxY = WATER_BOTTOM - TILE_H / 2 - 6;
+  for (const fish of game.fish) {
+    const elapsed = Math.max(0, (Date.now() - (fish.targetAt ?? Date.now())) / 1000);
+    const desiredX = (fish.targetX ?? fish.x) + fish.vx * elapsed;
+    const desiredY = Math.min(maxY, Math.max(minY, (fish.targetY ?? fish.y) + fish.vy * elapsed));
+    const alpha = Math.min(1, dt * 12);
+    fish.x += (desiredX - fish.x) * alpha;
+    fish.y += (desiredY - fish.y) * alpha;
+    fish.age += dt;
+  }
 }
 
 function broadcastHookState(dt) {
@@ -3149,7 +3329,12 @@ function broadcastHookState(dt) {
   if (game.hookClock < HOOK_BROADCAST_INTERVAL) return;
   game.hookClock = 0;
   const own = hookPosition();
-  net.broadcast({ t: 'hook', seat: game.seat, x: own.hookX / view.width, y: own.hookY, phase: game.state });
+  // A guest cannot broadcast to other guests — `net.broadcast` only iterates
+  // the host's inbound connections. Send the guest's rod to the host, which
+  // applies it locally and relays it to every other seat.
+  broadcastOrSend({
+    t: 'hook', seat: game.seat, x: own.hookX / view.width, y: own.hookY, phase: game.state,
+  });
   for (const state of Object.values(game.aiStates)) {
     const position = aiHookPosition(state);
     net.broadcast({
@@ -3582,11 +3767,15 @@ function quitToMenu() {
   clearSelfWin();
   game.pendingResult = null;
   if (game.mode === 'multi') {
-    net.broadcast({ t: 'leave', seat: game.seat, playerId: game.playerId });
+    net.broadcast({
+      t: 'leave', seat: game.seat, playerId: game.playerId, name: game.playerName,
+    });
     resetMultiState();
   } else {
     game.state = S.LOADING;
+    game.pendingResult = null;
   }
+  ui.overlay.classList.remove('show');
   showMenu();
 }
 
@@ -3843,6 +4032,8 @@ if (new URLSearchParams(location.search).has('test')) {
     renderMeldsPanel, handleCatchRequest, applyFishCaught, applySea, applyHook,
     aiTick, createAiState, resetAiRod, publishDiscard, scheduleAiClaims, bestAiClaim,
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
+    updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
+    renderClaimBoxes, leaveMultiRoom,
   };
 }
 
