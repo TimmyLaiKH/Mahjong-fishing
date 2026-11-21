@@ -941,6 +941,7 @@ function nextBotDiscard() {
 
 function createAiState(seat) {
   const dealt = dealTiles(13);
+  const limit = swingLimit();
   return {
     seat,
     hand: dealt.hand,
@@ -955,7 +956,7 @@ function createAiState(seat) {
     fanTotal: 0,
     bestFan: 0,
     rod: {
-      angle: (Math.random() - 0.5) * 0.8,
+      angle: Math.max(-limit, Math.min(limit, (Math.random() - 0.5) * 0.8)),
       dir: Math.random() < 0.5 ? 1 : -1,
       hookLen: 0,
       phase: 'swing',
@@ -1277,13 +1278,14 @@ function aiTick(dt) {
       // Do not fish again until the claimed tile has been discarded.
       continue;
     }
-    if (rod.wait > 0) {
-      rod.wait -= dt;
-      if (rod.wait <= 0 && rod.phase === 'swing') rod.phase = 'casting';
-      continue;
-    }
     if (rod.phase === 'swing') {
+      // Match the human rod: keep sweeping across the full on-screen range
+      // while waiting, then cast from the angle reached at that moment.
       swingAiRod(rod, dt);
+      if (rod.wait > 0) {
+        rod.wait -= dt;
+        if (rod.wait > 0) continue;
+      }
       rod.phase = 'casting';
       rod.hookLen = 0;
     }
