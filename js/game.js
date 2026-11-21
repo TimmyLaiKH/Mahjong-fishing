@@ -1102,11 +1102,24 @@ function aiCheckCatch(state) {
   }
 }
 
+/** Contact only grabs the fish: like the human seat, the AI keeps the hook
+ *  extended and must reel it all the way back before the tile enters its hand. */
 function assignCatchToAi(seat, tileId) {
   const state = game.aiStates[seat];
   if (!state) return;
   state.caught = tileId;
   state.rod.phase = 'reeling';
+}
+
+/** Called when the AI's hook reaches the rod again, mirroring finishReel(). */
+function finishAiReel(state) {
+  const tileId = state.caught;
+  const seat = state.seat;
+  state.caught = null;
+  if (!tileId) {
+    resetAiRod(state);
+    return;
+  }
   if (isFlower(tileId)) {
     state.flowers.push(tileId);
     syncSeatFlowers(seat, state.flowers);
@@ -1114,6 +1127,7 @@ function assignCatchToAi(seat, tileId) {
       state.flowers, seatWindOf(seat), game.settings.fanCap, seatWinContext(seat),
     );
     if (result) commitAiWin(seat, result);
+    else resetAiRod(state);
     return;
   }
   state.hand.push(newTile(tileId));
@@ -1147,12 +1161,12 @@ function assignCatchToAi(seat, tileId) {
     if (game.mode === 'multi' && net.isHost) broadcastOrSend({ t: 'meld', seat, meld });
     state.kongChain += 1;
     // Like the human seat, a kong owes a replacement draw before any discard.
-    state.caught = null;
     resetAiRod(state);
     return;
   }
   state.mustDiscard = true;
   state.discardTimer = 0.6 + Math.random() * 1.2;
+  resetAiRod(state);
 }
 
 function aiChooseAndDiscard(state) {
@@ -1388,8 +1402,10 @@ function aiTick(dt) {
       if (rod.phase === 'reeling') {
         rod.hookLen -= 820 * hookRate * dt;
         if (rod.hookLen <= 0) {
-          state.caught = null;
-          resetAiRod(state);
+          rod.hookLen = 0;
+          // The tile is only collected once the hook is back at the rod, then
+          // the AI waits briefly before discarding — same order as a player.
+          finishAiReel(state);
         }
       }
     }
@@ -2714,7 +2730,13 @@ function wireNetEvents() {
 
 function renderClaimBoxes() {
   if (!ui.claimBoxes) return;
-  const boxes = game.claimBoxes.filter((box) => box.seat !== game.seat && !box.resolved);
+  // Only show a box when this seat can actually declare something. Most
+  // discards cannot be claimed, and an empty box was just noise on the sea.
+  const boxes = game.claimBoxes.filter((box) => {
+    if (box.seat === game.seat || box.resolved) return false;
+    const bot = { name: box.name, wind: box.wind };
+    return buildClaimActions(box.tileId, bot, false).length > 0;
+  });
   ui.claimBoxes.hidden = boxes.length === 0;
   ui.claimBoxes.innerHTML = '';
   for (const box of boxes) {
@@ -3102,7 +3124,7 @@ function drawFish() {
   }
 }
 
-function drawGhostRod(seat, position, phase) {
+function drawGhostRod(seat, position, phase, caughtTile = null) {
   const baseX = view.width / 2;
   const tipX = baseX + (position.hookX - baseX) * 0.08;
   const tipY = ROD_BASE_Y + (position.hookY - ROD_BASE_Y) * 0.08;
@@ -3125,6 +3147,13 @@ function drawGhostRod(seat, position, phase) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('🪝', position.hookX, position.hookY);
+  // Show the grabbed tile riding the hook back up, just like the player's rod.
+  if (caughtTile && phase === 'reeling') {
+    const tileY = Math.min(position.hookY + 100, WORLD_H - TILE_H / 2 - 8);
+    drawTile(ctx, caughtTile, position.hookX, tileY, TILE_W, TILE_H, {
+      images: game.images, shadow: true,
+    });
+  }
   ctx.restore();
 }
 
@@ -3134,12 +3163,12 @@ function renderGhostRods() {
     if (now - game.hookPeers[seat].seen > 1500) delete game.hookPeers[seat];
   }
   for (const state of Object.values(game.aiStates)) {
-    drawGhostRod(state.seat, aiHookPosition(state), state.rod.phase);
+    drawGhostRod(state.seat, aiHookPosition(state), state.rod.phase, state.caught);
   }
   for (const [seat, hook] of Object.entries(game.hookPeers)) {
     const value = Number(seat);
     if (value === game.seat || game.aiStates[value]) continue;
-    drawGhostRod(value, { hookX: hook.x * view.width, hookY: hook.y }, hook.phase);
+    drawGhostRod(value, { hookX: hook.x * view.width, hookY: hook.y }, hook.phase, hook.caught);
   }
 }
 
@@ -3197,6 +3226,10 @@ function draw(dt) {
  * ------------------------------------------------------------------ */
 
 let lastFrame = 0;
+// While the host tab is hidden the shared sea freezes. Guests keep
+// extrapolating, so on return we advance the host by the real elapsed time and
+// publish a fresh snapshot immediately instead of snapping everyone backwards.
+let hostHiddenAt = 0;
 function gameLoop(timestamp) {
   const dt = lastFrame ? Math.min((timestamp - lastFrame) / 1000, 0.05) : 0;
   lastFrame = timestamp;
@@ -3276,8 +3309,8 @@ function broadcastSeaSnapshot() {
     fish: game.fish.map((fish) => ({
       id: fish.id,
       tileId: fish.tileId,
-      // x/vx are already normalised; never divide by the current view width
-      // again, otherwise a host resize shifts every fish on every device.
+      // x is a fraction of the host sea, vx a fraction of REFERENCE_W per
+      // second; both are device-independent. Never rescale them here.
       x: fish.x,
       y: fish.y,
       vx: fish.vx,
@@ -3292,9 +3325,9 @@ function broadcastSeaSnapshot() {
 
 function applySea(msg) {
   if (net.isHost || !Array.isArray(msg.fish)) return;
-  // The host publishes x/vx normalised to its own canvas width. Convert them
-  // to this device's canvas. Keep each fish's current position and only move
-  // the snapshot target: hard-snapping ten times a second looked like jitter.
+  // x/vx are device-independent fractions from the host. Keep each fish's
+  // current position and only move the snapshot target: hard-snapping ten
+  // times a second looked like jitter.
   const previous = new Map(game.fish.map((fish) => [fish.id, fish]));
   game.fish = msg.fish.map((fish) => {
     const old = previous.get(fish.id);
@@ -3327,7 +3360,9 @@ function updateRemoteFish(dt) {
   const minY = WATER_TOP + TILE_H / 2 + 16;
   const maxY = WATER_BOTTOM - TILE_H / 2 - 6;
   for (const fish of game.fish) {
-    const elapsed = Math.max(0, (Date.now() - (fish.targetAt ?? Date.now())) / 1000);
+    // Cap extrapolation so a long host outage never drifts fish absurdly far
+    // before the next authoritative snapshot corrects them.
+    const elapsed = Math.min(30, Math.max(0, (Date.now() - (fish.targetAt ?? Date.now())) / 1000));
     const desiredX = (fish.targetX ?? fish.x) + fish.vx * elapsed;
     const desiredY = Math.min(maxY, Math.max(minY, (fish.targetY ?? fish.y) + fish.vy * elapsed));
     const alpha = Math.min(1, dt * 12);
@@ -3347,13 +3382,15 @@ function broadcastHookState(dt) {
   // the host's inbound connections. Send the guest's rod to the host, which
   // applies it locally and relays it to every other seat.
   broadcastOrSend({
-    t: 'hook', seat: game.seat, x: own.hookX / view.width, y: own.hookY, phase: game.state,
+    t: 'hook', seat: game.seat, x: own.hookX / view.width, y: own.hookY,
+    phase: game.state, caught: game.state === S.REELING ? game.lastDraw?.id ?? null : null,
   });
   for (const state of Object.values(game.aiStates)) {
     const position = aiHookPosition(state);
     net.broadcast({
       t: 'hook', seat: state.seat,
-      x: position.hookX / view.width, y: position.hookY, phase: state.rod.phase,
+      x: position.hookX / view.width, y: position.hookY,
+      phase: state.rod.phase, caught: state.caught ?? null,
     });
   }
 }
@@ -3361,7 +3398,7 @@ function broadcastHookState(dt) {
 function applyHook(msg) {
   if (msg.seat === game.seat) return;
   game.hookPeers[msg.seat] = {
-    x: msg.x, y: msg.y, phase: msg.phase, seen: performance.now(),
+    x: msg.x, y: msg.y, phase: msg.phase, caught: msg.caught ?? null, seen: performance.now(),
   };
 }
 
@@ -3380,7 +3417,10 @@ function spawnFish(count) {
       tileId: randomTileKind(),
       x: direction > 0 ? -TILE_W / view.width : 1 + TILE_W / view.width,
       y: minY + Math.random() * (maxY - minY),
-      vx: speed * speedFactor * direction / view.width,
+      // Use a fixed reference width, never the host's current canvas width.
+      // Otherwise a phone host (narrow sea) makes fish race across every PC
+      // guest's much wider screen, and a host rotation rewrites all speeds.
+      vx: speed * speedFactor * direction / REFERENCE_W,
       vy: (Math.random() - 0.5) * 34 * speedFactor,
       w: TILE_W, h: TILE_H,
       rotation: Math.random() * Math.PI * 2,
@@ -3426,6 +3466,9 @@ function updateHUD() {
   renderHand();
   renderMelds();
   renderTarget();
+  // A newly fished tile can unlock 碰／上／胡 on a discard that is still inside
+  // the five-second window, so recompute which boxes are actionable here.
+  renderClaimBoxes();
 }
 
 /** Five-second claim panel beside the rod: tile image, discarder and actions. */
@@ -3900,8 +3943,24 @@ function wireInput() {
   document.addEventListener('pointerdown', unlockMusic);
   document.addEventListener('keydown', unlockMusic);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) music.suspend();
-    else if (game.settings.sound) music.resume();
+    const seaLive = game.mode === 'multi' && net.isHost
+      && ![S.LOADING, S.WIN, S.DRAW_GAME].includes(game.state);
+    if (document.hidden) {
+      music.suspend();
+      if (seaLive) hostHiddenAt = Date.now();
+    } else {
+      if (game.settings.sound) music.resume();
+      if (hostHiddenAt) {
+        const elapsed = Math.min(30, Math.max(0, (Date.now() - hostHiddenAt) / 1000));
+        hostHiddenAt = 0;
+        if (seaLive) {
+          updateFish(elapsed);
+          broadcastSeaSnapshot();
+        }
+      }
+      // A background tab's rAF timestamp is stale; restart the frame clock.
+      lastFrame = performance.now();
+    }
   });
   canvas.addEventListener('pointerdown', (event) => {
     event.preventDefault();
