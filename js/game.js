@@ -304,8 +304,6 @@ function setState(next) {
 function setStatus(text, bump = false) {
   ui.status.textContent = text;
   ui.status.classList.toggle('bump', bump);
-  // Status length can wrap and change the HUD height; keep the canvas below it.
-  resizeCanvas();
 }
 
 /** Small transient notice for room events such as a player leaving. */
@@ -2839,9 +2837,9 @@ function tickClaimBoxes() {
  * ------------------------------------------------------------------ */
 
 function resizeCanvas() {
-  // Start the canvas below the HUD so the rod, line and resting hook are never
-  // hidden behind the panel. The HUD can change height (flowers, hand wraps),
-  // so this is re-run by a ResizeObserver as well as on window resize.
+  // Start the canvas below the fixed HUD so the rod, line and resting hook are
+  // never hidden. HUD content is capped and scrolls internally, so only window
+  // resizes (and the observer safety net) change this geometry.
   const hudBottom = ui.hud?.getBoundingClientRect().bottom ?? 0;
   canvas.style.top = `${hudBottom}px`;
   canvas.style.height = `calc(100% - ${hudBottom}px)`;
@@ -2858,6 +2856,7 @@ function resizeCanvas() {
   positionSelfWinBar();
 }
 window.addEventListener('resize', resizeCanvas);
+// The HUD height is fixed by CSS; the observer only reacts to viewport changes.
 if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => resizeCanvas()).observe(ui.hud);
 
 /** Line length needed for the hook to reach the sea floor at this rod angle. */
@@ -3411,8 +3410,6 @@ function updateHUD() {
   renderHand();
   renderMelds();
   renderTarget();
-  // Flower panels or wrapped hands can change HUD height.
-  resizeCanvas();
 }
 
 /** Five-second claim panel beside the rod: tile image, discarder and actions. */

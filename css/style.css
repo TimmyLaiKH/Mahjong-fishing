@@ -3,6 +3,7 @@
   --tile-h: clamp(52px, 4.2vw, 66px);
   --hud-pad: clamp(7px, 1.3vw, 16px);
   --ui-font: clamp(12px, 1.35vw, 16px);
+  --hud-height: clamp(240px, 36vh, 350px);
   --accent: #c62828;
   --panel: rgba(4, 32, 44, 0.86);
 }
@@ -46,10 +47,15 @@ html, body {
   right: 0;
   z-index: 10;
   display: grid;
+  align-content: start;
   gap: clamp(4px, 0.7vh, 9px);
-  max-height: 46vh;
+  height: var(--hud-height);
+  min-height: var(--hud-height);
+  max-height: var(--hud-height);
   padding: var(--hud-pad);
+  overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   border-radius: 0 0 14px 14px;
 }
 
@@ -213,7 +219,13 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
 .claim-box .claim-actions button { font-size: clamp(10px, 1.2vw, 13px); padding: 3px 6px; }
 .claim-box .claim-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.meld-panel { margin: 2px 0; font-size: 0.85em; }
+.meld-panel {
+  margin: 2px 0;
+  font-size: 0.85em;
+  max-height: clamp(46px, 9vh, 88px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
 .meld-panel summary { cursor: pointer; color: #ffe58f; font-weight: 700; }
 .meld-rows { display: grid; gap: 3px; margin-top: 4px; }
 .meld-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
@@ -296,6 +308,9 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
   align-items: flex-end;
   gap: clamp(1px, 0.35vw, 5px);
   min-height: calc(var(--tile-h) + 6px);
+  max-height: calc(var(--tile-h) * 2 + 12px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .tile-btn {
@@ -339,6 +354,8 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
 
 .target {
   min-height: 1.25em;
+  max-height: 1.5em;
+  overflow-y: hidden;
   text-align: center;
   color: #fff3b0;
   display: flex;
@@ -362,6 +379,9 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
   justify-content: center;
   gap: 4px 10px;
   margin: 2px 0 3px;
+  max-height: clamp(38px, 7vh, 62px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 .tiles-meta:empty { display: none; }
 .meld-list {
@@ -551,14 +571,12 @@ td:last-child { min-width: 220px; }
 .button-row button { background: #c62828; color: #fff; border-color: #ffcdd2; font-weight: 700; padding: 8px 18px; }
 
 @media (max-width: 768px) {
-  :root { --tile-h: clamp(44px, 7vw, 52px); --ui-font: 13px; }
-  #hud { max-height: 46vh; }
+  :root { --tile-h: clamp(44px, 7vw, 52px); --ui-font: 13px; --hud-height: clamp(230px, 40vh, 330px); }
   .hud-bar { display: flex; flex-wrap: wrap; justify-content: space-between; }
 }
 
 @media (max-width: 480px) {
-  :root { --tile-h: clamp(38px, 10vw, 44px); --ui-font: 12px; }
-  #hud { max-height: 55vh; }
+  :root { --tile-h: clamp(38px, 10vw, 44px); --ui-font: 12px; --hud-height: clamp(240px, 46vh, 340px); }
   .hud-bar { gap: 4px 8px; }
   .option-row, .hud-right { gap: 4px; }
   .timer { font-size: 24px; padding: 1px 6px; border-width: 1px; }
