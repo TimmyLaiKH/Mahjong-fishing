@@ -1191,8 +1191,10 @@ function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass 
   if (qualifyingWin(win)) {
     actions.push({
       label: '胡牌', type: 'win', result: win,
-      disabled: !canDeclareClaim(),
-      onClick: () => commitWin(win),
+      // A completed hand always ends the game when pressed; it must not be
+      // greyed out just because a fish is in flight or a tile was just drawn.
+      disabled: false,
+      onClick: () => commitWin(win, { selfDraw: false }),
     });
   }
 
@@ -1643,12 +1645,7 @@ function commitAiWin(seat, result, fanTotal = null, bestFan = null, meta = {}) {
   setState(S.WIN);
   const name = seatLabel(seat);
   setStatus(`${name} 胡牌！${result.totalFan} 番`);
-  showHandEndOverlay({
-    title: handEndTitle(seat),
-    message: handEndMessage({ winner: seat, result, log }),
-    log,
-    tiles: handEndTiles(result),
-  });
+  showWinEnd(seat, result, log);
 }
 
 function aiTick(dt) {
@@ -1875,6 +1872,68 @@ function handEndTiles(result) {
   ];
 }
 
+/** Cantonese number words so the announcement says 十六番, not 16 番. */
+function fanInCantonese(value) {
+  const digits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  const units = ['', '十', '百', '千'];
+  let n = Math.max(0, Math.floor(Number(value) || 0));
+  if (n < 10) return digits[n];
+  const parts = [];
+  let place = 0;
+  while (n > 0) {
+    const digit = n % 10;
+    if (digit) parts.unshift(`${digits[digit]}${units[place]}`);
+    else if (parts.length) parts.unshift('零');
+    n = Math.floor(n / 10);
+    place += 1;
+  }
+  return parts.join('').replace(/^一十/, '十').replace(/零+$/, '');
+}
+
+/** Read the winning patterns and fan count aloud in Cantonese. Speech is a
+ *  bonus: an unsupported browser or a blocked voice never affects settlement. */
+function speakWin(result) {
+  if (!result?.isWin || typeof SpeechSynthesisUtterance === 'undefined'
+    || typeof speechSynthesis === 'undefined') return;
+  const names = (result.patterns ?? [])
+    .filter((pattern) => pattern && pattern.id !== '重疊扣減' && pattern.name)
+    .map((pattern) => pattern.name);
+  const text = `胡牌，${names.join('、') || '雞糊'}，共 ${fanInCantonese(result.totalFan)} 番。`;
+  try {
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-HK';
+    utterance.rate = 0.95;
+    // A voice from another engine can reject assignment; keep the zh-HK lang
+    // and still speak rather than losing the announcement entirely.
+    try {
+      const voices = speechSynthesis.getVoices() ?? [];
+      const voice = voices.find((item) => /zh[-_]HK/i.test(item.lang))
+        ?? voices.find((item) => /zh[-_](Hant|TW)/i.test(item.lang))
+        ?? voices.find((item) => /^zh/i.test(item.lang));
+      if (voice) utterance.voice = voice;
+    } catch { /* lang is enough */ }
+    speechSynthesis.speak(utterance);
+  } catch { /* voice is optional */ }
+}
+
+/** Every winning seat uses one terminal screen; a broken result or speech
+ *  engine must never leave the hand without a settlement overlay. */
+function showWinEnd(seat, result, log) {
+  try {
+    showHandEndOverlay({
+      title: handEndTitle(seat),
+      message: handEndMessage({ winner: seat, result, log }),
+      log,
+      tiles: handEndTiles(result),
+    });
+  } catch (error) {
+    console.warn('[mf] 結算畫面顯示失敗', error);
+    showOverlay({ title: handEndTitle(seat), message: `共 ${result?.totalFan ?? 0} 番` });
+  }
+  speakWin(result);
+}
+
 function commitWin(result, { discarder = null, selfDraw = null } = {}) {
   if (!qualifyingWin(result)) return;
   const isSelfDraw = selfDraw === null ? winIsSelfDraw(result) : Boolean(selfDraw);
@@ -1904,12 +1963,7 @@ function commitWin(result, { discarder = null, selfDraw = null } = {}) {
   clearSelfWin();
   setState(S.WIN);
   setStatus(`胡牌！${result.totalFan} 番`);
-  showHandEndOverlay({
-    title: handEndTitle(game.seat),
-    message: handEndMessage({ winner: game.seat, result, log }),
-    log,
-    tiles: handEndTiles(result),
-  });
+  showWinEnd(game.seat, result, log);
 }
 
 function endDrawGame() {
@@ -2619,11 +2673,9 @@ function claimFromBox(box, action) {
   // never spend tiles we no longer hold, and a newly completed 胡 is offered.
   const fresh = buildClaimActions(box.tileId, bot, false, { potential: true }).find((item) => item.type === action.type
     && (item.kinds ?? []).join(',') === (action.kinds ?? []).join(','));
-  if (!fresh || fresh.disabled) {
-    renderClaimBoxes();
-    return;
-  }
-  if (fresh.type === 'win' ? !canDeclareClaim() : !canDeclareMeld()) {
+  // 胡 is always actionable: a rod in flight or a just-fished tile must never
+  // turn the button into a no-op. 碰／上／明槓 keep the normal live checks.
+  if (!fresh || (fresh.type !== 'win' && (fresh.disabled || !canDeclareMeld()))) {
     renderClaimBoxes();
     return;
   }
@@ -2647,11 +2699,6 @@ function claimFromBox(box, action) {
     kinds: fresh.kinds ?? null,
     discarderSeat: box.seat,
   };
-  if (fresh.type === 'win') {
-    msg.result = fresh.result;
-    msg.fanTotal = game.fanTotal + fresh.result.totalFan;
-    msg.bestFan = Math.max(game.bestFan, fresh.result.totalFan);
-  }
   // Wait for the host's first-press-wins ruling before touching our own hand.
   sendClaimMessage(msg);
 }
@@ -3092,12 +3139,7 @@ function finishMultiWin(seat, result, fanTotal, bestFan, meta = {}) {
   renderClaimBoxes();
   const name = winnerName(seat);
   setStatus(`${name} 胡牌！${result?.totalFan ?? 0} 番`);
-  showHandEndOverlay({
-    title: handEndTitle(seat),
-    message: handEndMessage({ winner: seat, result, log }),
-    log,
-    tiles: handEndTiles(result),
-  });
+  showWinEnd(seat, result, log);
 }
 
 function applyMultiDraw() {
@@ -5252,6 +5294,7 @@ if (new URLSearchParams(location.search).has('test')) {
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
     EMOJIS, sendEmoji, showEmojiBubble, toggleEmojiPanel, closeEmojiPanel,
+    fanInCantonese, speakWin, showWinEnd,
     renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,
     commitRoomDurationText, renderRoom,
     syncHostSeaPause, updateFish, broadcastSeaSnapshot, paused, simulationPaused, modalOpen, keepsSeaMoving,

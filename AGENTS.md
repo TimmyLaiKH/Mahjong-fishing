@@ -48,7 +48,9 @@ python3 scripts/process_assets.py
 ```
 
 Deployment is GitHub Pages from `main`. Commit, push, then verify the live site with distinct
-cachebusts (`index.html`, `js/game.js`, `js/payout.js`, `css/style.css`).
+cachebusts (`index.html`, `js/game.js`, `js/payout.js`, `css/style.css`). `index.html` also pins a
+`?v=` version on `css/style.css` and `js/game.js`; bump it whenever those files change so players do
+not keep a stale cached 胡 handler.
 
 ## Repository map
 
@@ -204,7 +206,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   it sends no network message and never cancels AI or other seats' claims on the same discard.
   `claimFromBox()` also ignores a passed box. A 胡 never enters the wait-for-ruling path: it calls
   `commitWin()` at once, settling locally and broadcasting `{t:'win'}` so every device ends the
-  hand even if the claim message or host relay is late. Self wins, concealed kongs and 七花 use the
+  hand even if the claim message or host relay is late. Its button is never disabled by
+  `canDeclareClaim()`: a rod in flight or a freshly fished tile must not make 胡 a no-op. Network
+  sends are guarded in `net.js` so a dead peer cannot throw into the settlement path. Self wins, concealed kongs and 七花 use the
   enlarged inline `selfWinBar` left of the rod with `胡牌`／`開槓` and `過`／`不開槓` — never a
   blocking popup. 碰／上 show `成功！請選一張牌打出。`; 明槓 (solo and multiplayer) shows
   `明槓成功！再釣一張牌補槓。` and sets `kongChain = 1`, never asking for an immediate discard.
@@ -218,7 +222,10 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `recordRoundResult()` and show a shared terminal overlay; `endDrawGame` / `applyMultiDraw`
   settle a no-payment draw. Multiplayer settlement switches to `S.WIN` / `S.DRAW_GAME` **before**
   settling or rendering, so a failure in payout/overlay code can never leave rods, AI and the clock
-  still running without a settlement screen. The overlay leads with `X風第 X 局・X 圈`, then `ICON ID 胡牌!` and
+  still running without a settlement screen. All three win paths call `showWinEnd(seat, result, log)`,
+  which wraps the overlay in a fallback and then calls `speakWin()`: `SpeechSynthesisUtterance` with a
+  `zh-HK` voice reads the pattern names and `共 XX 番` (Chinese numerals via `fanInCantonese()`);
+  unsupported browsers simply stay silent. The overlay leads with `X風第 X 局・X 圈`, then `ICON ID 胡牌!` and
   `formatWinBreakdown()` with its leading `胡牌！` line stripped (the heading already says `胡牌!`);
   `showOverlay({ inlineTiles })` inserts `handEndTiles(result)` between
   the 牌型 bullets and `共 N 番`, so a claimed tile sits at the far right like a self-drawn one.
@@ -314,12 +321,12 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 
 ## UI, HUD and layout
 
-- The HUD opens with one bar: **設定 → 玩法說明 → 重來這局 → 表情** on the left, a large centered timer,
+- The HUD opens with one bar: **設定 → 玩法說明 → 表情** on the left, a large centered timer,
   and **計分 + round block** on the right. The round block stacks `X風第 X 局・X 圈` above
   counters that read only 門風 and 資金 (with a `$` prefix); 巡, 番數 and 最佳 are not shown
   during play. The main menu appears before any lobby or game starts and shows a legal 十三幺
   winning hand (all 13 orphans plus one duplicate). The 設定 panel keeps only
-  player name, music and 回到主選單 — 鉤速 (default 1.0×) and 每局時間 (default 05:00) live in
+  player name, music, 重來這局 and 回到主選單 — 鉤速 (default 1.0×) and 每局時間 (default 05:00) live in
   the solo/聯機 room alongside money, winds and 金額倍數, ordered 鉤速 → 每局時間 → 圈子數 →
   起始資金 → 金額倍數. Each seat uses a distinct full-body icon from `AVATAR_ICONS`, beside the
   rod, in the lobby avatars and in `各家副露` as ICON → ID → live `$` purse → current 門風; 允行 is male, and

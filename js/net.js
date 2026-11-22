@@ -91,20 +91,26 @@ export function createNet() {
     return true;
   }
 
+  // A dead WebRTC connection must never stop local settlement (especially a
+  // 胡): a failed send is dropped here instead of throwing into the win path.
+  function deliver(conn, msg) {
+    if (!conn?.open) return;
+    try { conn.send(msg); } catch { /* peer disappeared mid-send */ }
+  }
+
   function sendToHost(msg) {
-    if (hostConn?.open) hostConn.send(msg);
+    deliver(hostConn, msg);
   }
 
   /** Host-only: send a direct ruling (e.g. a rejected catch) to one seat. */
   function sendToPeer(peerId, msg) {
     if (!hosting) return;
-    const conn = guests.get(peerId);
-    if (conn?.open) conn.send(msg);
+    deliver(guests.get(peerId), msg);
   }
 
   function broadcast(msg, exceptPeerId = null) {
     for (const [peerId, conn] of guests) {
-      if (conn.open && peerId !== exceptPeerId) conn.send(msg);
+      if (peerId !== exceptPeerId) deliver(conn, msg);
     }
   }
 

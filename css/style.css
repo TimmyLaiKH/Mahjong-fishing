@@ -632,7 +632,7 @@ kbd {
 .field { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; }
 .field select { font: inherit; padding: 5px; border-radius: 6px; }
 .field.check { justify-content: flex-start; }
-.settings-quit { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(0, 0, 0, 0.15); }
+.settings-quit { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(0, 0, 0, 0.15); }
 .settings-quit .quit-btn { background: #456; color: #fff; border-color: #789; font-weight: 700; padding: 7px 14px; }
 .duration-controls { display: inline-flex; align-items: center; gap: 6px; }
 .duration-controls input[type='range'] { width: clamp(65px, 11vw, 150px); accent-color: #ffb300; }
