@@ -50,7 +50,8 @@ python3 scripts/process_assets.py
 Deployment is GitHub Pages from `main`. Commit, push, then verify the live site with distinct
 cachebusts (`index.html`, `js/game.js`, `js/payout.js`, `css/style.css`). `index.html` also pins a
 `?v=` version on `css/style.css` and `js/game.js`; bump it whenever those files change so players do
-not keep a stale cached 胡 handler.
+not keep a stale cached 胡 handler. `js/game.js` also pins `./audio.js?v=...`; bump that import when
+the audio helper changes so UI sounds are not cached separately.
 
 ## Repository map
 
@@ -206,7 +207,10 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   it sends no network message and never cancels AI or other seats' claims on the same discard.
   `claimFromBox()` also ignores a passed box. A 胡 never enters the wait-for-ruling path: it calls
   `commitWin()` at once, settling locally and broadcasting `{t:'win'}` so every device ends the
-  hand even if the claim message or host relay is late. Its button is never disabled by
+  hand even if the claim message or host relay is late. `announceWin()` stamps the hand's
+  `roundKey` and repeats the notice at 250/800 ms; the host relays each copy, and receivers ignore
+  stale keys so repeats cannot settle a later hand. A guest that misses `win` entirely still ends
+  the hand from the host's `{t:'match'}` payout fallback. Its button is never disabled by
   `canDeclareClaim()`: a rod in flight or a freshly fished tile must not make 胡 a no-op. Network
   sends are guarded in `net.js` so a dead peer cannot throw into the settlement path. Self wins, concealed kongs and 七花 use the
   enlarged inline `selfWinBar` left of the rod with `胡牌`／`開槓` and `過`／`不開槓` — never a
@@ -223,9 +227,11 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   settle a no-payment draw. Multiplayer settlement switches to `S.WIN` / `S.DRAW_GAME` **before**
   settling or rendering, so a failure in payout/overlay code can never leave rods, AI and the clock
   still running without a settlement screen. All three win paths call `showWinEnd(seat, result, log)`,
-  which wraps the overlay in a fallback and then calls `speakWin()`: `SpeechSynthesisUtterance` with a
-  `zh-HK` voice reads the pattern names and `共 XX 番` (Chinese numerals via `fanInCantonese()`);
-  unsupported browsers simply stay silent. The overlay leads with `X風第 X 局・X 圈`, then `ICON ID 胡牌!` and
+  which wraps the overlay in a fallback and then calls `speakWin(result, seat)`:
+  `SpeechSynthesisUtterance` with a `zh-HK` voice reads the winner's name, pattern names and
+  `共 XX 番` (Chinese numerals via `fanInCantonese()`). `speakAction()` uses the same helper for
+  locally declared 上／碰／槓; unsupported browsers simply stay silent. The overlay leads with
+  `X風第 X 局・X 圈`, then `ICON ID 胡牌!` and
   `formatWinBreakdown()` with its leading `胡牌！` line stripped (the heading already says `胡牌!`);
   `showOverlay({ inlineTiles })` inserts `handEndTiles(result)` between
   the 牌型 bullets and `共 N 番`, so a claimed tile sits at the far right like a self-drawn one.
@@ -278,7 +284,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `房間已滿，請換一個房間。`. A stale PeerJS id with no responding host is rejected after an
   8-second watchdog with `房間已關閉，請重新開房間。`; that code is added to a session-only
   `deadRooms` set and never reopened. Guests stay on the join screen until `welcome`, then see
-  the room screen with the large waiting hint at the top. Clicking the room background must not
+  the room screen with the large waiting hint at the top and a `表情` chip beside 離開房間.
+  Clicking the room background must not
   dismiss it. The solo lobby reuses the same screen with `mode: 'solo'`: four AI icons, editable
   room settings, a `開始遊戲` button, no code/link, and `返回主選單` instead of `離開房間`.
 - **Names.** Solo/host default `幼羚`; joining guests default by seat `允行`, `一心`, `念慈`.
@@ -287,7 +294,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 - **Authority.** The host owns the room code, seat list, fish sea, host-clock timer, catch and
   claim arbitration, AI seats, settings, and match snapshots. Guards keep private hands on each
   device: there is no dealing, no hand validation, and no server. Win results are evaluated
-  locally then broadcast; the host relays and settles with `win` + `match`.
+  locally then broadcast with a `roundKey`; the host relays and settles with `win` + `match`, and
+  `match` alone is enough for a guest to show the terminal overlay if `win` was dropped.
 - **Message types.** `welcome`, `full`, `players`, `name`, `settings`, `start`, `discard`, `sea`,
   `time`, `hook`, `catch`, `catchRejected`, `fishCaught`, `flowers`, `claim`, `claimResult`,
   `meld`, `win`, `match`, `draw`, `emoji`, `rematch`, `rematchStatus`, `backToRoom`, `restartRequest`,
@@ -356,11 +364,17 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   prompt with `可以胡牌！` and a big tile/button, still anchored on the right. Claim action buttons
   stay visible but disabled while the rod is out; the grey `過` dismissal stays enabled and hides
   only its own box.
-- The `表情` chip opens a fixed emoji picker (`emojiPanel`) with 12 emojis; picking one calls
-  `sendEmoji()`, sends `{t:'emoji', seat, emoji}` (host relays to other guests) and appends a
-  `#emojiLayer` bubble beside that seat's avatar using the same offsets as `drawPlayerAvatars()`.
-  The layer is `pointer-events:none` so casts and HUD clicks still work; bubbles remove themselves
-  on `animationend`. The picker closes on outside click, Escape, resize or selection.
+- The `表情` chip opens a fixed emoji picker (`emojiPanel`) with 12 emojis; the same chip and id
+  `roomEmojiBtn` also sit in the waiting-room `room-actions`, available to host and guests before
+  the deal. `toggleEmojiPanel(anchor)` positions the picker under whichever chip was pressed.
+  Picking an emoji calls `sendEmoji()`, sends `{t:'emoji', seat, emoji}` (host relays to other
+  guests) and appends a `#emojiLayer` bubble beside that seat's sea avatar, or beside the matching
+  `.room-avatar` while `body.waiting-room` is active. The layer sits above modals (`z-index:65`) but
+  is `pointer-events:none` so casts, room controls and HUD clicks still work; bubbles remove
+  themselves on `animationend`. The picker closes on outside click, Escape, resize or selection.
+- A document-level click listener plays a short WebAudio click for every enabled `<button>`, and
+  `discard()` plays a tile clap via `music.tile()`. Both live in `js/audio.js`, share the
+  `mf-sound` / `mf-volume` settings, and need no new assets or storage keys.
 - Modals: ordinary modals close on backdrop click, but `overlay`, `loading`, `menuScreen`,
   `joinScreen` and `roomScreen` never do. The in-game 設定／玩法說明／計分 panels and the
   `重新開始投票` overlay are informational — they block input but not simulation. In-game

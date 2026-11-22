@@ -7,7 +7,7 @@ import {
   TILE_IDS, TILE_INFO, FLOWER_IDS, isFlower, loadImages, drawTile,
   createTileElement, tileName,
 } from './tiles.js';
-import { createMusic } from './audio.js';
+import { createMusic } from './audio.js?v=1.4.60';
 import { createNet, randomPlayerId } from './net.js';
 import { settleRound } from './payout.js';
 import {
@@ -31,6 +31,7 @@ const ui = {
   roundInfo: el('roundInfo'), seatWind: el('seatWind'),
   scoreBtn: el('scoreBtn'), moneyCount: el('moneyCount'),
   emojiBtn: el('emojiBtn'), emojiPanel: el('emojiPanel'), emojiLayer: el('emojiLayer'),
+  roomEmojiBtn: el('roomEmojiBtn'),
   scorePanel: el('scorePanel'), scoreRoundInfo: el('scoreRoundInfo'),
   scoreStandings: el('scoreStandings'), scoreHistory: el('scoreHistory'),
   timer: el('timer'),
@@ -503,13 +504,21 @@ function showToast(text, ms = 4500) {
 /** Floating emoji bubbles appear beside each seat's avatar on the sea. */
 function showEmojiBubble(seat, emoji) {
   if (!ui.emojiLayer || !EMOJIS.includes(emoji) || seat < 0 || seat > 3) return;
-  const spread = Math.min(160, view.width / 10);
-  const offsets = [-spread, -spread * 0.45, spread * 0.45, spread];
-  const rect = canvas.getBoundingClientRect();
   const bubble = document.createElement('div');
   bubble.className = 'emoji-bubble';
-  bubble.style.left = `${rect.left + (view.width / 2 + offsets[seat]) * view.scale}px`;
-  bubble.style.top = `${rect.top + 52 * view.scale}px`;
+  const roomAvatar = document.body.classList.contains('waiting-room')
+    && ui.room?.classList.contains('show') ? ui.roomAvatars?.children[seat] : null;
+  if (roomAvatar) {
+    const rect = roomAvatar.getBoundingClientRect();
+    bubble.style.left = `${rect.left + rect.width / 2}px`;
+    bubble.style.top = `${rect.bottom + 8}px`;
+  } else {
+    const spread = Math.min(160, view.width / 10);
+    const offsets = [-spread, -spread * 0.45, spread * 0.45, spread];
+    const rect = canvas.getBoundingClientRect();
+    bubble.style.left = `${rect.left + (view.width / 2 + offsets[seat]) * view.scale}px`;
+    bubble.style.top = `${rect.top + 52 * view.scale}px`;
+  }
   const face = document.createElement('span');
   face.className = 'emoji-face';
   face.textContent = emoji;
@@ -532,9 +541,10 @@ function closeEmojiPanel() {
   if (!ui.emojiPanel) return;
   ui.emojiPanel.hidden = true;
   ui.emojiBtn?.setAttribute('aria-expanded', 'false');
+  ui.roomEmojiBtn?.setAttribute('aria-expanded', 'false');
 }
 
-function toggleEmojiPanel() {
+function toggleEmojiPanel(anchor = ui.emojiBtn) {
   if (!ui.emojiPanel) return;
   if (!ui.emojiPanel.hidden) {
     closeEmojiPanel();
@@ -551,11 +561,14 @@ function toggleEmojiPanel() {
     }
   }
   ui.emojiPanel.hidden = false;
-  ui.emojiBtn?.setAttribute('aria-expanded', 'true');
-  const btn = ui.emojiBtn?.getBoundingClientRect();
+  ui.emojiBtn?.setAttribute('aria-expanded', String(anchor === ui.emojiBtn));
+  ui.roomEmojiBtn?.setAttribute('aria-expanded', String(anchor === ui.roomEmojiBtn));
+  const btn = anchor?.getBoundingClientRect();
   const width = ui.emojiPanel.offsetWidth;
+  const height = ui.emojiPanel.offsetHeight;
   ui.emojiPanel.style.left = `${Math.max(4, Math.min(btn?.left ?? 4, window.innerWidth - width - 4))}px`;
-  ui.emojiPanel.style.top = `${(btn?.bottom ?? 0) + 6}px`;
+  const preferredTop = (btn?.bottom ?? 0) + 6;
+  ui.emojiPanel.style.top = `${Math.max(4, Math.min(preferredTop, window.innerHeight - height - 4))}px`;
 }
 
 function clearNotices() {
@@ -1001,6 +1014,7 @@ function declareKong(kind) {
     return true;
   });
   if (removed !== 4) return;
+  speakAction('kong');
   const meld = { tile: kind, type: 'kong', tiles: [kind, kind, kind, kind] };
   game.melds.push(meld);
   addSeatMeld(game.seat, meld);
@@ -1027,6 +1041,7 @@ function discard(uid) {
   game.turn += 1;
   game.mustDiscard = false;
   game.grabPending = false;
+  music.tile();
   // With bots discarding independently, nothing else advances the player's
   // turn after a discard. Return to casting so fishing can continue.
   setState(S.AWAIT_CAST);
@@ -1634,7 +1649,7 @@ function commitAiWin(seat, result, fanTotal = null, bestFan = null, meta = {}) {
   const winMeta = { discarder: selfDraw ? null : (meta.discarder ?? null), selfDraw };
   if (game.mode === 'multi') {
     if (net.isHost) {
-      net.broadcast({ t: 'win', seat, result, fanTotal: total, bestFan: best, isBot: true, ...winMeta });
+      announceWin({ t: 'win', seat, result, fanTotal: total, bestFan: best, isBot: true, ...winMeta });
     }
     finishMultiWin(seat, result, total, best, winMeta);
     return;
@@ -1760,6 +1775,13 @@ function qualifyingWin(result) {
   if (!result?.isWin) return null;
   const minimum = Number(game.match?.minFan ?? game.matchSetup?.minFan ?? DEFAULT_MIN_FAN);
   return result.totalFan >= minimum ? result : null;
+}
+
+/** Stable id of the hand currently being played, also stored on its payout. */
+function currentRoundKey() {
+  const match = game.match;
+  if (!match) return '';
+  return `${match.handNumber}:${match.repeatCount}:${match.dealerSeat}`;
 }
 
 /** Settle one finished hand and keep the money/dealer state in sync. */
@@ -1890,15 +1912,11 @@ function fanInCantonese(value) {
   return parts.join('').replace(/^一十/, '十').replace(/零+$/, '');
 }
 
-/** Read the winning patterns and fan count aloud in Cantonese. Speech is a
- *  bonus: an unsupported browser or a blocked voice never affects settlement. */
-function speakWin(result) {
-  if (!result?.isWin || typeof SpeechSynthesisUtterance === 'undefined'
-    || typeof speechSynthesis === 'undefined') return;
-  const names = (result.patterns ?? [])
-    .filter((pattern) => pattern && pattern.id !== '重疊扣減' && pattern.name)
-    .map((pattern) => pattern.name);
-  const text = `胡牌，${names.join('、') || '雞糊'}，共 ${fanInCantonese(result.totalFan)} 番。`;
+/** Shared zh-HK speech helper. Speech is a bonus: an unsupported browser or a
+ *  blocked voice never affects gameplay or settlement. */
+function speakCantonese(text) {
+  if (typeof SpeechSynthesisUtterance === 'undefined'
+    || typeof speechSynthesis === 'undefined' || !text) return;
   try {
     speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
@@ -1917,6 +1935,25 @@ function speakWin(result) {
   } catch { /* voice is optional */ }
 }
 
+/** Announce a locally declared 上／碰／槓. 胡 uses speakWin() so the winner,
+ *  patterns and fan count are all read in one sentence. */
+function speakAction(type) {
+  const word = { chow: '上', pung: '碰', kong: '槓' }[type] ?? type;
+  if (!['上', '碰', '槓'].includes(word)) return;
+  speakCantonese(`${word}！`);
+}
+
+/** Read the winner, patterns and fan count aloud when anyone wins. */
+function speakWin(result, seat = game.seat) {
+  if (!result?.isWin) return;
+  const names = (result.patterns ?? [])
+    .filter((pattern) => pattern && pattern.id !== '重疊扣減' && pattern.name)
+    .map((pattern) => pattern.name);
+  const name = scoreSeatName(seat).replace(/\s*\(AI\)\s*$/, '');
+  const text = `胡牌，${name}，${names.join('、') || '雞糊'}，共 ${fanInCantonese(result.totalFan)} 番。`;
+  speakCantonese(text);
+}
+
 /** Every winning seat uses one terminal screen; a broken result or speech
  *  engine must never leave the hand without a settlement overlay. */
 function showWinEnd(seat, result, log) {
@@ -1931,7 +1968,7 @@ function showWinEnd(seat, result, log) {
     console.warn('[mf] 結算畫面顯示失敗', error);
     showOverlay({ title: handEndTitle(seat), message: `共 ${result?.totalFan ?? 0} 番` });
   }
-  speakWin(result);
+  speakWin(result, seat);
 }
 
 function commitWin(result, { discarder = null, selfDraw = null } = {}) {
@@ -1948,7 +1985,7 @@ function commitWin(result, { discarder = null, selfDraw = null } = {}) {
     save('mf-bestfan', bestFan);
     clearClaim();
     clearSelfWin();
-    broadcastOrSend({ t: 'win', seat: game.seat, result, fanTotal, bestFan, ...meta });
+    announceWin({ t: 'win', seat: game.seat, result, fanTotal, bestFan, ...meta });
     finishMultiWin(game.seat, result, fanTotal, bestFan, meta);
     return;
   }
@@ -2173,6 +2210,16 @@ function refreshMultiBots() {
 function broadcastOrSend(msg) {
   if (net.isHost) net.broadcast(msg);
   else net.sendToHost(msg);
+}
+
+/** A win must reach every device even if a WebRTC channel drops one message.
+ *  The round key makes repeats harmless: receivers settle once, then ignore
+ *  duplicates or messages from an older hand. */
+function announceWin(msg) {
+  const notice = { ...msg, roundKey: msg.roundKey ?? currentRoundKey() };
+  broadcastOrSend(notice);
+  setTimeout(() => broadcastOrSend(notice), 250);
+  setTimeout(() => broadcastOrSend(notice), 800);
 }
 
 function roomLink(code) {
@@ -2792,6 +2839,7 @@ function applyClaimResult(msg) {
   }
   if (msg.seat === game.seat) {
     declareOpenMeldMulti(msg.type, msg.tileId, msg.kinds ?? []);
+    speakAction(msg.type);
   } else if (game.aiStates[msg.seat]) {
     applyAiMeldClaim(msg);
   } else if (msg.meld) {
@@ -3435,6 +3483,11 @@ function wireNetEvents() {
   });
 
   net.on('win', (msg) => {
+    // Repeats help surviving a dropped WebRTC message, but a win from an
+    // already finished hand must never settle the next one.
+    const liveKey = currentRoundKey();
+    if (msg.roundKey && msg.roundKey !== liveKey
+      && msg.roundKey !== game.match?.lastPayout?.roundKey) return;
     if (net.isHost && msg.seat !== game.seat) net.broadcast(msg);
     const selfDraw = msg.selfDraw === undefined ? winIsSelfDraw(msg.result) : Boolean(msg.selfDraw);
     finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan, {
@@ -3444,7 +3497,26 @@ function wireNetEvents() {
   });
 
   net.on('match', (msg) => {
-    if (!net.isHost) adoptMatch(msg.match);
+    if (net.isHost) return;
+    const previousKey = game.match?.lastPayout?.roundKey ?? null;
+    adoptMatch(msg.match);
+    const log = game.match?.lastPayout;
+    // A device that missed the win message can still end the hand from the
+    // host's settled payout snapshot, so no seat is left watching rods move.
+    if (!log || log.roundKey === previousKey || game.mode !== 'multi'
+      || game.state === S.WIN || game.state === S.DRAW_GAME) return;
+    if (log.winner === null || log.winner === undefined) {
+      applyMultiDraw();
+      return;
+    }
+    const result = {
+      isWin: true, totalFan: log.fan ?? 0, patterns: [],
+      concealed: [], melds: [], flowers: [], winningTile: null,
+    };
+    finishMultiWin(log.winner, result, undefined, undefined, {
+      discarder: log.discarder ?? null,
+      selfDraw: Boolean(log.selfDraw),
+    });
   });
 
   net.on('draw', () => {
@@ -5155,13 +5227,15 @@ function wireInput() {
   el('restartBtn').addEventListener('click', () => { closeTopModal(); requestRestart(); });
   el('helpBtn').addEventListener('click', () => openModal('helpPanel'));
   el('settingsBtn').addEventListener('click', () => openModal('settingsPanel'));
-  ui.emojiBtn?.addEventListener('click', (event) => {
-    event.stopPropagation();
-    toggleEmojiPanel();
-  });
+  ui.emojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.emojiBtn));
+  ui.roomEmojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.roomEmojiBtn));
   document.addEventListener('click', (event) => {
+    const button = event.target.closest?.('button');
+    if (button && !button.disabled) music.click();
     if (ui.emojiPanel?.hidden) return;
-    if (ui.emojiPanel.contains(event.target) || ui.emojiBtn?.contains(event.target)) return;
+    if (ui.emojiPanel.contains(event.target)
+      || ui.emojiBtn?.contains(event.target)
+      || ui.roomEmojiBtn?.contains(event.target)) return;
     closeEmojiPanel();
   });
   document.addEventListener('keydown', (event) => {
@@ -5294,7 +5368,8 @@ if (new URLSearchParams(location.search).has('test')) {
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
     EMOJIS, sendEmoji, showEmojiBubble, toggleEmojiPanel, closeEmojiPanel,
-    fanInCantonese, speakWin, showWinEnd,
+    fanInCantonese, speakCantonese, speakAction, speakWin, showWinEnd,
+    currentRoundKey, announceWin,
     renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,
     commitRoomDurationText, renderRoom,
     syncHostSeaPause, updateFish, broadcastSeaSnapshot, paused, simulationPaused, modalOpen, keepsSeaMoving,

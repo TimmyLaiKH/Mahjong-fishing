@@ -270,7 +270,7 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
 .emoji-layer {
   position: fixed;
   inset: 0;
-  z-index: 14;
+  z-index: 65;
   overflow: hidden;
   pointer-events: none;
 }

@@ -112,12 +112,56 @@ export function createMusic() {
     }
   }
 
+  // Short synthesised UI effects. They share the music on/off switch and
+  // volume, need no assets, and are created only after a user gesture.
+  let context = null;
+
+  function ensureContext() {
+    if (context) return context;
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return null;
+    try { context = new Ctor(); } catch { return null; }
+    return context;
+  }
+
+  function blip(frequency, duration, wave = 'sine', level = 0.12) {
+    if (!enabled) return;
+    const ctx = ensureContext();
+    if (!ctx) return;
+    try {
+      if (ctx.state === 'suspended') ctx.resume();
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const now = ctx.currentTime;
+      const peak = Math.max(0.001, volume * level);
+      oscillator.type = wave;
+      oscillator.frequency.setValueAtTime(frequency, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(peak, now + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      oscillator.connect(gain).connect(ctx.destination);
+      oscillator.start(now);
+      oscillator.stop(now + duration + 0.03);
+    } catch { /* sound is optional */ }
+  }
+
+  function click() {
+    blip(880, 0.055, 'triangle', 0.1);
+  }
+
+  function tile() {
+    blip(210, 0.085, 'square', 0.16);
+    blip(330, 0.055, 'triangle', 0.1);
+  }
+
   return {
     start,
     suspend,
     resume,
     setEnabled,
     setVolume,
+    click,
+    tile,
     isEnabled: () => enabled,
     isPlaying: () => Boolean(audio && !audio.paused),
     trackName: () => (current >= 0 ? TRACKS[current].name : TRACKS[0].name),
