@@ -2432,6 +2432,8 @@ function startRoomGame() {
 
 function startMultiGame() {
   if (game.mode !== 'multi' || !net.isHost) return;
+  // A fresh match uses the settings chosen in the room, including 起糊.
+  if (game.match?.over) resetMatch(game.matchSetup);
   fillEmptySeatsWithBots();
   const seatWind = seatZeroWind(game.match);
   const msg = {
@@ -2618,10 +2620,15 @@ function handleClaim(msg) {
   const box = game.claimBoxes.find((item) => msg.sourceKey
     ? item.sourceKey === msg.sourceKey
     : item.claimId === msg.claimId);
-  // A late press must not win a tile whose five-second window has already closed.
-  if (box && box.expiresAt !== undefined && box.expiresAt <= Date.now()) return;
-  if (game.mode === 'multi' && (!box || box.resolved)) return;
-  if (!box && !game.aiStates[msg.seat]) return;
+  // A late press must not win a tile whose five-second window has already
+  // closed — but a 胡 is a finished hand, so a few milliseconds of network
+  // latency must not drop it and leave every device playing with no settlement.
+  // Only a claim that another seat already won may still be rejected.
+  const expired = box && box.expiresAt !== undefined && box.expiresAt <= Date.now();
+  if (expired && msg.type !== 'win') return;
+  if (game.mode === 'multi' && box?.resolved) return;
+  if (game.mode === 'multi' && !box && msg.type !== 'win') return;
+  if (!box && !game.aiStates[msg.seat] && msg.type !== 'win') return;
   if (msg.sourceKey) {
     if (game.claimedKeys.has(msg.sourceKey)) return;
     game.claimedKeys.add(msg.sourceKey);
@@ -2716,6 +2723,13 @@ function showHandEndOverlay({ title, message, tiles = [], log = null }) {
         pendingLabel: '已準備，等待其他玩家…',
         onClick: isMulti ? voteRematch : readySoloNextHand,
       },
+      // During a new-match vote the host can return to the lobby and pick the
+      // room settings again before the fresh deal.
+      ...(isMulti && newMatch && net.isHost ? [{
+        label: '房間設定',
+        primary: false,
+        onClick: reopenMultiRoomSettings,
+      }] : []),
       {
         label: '回到主選單',
         primary: false,
@@ -2775,13 +2789,40 @@ function checkRematchReady() {
   if (!net.isHost || ![S.WIN, S.DRAW_GAME].includes(game.state)) return;
   const required = game.rematchRequired.length ? game.rematchRequired : humanSeats();
   if (!required.length || !required.every((seat) => game.rematchVotes.includes(seat))) return;
+  // A finished match returns everyone to the room: the host may choose the
+  // settings again before the new match, just like the first deal.
+  if (game.rematchNewMatch) {
+    reopenMultiRoomSettings();
+    return;
+  }
   game.rematchVotes = [];
   game.rematchRequired = [];
   game.rematchMessage = '';
   game.rematchNewMatch = false;
   ui.overlay.classList.remove('show');
-  if (game.match?.over) resetMatch(game.matchSetup);
   startMultiGame();
+}
+
+/** Host-only: bring every device back to the lobby so the room settings can be
+ *  chosen again for a fresh match. Guests get the same screen with read-only
+ *  controls; the host presses 開始遊戲 when the new settings are ready. */
+function reopenMultiRoomSettings() {
+  if (game.mode !== 'multi' || !net.isHost) return;
+  game.rematchVotes = [];
+  game.rematchRequired = [];
+  game.rematchMessage = '';
+  game.rematchNewMatch = false;
+  ui.overlay.classList.remove('show');
+  for (const id of ['helpPanel', 'settingsPanel', 'scorePanel']) closeModal(id);
+  game.state = S.LOADING;
+  setMultiUIVisibility(false);
+  setWaitingRoom(true);
+  openModal('roomScreen');
+  setRoomMessage('房主正在重新設定房間，完成後請按「開始遊戲」。');
+  game.roomSettings = { ...game.roomSettings, ...game.matchSetup };
+  renderRoom();
+  updateSettingsUI();
+  net.broadcast({ t: 'backToRoom', settings: game.roomSettings });
 }
 
 function addRematchVote(seat) {
@@ -3189,6 +3230,24 @@ function wireNetEvents() {
   net.on('settings', (msg) => {
     game.roomSettings = { ...msg.settings };
     applyMatchSetup(normalizeMatchSetup(msg.settings));
+    renderRoom();
+  });
+
+  net.on('backToRoom', (msg) => {
+    if (net.isHost || game.mode !== 'multi') return;
+    ui.overlay.classList.remove('show');
+    for (const id of ['helpPanel', 'settingsPanel', 'scorePanel']) closeModal(id);
+    game.rematchVotes = [];
+    game.rematchRequired = [];
+    game.rematchMessage = '';
+    game.rematchNewMatch = false;
+    game.state = S.LOADING;
+    setMultiUIVisibility(false);
+    game.roomSettings = { ...msg.settings };
+    applyMatchSetup(normalizeMatchSetup(msg.settings));
+    setWaitingRoom(true);
+    openModal('roomScreen');
+    setRoomMessage('房主正在重新設定房間，完成後請按「開始遊戲」。');
     renderRoom();
   });
 
@@ -4305,6 +4364,7 @@ function updateScoreUI() {
       const pieces = [
         roundInfoText(),
         `金額倍數 ${match.base}×`,
+        `起糊 ${match.minFan ?? game.matchSetup?.minFan ?? 0} 番`,
       ];
       if (match.repeatCount) pieces.push(`連莊 ${match.repeatCount}`);
       if (match.over) pieces.push('比賽結束');

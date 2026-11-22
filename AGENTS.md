@@ -224,14 +224,20 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   standalone line, and `renderStandings()` supplies the ranked 計分 board. `進入下一局` advances
   solo immediately; multiplayer requires every human to press `準備下一局` (AI auto-agrees).
   A finished match swaps the button to `開新一場` in both modes, keeping the multiplayer vote.
-  `回到主選單` quits in both modes. Mid-hand `重來這局`
+  In multiplayer the host also gets a `房間設定` button during that vote; when every human has
+  voted (or the host presses it early), `reopenMultiRoomSettings()` broadcasts `backToRoom` and
+  returns all devices to the waiting room with host-only controls re-enabled. `startMultiGame()`
+  calls `resetMatch()` when the finished match is left, so the newly chosen settings (including
+  起糊) apply to the fresh match. `回到主選單` quits in both modes. Mid-hand `重來這局`
   opens a separate `重新開始投票` requiring all humans; anyone can cancel. Requester is stored as
   a seat so `你` appears only on that device; each seat is marked `（你）` in vote lists.
 - **Scoring integration.** `normalizeMatchSetup()` clamps money `1–100000000` (default 20),
   winds `1–4` (default 1), the UI-named 金額倍數 `1–100` (default 1×) and 起糊 `minFan` `0–13`
   (default 0 = no minimum). `qualifyingWin()` is the only game-side 起糊 gate: every self-draw,
   claim, flower and AI win decision calls it, so a hand below the chosen minimum is never offered
-  or settled; 0 keeps the original behaviour. `minFan` rides in `roomSettings`, `matchSetup`,
+  or settled; 0 keeps the original behaviour. `handleClaim()` never silently drops a 胡 just
+  because the host's claim box expired in transit: only a tile already claimed by another seat is
+  rejected, so latency cannot leave the hand running with no settlement. `minFan` rides in `roomSettings`, `matchSetup`,
   `match`, `cloneMatch()` and `adoptMatch()`, so guests use the host's rule. `resetMatch()` builds
   the four-purse runtime state; `cloneMatch()` /
   `adoptMatch()` snapshot it for the network. `recordRoundResult()` is the only settlement
@@ -244,7 +250,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   pre-settlement `handNumber` stored by `recordRoundResult()`, so the end overlay names the hand
   that just finished. The HUD uses a frozen `hudRoundInfo` captured in `startGame()`, so the top
   line keeps showing the current hand until the next hand actually starts; the 計分 panel still
-  shows the latest match state. `renderStandings()` is shared by the 計分 modal and overlay.
+  shows the latest match state and adds `起糊 N 番` from the match so players can see the deal's
+  minimum. `renderStandings()` is shared by the 計分 modal and overlay.
   Solo lobby score settings lock once `match.active`; 聯機 uses host lobby controls only.
 - **Test hook.** `window.__mf` is created only when the URL contains `test` and exposes the
   broad internal surface used by browser probes (`game`, `S`, `view`, `startFromMenu`,
@@ -274,8 +281,10 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   locally then broadcast; the host relays and settles with `win` + `match`.
 - **Message types.** `welcome`, `full`, `players`, `name`, `settings`, `start`, `discard`, `sea`,
   `time`, `hook`, `catch`, `catchRejected`, `fishCaught`, `flowers`, `claim`, `claimResult`,
-  `meld`, `win`, `match`, `draw`, `rematch`, `rematchStatus`, `restartRequest`, `restartVote`,
-  `restartCancel`, `restartStatus`, `restartNow`, `leave`, `hostGone`, `notice`. Host re-stamps guest
+  `meld`, `win`, `match`, `draw`, `rematch`, `rematchStatus`, `backToRoom`, `restartRequest`,
+  `restartVote`, `restartCancel`, `restartStatus`, `restartNow`, `leave`, `hostGone`, `notice`.
+  `backToRoom` carries the host's current `settings` and returns every device to the read-only
+  waiting room so the host can pick settings again for a new match. Host re-stamps guest
   discard deadlines with its own clock; guests apply `clockOffset` so claim timers end together
   and the round timer keeps counting when the host changes tabs.
 - **Sea sync.** Fish x is a 0..1 sea fraction and vx a fraction of fixed `REFERENCE_W = 1920`
