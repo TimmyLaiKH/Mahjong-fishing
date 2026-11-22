@@ -305,7 +305,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   player name, music and 回到主選單 — 鉤速 (default 1.0×) and 每局時間 (default 05:00) live in
   the solo/聯機 room alongside money, winds and 金額倍數, ordered 鉤速 → 每局時間 → 圈子數 →
   起始資金 → 金額倍數. Each seat uses a distinct full-body icon from `AVATAR_ICONS`, beside the
-  rod, in the lobby avatars and in `各家副露` as ICON → ID → current 門風; 允行 is male, and
+  rod, in the lobby avatars and in `各家副露` as ICON → ID → live `$` purse → current 門風; 允行 is male, and
   一心 and 念慈 are female.
 - `#hud` has a fixed `--hud-height`, `overflow: hidden` and a grid that distributes spare
   vertical space. Status, toast, claim boxes, meld rows, flowers, hand, score UI and modals must
@@ -318,8 +318,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `hookPositionFor()` clamps only at half a tile so the hook still reaches the edge without
   leaving the canvas.
 - `各家副露` sits above your own 副露 (flowers and concealed kongs), below status/toast and above
-  the hand; it is always expanded (never collapsible) and lists only the other three seats' melds
-  and flower counts with original tile sizes. Your own flowers and concealed kongs stay in the
+  the hand; it is always expanded (never collapsible) and lists only the other three seats' live
+  `$` purse, melds and flower counts with original tile sizes. `updateScoreUI()` refreshes these
+  rows after every settlement. Your own flowers and concealed kongs stay in the
   HUD flower/meld panels. The `打出 → 暫無聽牌` preview row keeps a
   full tile image of height. Mouse users discard with one click; on touch-only devices
   `isTouchOnly()` makes the first tap select a tile (via `selectDiscard`) and only a second tap on

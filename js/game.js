@@ -3475,10 +3475,13 @@ function renderMeldsPanel() {
     const name = document.createElement('span');
     name.className = 'meld-row-name';
     name.textContent = playerDisplayName(player);
+    const money = document.createElement('span');
+    money.className = 'meld-row-money';
+    money.textContent = moneyText(game.match?.money[seat] ?? 0);
     const wind = document.createElement('span');
     wind.className = 'meld-row-wind';
     wind.textContent = TILE_INFO[seatWindOf(seat)]?.name ?? '';
-    row.append(icon, name, wind);
+    row.append(icon, name, money, wind);
 
     const flowers = game.seatFlowers[seat] ?? flowersForSeat(seat) ?? [];
     if (flowers.length) {
@@ -4299,6 +4302,8 @@ function updateScoreUI() {
       }
     }
   }
+  // The 各家副露 rows also carry each opponent's live purse.
+  renderMeldsPanel();
 }
 
 function updateHUD() {

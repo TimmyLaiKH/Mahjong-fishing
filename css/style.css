@@ -254,6 +254,7 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
 .meld-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .meld-row-icon { font-size: 20px; line-height: 1; }
 .meld-row-name { min-width: 4em; font-weight: 700; color: #d7f5ff; }
+.meld-row-money { color: #a9e5ff; font-weight: 700; }
 .meld-row-wind { color: #ffe58f; font-weight: 700; }
 .meld-row-empty { opacity: 0.65; }
 .meld-row .tile-img img { height: clamp(20px, 3vh, 34px); width: auto; }
