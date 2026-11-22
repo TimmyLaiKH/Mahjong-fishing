@@ -234,7 +234,11 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   emits only the payment/連莊 lines; `handEndMessage()` adds the breakdown, and
   `matchEndMessage()` supplies the large match-over notice. `moneyText()` prefixes every displayed
   purse or payout with `$`. `roundInfoText()` supplies `X風第 X 局・X 圈` to the HUD top line,
-  計分 panel and end overlay; `renderStandings()` is shared by the 計分 modal and overlay.
+  計分 panel and end overlay. With a settled `log` it uses the log's `windIndex` and the
+  pre-settlement `handNumber` stored by `recordRoundResult()`, so the end overlay names the hand
+  that just finished. The HUD uses a frozen `hudRoundInfo` captured in `startGame()`, so the top
+  line keeps showing the current hand until the next hand actually starts; the 計分 panel still
+  shows the latest match state. `renderStandings()` is shared by the 計分 modal and overlay.
   Solo lobby score settings lock once `match.active`; 聯機 uses host lobby controls only.
 - **Test hook.** `window.__mf` is created only when the URL contains `test` and exposes the
   broad internal surface used by browser probes (`game`, `S`, `view`, `startFromMenu`,

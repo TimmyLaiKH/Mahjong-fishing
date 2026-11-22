@@ -221,6 +221,10 @@ game.roomSettings = {
 let unloadNotified = false;
 const resetUnloadNotice = () => { unloadNotified = false; };
 
+// The HUD round line stays on the hand that is being played until the next
+// hand actually starts; settlement must not flip it while the end overlay is up.
+let hudRoundInfo = '';
+
 function readNumber(key) {
   try { return Number(localStorage.getItem(key)) || 0; } catch { return 0; }
 }
@@ -356,7 +360,7 @@ function roundInfoText(log = null) {
   if (!match) return '';
   const windIndex = log ? (log.windIndex ?? 0) : windIndexFor(match);
   const wind = WINDS[windIndex] ?? WINDS[0];
-  const hand = log ? windIndex * 4 + 1 : match.handNumber % 4 + 1;
+  const hand = log ? ((log.handNumber ?? 0) % 4) + 1 : (match.handNumber % 4) + 1;
   return `${TILE_INFO[wind]?.name ?? wind}風第 ${hand} 局・${match.winds} 圈`;
 }
 
@@ -692,6 +696,7 @@ function startGame({ keepTurn = false, preset = null } = {}) {
     );
   }
   sortHand();
+  hudRoundInfo = roundInfoText();
   updateHUD();
   let awaitingFlowerDecision = false;
   if (openingFlowerWin) {
@@ -1702,6 +1707,9 @@ function recordRoundResult({ winner = null, discarder = null, result = null, sel
     totalWinds: match.winds,
   });
   settled.log.roundKey = roundKey;
+  // Keep the finished hand's number for the end-overlay heading (the match
+  // state below immediately advances to the upcoming hand).
+  settled.log.handNumber = match.handNumber;
   match.money = settled.money;
   match.dealerSeat = settled.dealerSeat;
   match.repeatCount = settled.repeatCount;
@@ -4252,7 +4260,7 @@ function renderStandings(container) {
 }
 
 function updateScoreUI() {
-  if (ui.roundInfo) ui.roundInfo.textContent = roundInfoText();
+  if (ui.roundInfo) ui.roundInfo.textContent = hudRoundInfo || roundInfoText();
   if (ui.moneyCount) {
     ui.moneyCount.textContent = game.match
       ? moneyText(game.match.money[game.seat] ?? 0) : '—';
@@ -5052,7 +5060,8 @@ if (new URLSearchParams(location.search).has('test')) {
     askRoomCode, setPlayerName, leaveRoom,
     voteRematch, showMultiEndOverlay, showHandEndOverlay, readySoloNextHand, handEndMessage,
     handEndTitle, handEndTiles, showOverlay, matchEndMessage, isTouchOnly, selectDiscard,
-    roundInfoText, moneyText, renderStandings, requestRestart, startRestartVote, voteRestart, cancelRestart,
+    roundInfoText, getHudRoundInfo: () => hudRoundInfo, moneyText, renderStandings,
+    requestRestart, startRestartVote, voteRestart, cancelRestart,
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,
     renderMeldsPanel, handleCatchRequest, applyFishCaught, applySea, applyHook,
     aiTick, createAiState, resetAiRod, publishDiscard, scheduleAiClaims, bestAiClaim,
