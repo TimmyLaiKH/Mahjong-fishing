@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/style.css?v=1.4.60" />
+<link rel="stylesheet" href="css/style.css?v=1.4.62" />
 </head>
 <body>
 <canvas id="game" aria-label="釣魚遊戲畫面"></canvas>
@@ -122,6 +122,9 @@
     </label>
     <div id="roomAvatars" class="room-avatars" aria-label="玩家頭像"></div>
     <div id="roomPlayers" class="room-players"></div>
+    <div class="room-emoji-row">
+      <button id="roomEmojiBtn" class="secondary" type="button" aria-haspopup="true" aria-expanded="false">表情</button>
+    </div>
     <p id="roomGuestInfo" class="room-guest-info" hidden>(由房主設定)</p>
     <div id="roomHostControls" class="room-host-controls">
       <label class="field">鉤速
@@ -183,7 +186,6 @@
       </label>
     </div>
     <div class="room-actions">
-      <button id="roomEmojiBtn" class="secondary" type="button" aria-haspopup="true" aria-expanded="false">表情</button>
       <button id="roomStart" class="primary" type="button" hidden>開始遊戲</button>
       <button id="roomLeave" class="secondary" type="button">離開房間</button>
     </div>
@@ -268,7 +270,9 @@
     <p>Tiles: FluffyStuff / Lilia Chen May Wither, CC0.</p>
     <p><a href="https://github.com/FluffyStuff/riichi-mahjong-tiles" target="_blank" rel="noopener noreferrer">牌面素材（FluffyStuff）</a>　·　<a href="https://github.com/DrCMWither/mahjong-tiles" target="_blank" rel="noopener noreferrer">花牌素材（Lilia Chen May Wither）</a>　·　<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0 1.0</a></p>
     <p>Music: neolein / f-r-a-g-i-l-e / Ehved, CC0, via Freesound.</p>
+    <p>SFX: Detective_Lemons, CC0, via Freesound.</p>
     <p>背景音樂：四段 CC0 中國風器樂，來自 Freesound（neolein、f-r-a-g-i-l-e、Ehved）。</p>
+    <p>打牌音效：<a href="https://freesound.org/s/785585/" target="_blank" rel="noopener noreferrer">tiles fall on corkboard（Detective_Lemons）</a>，CC0；截取單次麻將牌撞擊聲。</p>
     <p><a href="https://freesound.org/s/573972/" target="_blank" rel="noopener noreferrer">A ride through chinese valley</a>　·　<a href="https://freesound.org/s/521367/" target="_blank" rel="noopener noreferrer">blossom valley in paradise</a>　·　<a href="https://freesound.org/s/666269/" target="_blank" rel="noopener noreferrer">lotus guzheng chops Cm</a>　·　<a href="https://freesound.org/s/565196/" target="_blank" rel="noopener noreferrer">Erhu Melodic Loop</a>　·　<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0 1.0</a></p>
     <p>花牌與番數規則：<a href="https://zh.wikipedia.org/wiki/%E9%A6%99%E6%B8%AF%E9%BA%BB%E9%9B%80%E8%83%A1%E7%89%8C%E5%88%97%E8%A1%A8" target="_blank" rel="noopener noreferrer">香港麻雀番牌列表（維基百科）</a>。</p>
     <p>詳見 <code>CREDITS.md</code>。</p>
@@ -276,6 +280,6 @@
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js" onerror="this.onerror=null;this.src='js/vendor/peerjs.min.js'"></script>
-<script type="module" src="js/game.js?v=1.4.60"></script>
+<script type="module" src="js/game.js?v=1.4.62"></script>
 </body>
 </html>

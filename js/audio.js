@@ -112,9 +112,10 @@ export function createMusic() {
     }
   }
 
-  // Short synthesised UI effects. They share the music on/off switch and
-  // volume, need no assets, and are created only after a user gesture.
+  // The click is synthesised; the tile strike is a short CC0 Freesound
+  // recording. Both share the music on/off switch and volume.
   let context = null;
+  const TILE_SOUND = 'assets/audio/mahjong-tile-strike.mp3?v=1.4.61';
 
   function ensureContext() {
     if (context) return context;
@@ -150,8 +151,13 @@ export function createMusic() {
   }
 
   function tile() {
-    blip(210, 0.085, 'square', 0.16);
-    blip(330, 0.055, 'triangle', 0.1);
+    if (!enabled || volume <= 0) return;
+    try {
+      const effect = new Audio(TILE_SOUND);
+      effect.volume = Math.min(1, volume * 1.1);
+      const result = effect.play();
+      if (result?.catch) result.catch(() => {}); // sound is optional
+    } catch { /* sound is optional */ }
   }
 
   return {

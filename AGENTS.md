@@ -64,7 +64,7 @@ the audio helper changes so UI sounds are not cached separately.
 | `js/payout.js` | Pure payout/settlement engine. Node-runnable; no DOM or storage. |
 | `js/game.js` | Browser orchestration: state machine, shared sea, canvas rendering, input, AI, network messages, HUD, settings and score UI. |
 | `js/net.js` | Thin PeerJS wrapper: room IDs, host/guest connections, message relay. |
-| `js/audio.js` | CC0 background-music player: five tracks, random next track, enable/volume controls. |
+| `js/audio.js` | CC0 background-music player plus a short CC0 tile-strike effect; enable/volume controls. |
 | `js/vendor/peerjs.min.js` | Local fallback when the CDN script fails. |
 | `assets/` | Runtime tile faces, underwater background, five MP3s. Source originals live under `assets/tiles/raw/` and `assets/bg/underwater.source.jpg`. |
 | `scripts/` | Asset download and processing scripts. Not part of runtime. |
@@ -294,8 +294,10 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 - **Authority.** The host owns the room code, seat list, fish sea, host-clock timer, catch and
   claim arbitration, AI seats, settings, and match snapshots. Guards keep private hands on each
   device: there is no dealing, no hand validation, and no server. Win results are evaluated
-  locally then broadcast with a `roundKey`; the host relays and settles with `win` + `match`, and
-  `match` alone is enough for a guest to show the terminal overlay if `win` was dropped.
+  locally then broadcast with a `roundKey`; the host relays `win` before checking its own round
+  key, then settles with `win` + `match`, so a guest whose match snapshot is one message behind
+  still reaches the other seats. `match` alone is enough for a guest to show the terminal overlay
+  if `win` was dropped.
 - **Message types.** `welcome`, `full`, `players`, `name`, `settings`, `start`, `discard`, `sea`,
   `time`, `hook`, `catch`, `catchRejected`, `fishCaught`, `flowers`, `claim`, `claimResult`,
   `meld`, `win`, `match`, `draw`, `emoji`, `rematch`, `rematchStatus`, `backToRoom`, `restartRequest`,
@@ -324,8 +326,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `pagehide` and `beforeunload` call `notifyOthersOnExit()`: a closing guest sends `leave` to the
   host, a closing host broadcasts `hostGone` to guests, so seats change immediately instead of
   waiting for the WebRTC timeout. One notice per room is enforced across both events and reset
-  when a new room opens or a guest receives `welcome`. Guest departures show a notice and leave
-  the seat to AI; a deliberate leaver does not see the host-left message.
+  when a new room opens or a guest receives `welcome`. Guest departures show and speak a notice
+  on every remaining device and leave the seat to AI; a host departure speaks the fixed message.
+  A deliberate leaver does not see the host-left message.
 
 ## UI, HUD and layout
 
@@ -365,16 +368,17 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   stay visible but disabled while the rod is out; the grey `過` dismissal stays enabled and hides
   only its own box.
 - The `表情` chip opens a fixed emoji picker (`emojiPanel`) with 12 emojis; the same chip and id
-  `roomEmojiBtn` also sit in the waiting-room `room-actions`, available to host and guests before
-  the deal. `toggleEmojiPanel(anchor)` positions the picker under whichever chip was pressed.
+  `roomEmojiBtn` sits directly under `#roomPlayers` in the waiting room, available to host and
+  guests before the deal. `toggleEmojiPanel(anchor)` positions the picker under whichever chip was
+  pressed.
   Picking an emoji calls `sendEmoji()`, sends `{t:'emoji', seat, emoji}` (host relays to other
   guests) and appends a `#emojiLayer` bubble beside that seat's sea avatar, or beside the matching
   `.room-avatar` while `body.waiting-room` is active. The layer sits above modals (`z-index:65`) but
   is `pointer-events:none` so casts, room controls and HUD clicks still work; bubbles remove
   themselves on `animationend`. The picker closes on outside click, Escape, resize or selection.
-- A document-level click listener plays a short WebAudio click for every enabled `<button>`, and
-  `discard()` plays a tile clap via `music.tile()`. Both live in `js/audio.js`, share the
-  `mf-sound` / `mf-volume` settings, and need no new assets or storage keys.
+- A document-level click listener plays a short WebAudio click for every enabled `<button>`, while
+  `discard()` plays `assets/audio/mahjong-tile-strike.mp3` via `music.tile()`. Both live in
+  `js/audio.js` and share the `mf-sound` / `mf-volume` settings; no storage keys are added.
 - Modals: ordinary modals close on backdrop click, but `overlay`, `loading`, `menuScreen`,
   `joinScreen` and `roomScreen` never do. The in-game 設定／玩法說明／計分 panels and the
   `重新開始投票` overlay are informational — they block input but not simulation. In-game

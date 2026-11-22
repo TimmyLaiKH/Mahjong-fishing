@@ -7,7 +7,7 @@ import {
   TILE_IDS, TILE_INFO, FLOWER_IDS, isFlower, loadImages, drawTile,
   createTileElement, tileName,
 } from './tiles.js';
-import { createMusic } from './audio.js?v=1.4.60';
+import { createMusic } from './audio.js?v=1.4.62';
 import { createNet, randomPlayerId } from './net.js';
 import { settleRound } from './payout.js';
 import {
@@ -499,6 +499,12 @@ function showToast(text, ms = 4500) {
     ui.toast.classList.remove('show');
     game.toastTimer = null;
   }, ms);
+}
+
+/** Room notices are shown and read aloud; unsupported browsers stay silent. */
+function announceNotice(text, ms) {
+  showToast(text, ms);
+  speakCantonese(text);
 }
 
 /** Floating emoji bubbles appear beside each seat's avatar on the sea. */
@@ -3283,6 +3289,7 @@ function showHostLeft() {
     message: '房主已離開，請重新開房間',
     actions: [{ label: '返回主選單', onClick: () => ui.overlay.classList.remove('show') }],
   });
+  speakCantonese('房主已離開，請重新開房間');
 }
 
 function leaveMultiRoom() {
@@ -3483,12 +3490,16 @@ function wireNetEvents() {
   });
 
   net.on('win', (msg) => {
+    // Relay before validating locally: a guest's match snapshot can be one
+    // message behind the host's, but the other seats may still share that
+    // guest's round key. Dropping the notice here would leave them playing
+    // after the winner already settled.
+    if (net.isHost && msg.seat !== game.seat) net.broadcast(msg);
     // Repeats help surviving a dropped WebRTC message, but a win from an
     // already finished hand must never settle the next one.
     const liveKey = currentRoundKey();
     if (msg.roundKey && msg.roundKey !== liveKey
       && msg.roundKey !== game.match?.lastPayout?.roundKey) return;
-    if (net.isHost && msg.seat !== game.seat) net.broadcast(msg);
     const selfDraw = msg.selfDraw === undefined ? winIsSelfDraw(msg.result) : Boolean(msg.selfDraw);
     finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan, {
       discarder: msg.discarder ?? null,
@@ -3607,13 +3618,13 @@ function wireNetEvents() {
     const name = typeof msg.name === 'string' && msg.name.trim()
       ? msg.name : seatLabel(msg.seat);
     const text = `${name} 已離開房間。`;
-    showToast(text);
+    announceNotice(text);
     net.broadcast({ t: 'notice', message: text }, conn?.peer);
     fillSeatWithBot(game.players.find((item) => item.seat === msg.seat));
   });
 
   net.on('notice', (msg) => {
-    if (typeof msg.message === 'string') showToast(msg.message);
+    if (typeof msg.message === 'string') announceNotice(msg.message);
   });
 
   net.on('guestClose', (msg) => {
@@ -3623,7 +3634,7 @@ function wireNetEvents() {
     // A tab can close without sending `leave`; notify the remaining seats in
     // that case too. An explicit leave has already cleared the playerId above.
     const text = `${leaving.name || seatLabel(leaving.seat)} 已離開房間。`;
-    showToast(text);
+    announceNotice(text);
     net.broadcast({ t: 'notice', message: text });
     fillSeatWithBot(leaving);
   });

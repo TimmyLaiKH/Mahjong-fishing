@@ -6,7 +6,7 @@
 - 授權：**CC0 1.0**（公有領域貢獻）。
 - 處理方式：透明牌面疊加在 `Front.png` 上，再縮放為 120×160 的 `assets/tiles/faces/*.png`。原始下載檔保留在 `assets/tiles/raw/`，以便重新產生。
 - 8 張花牌（春、夏、秋、冬、梅、蘭、菊、竹）改用 [DrCMWither/mahjong-tiles](https://github.com/DrCMWither/mahjong-tiles) 的 `tiles-tmp/1f.svg`–`8f.svg`，作者 **Lilia Chen May Wither**；artwork 延展自上述 FluffyStuff 牌面，並以 **CC0 1.0** 發布。原始 SVG 與預先柵格化的 PNG 存放於 `assets/tiles/raw/flowers/`，再由 `scripts/process_assets.py` 疊在上述 CC0 `Front.png` 底圖上並縮放為 120×160 的 `H1.png`–`H8.png`。
-- 「蘭」牌 `H6.png` 上的紅色字樣已由簡體「兰」修正為繁體「蘭」；其餘花牌 artwork 保持原樣。
+- 「蘭」牌 `H6.png` 的紅色字樣已由簡體「兰」修正為繁體「蘭」，並改用與其他花牌相近的楷書筆觸。字形輪廓取自 [LXGW WenKai TC](https://fonts.google.com/specimen/LXGW+WenKai+TC)（SIL Open Font License 1.1），已轉成路徑內嵌於 `6f.svg`；其餘花牌 artwork 保持原樣。
 
 > Tiles: FluffyStuff / Lilia Chen May Wither, CC0.
 
@@ -34,6 +34,12 @@
 - 授權條款：[CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/)。
 - 處理方式：下載 Freesound 的 HQ MP3 預覽檔，原檔放置在 `assets/audio/`，由 `js/audio.js` 隨機播放；每首播完後切換到不同曲目。
 
+## 打牌音效
+
+- 來源：[Detective_Lemons – tiles fall on corkboard](https://freesound.org/s/785585/)，Freesound，原本為電影《mahjong cowboy》錄製的麻將牌碰撞聲。
+- 授權：**CC0 1.0**（公有領域貢獻）。
+- 處理方式：從 HQ MP3 預覽檔截取一次清晰的牌張撞擊，正規化音量並加上極短淡入淡出，輸出為 `assets/audio/mahjong-tile-strike.mp3`；按鈕點擊音仍由 WebAudio 合成。
+
 ## 規則資料
 
 - 花牌、正花、一檯花、花糊與大花糊的番數及風位對應，參考[維基百科「香港麻雀番牌列表」](https://zh.wikipedia.org/wiki/%E9%A6%99%E6%B8%AF%E9%BA%BB%E9%9B%80%E8%83%A1%E7%89%8C%E5%88%97%E8%A1%A8)。
@@ -42,6 +48,7 @@
 ## 字型
 
 - [Noto Sans TC](https://fonts.google.com/noto/specimen/Noto+Sans+TC)，透過 Google Fonts 載入，SIL Open Font License 1.1。
+- 「蘭」花牌的楷書字形輪廓取自 [LXGW WenKai TC](https://fonts.google.com/specimen/LXGW+WenKai+TC)，SIL Open Font License 1.1；字型檔不包含在專案內，只嵌入產生的向量輪廓。
 - 若無法連線，會退回系統字型（PingFang TC / Microsoft JhengHei / system-ui）。
 
 ## 遊戲內標示
@@ -51,5 +58,5 @@
 完整字串：
 
 ```
-Background: Olivier Dugornay / Ifremer, CC BY 4.0, via Wikimedia Commons. Tiles: FluffyStuff / Lilia Chen May Wither, CC0. Music: neolein / f-r-a-g-i-l-e / Ehved, CC0, via Freesound.
+Background: Olivier Dugornay / Ifremer, CC BY 4.0, via Wikimedia Commons. Tiles: FluffyStuff / Lilia Chen May Wither, CC0. Music: neolein / f-r-a-g-i-l-e / Ehved, CC0, via Freesound. SFX: Detective_Lemons, CC0, via Freesound.
 ```

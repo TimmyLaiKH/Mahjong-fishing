@@ -592,6 +592,8 @@ body.waiting-room #meldPanel { visibility: hidden; }
 }
 .room-player.you { background: rgba(140, 29, 29, 0.12); font-weight: 700; }
 .room-player-role { color: #666; font-size: 0.85em; }
+.room-emoji-row { display: flex; justify-content: center; margin: -4px 0 10px; }
+#roomEmojiBtn { background: #fff; color: #8c1d1d; border-color: #8c1d1d; padding: 4px 18px; }
 .room-host-controls { margin: 10px 0; text-align: left; }
 .room-host-controls.readonly .field { opacity: 0.72; }
 .room-host-controls.readonly input,
