@@ -153,7 +153,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   Reference multipliers: 0=1, 1=2, 2=4, 3=8, 4=16, 5=24, 6=32, 7=48, 8=64, 9=96, 10=128,
   11=192, 12=256, 13=384, 14=512, 15=768, 16=1024, 17=1536, 18=2048, 19=3072, 20=4096,
   22=8192, 25=24576.
-- `winPayout()` returns `{ value, each, total, selfDraw }`. 放槍: discarder pays `V`. 自摸:
+- `winPayout()` returns `{ value, each, total, selfDraw }`. 出銃: discarder pays `V`. 自摸:
   each other seat pays `Math.round(V/2)`; winner receives `each × 3`. 自摸 always has at least
   1 fan. Draw pays nothing.
 - `settleRound()` is **non-mutating** and returns `{ money, payout, log, dealerSeat,
@@ -199,7 +199,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   Delayed AI claims are revalidated at execution for the same conditions and recomputed as wins.
   Claim boxes never show `過`. Self wins, concealed kongs and 七花 use the
   enlarged inline `selfWinBar` left of the rod with `胡牌`／`開槓` and `過`／`不開槓` — never a
-  blocking popup. 碰／上／明槓 results show `成功！請先打出一張牌。`-style status text.
+  blocking popup. 碰／上 show `成功！請選一張牌打出。`; 明槓 (solo and multiplayer) shows
+  `明槓成功！再釣一張牌補槓。` and sets `kongChain = 1`, never asking for an immediate discard.
 - **AI seats.** `createAiState()` deals private tiles and a rod to each AI. `aiTick()` sweeps the
   rod, casts to `maxHookLength()`, and checks catches on both descent and return; the tile is
   added in `finishAiReel()` only when the hook reaches the rod, and is drawn on the hook while
@@ -212,7 +213,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `formatWinBreakdown()` with its leading `胡牌！` line stripped (the heading already says `胡牌!`);
   `showOverlay({ inlineTiles })` inserts `handEndTiles(result)` between
   the 牌型 bullets and `共 N 番`, so a claimed tile sits at the far right like a self-drawn one.
-  `payoutSummary()` adds the 放槍／自摸 and 連莊 lines, `matchEndMessage()` is rendered as a larger
+  `payoutSummary()` adds the 出銃／自摸 and 連莊 lines, `matchEndMessage()` is rendered as a larger
   standalone line, and `renderStandings()` supplies the ranked 計分 board. `進入下一局` advances
   solo immediately; multiplayer requires every human to press `準備下一局` (AI auto-agrees).
   A finished match swaps the button to `開新一場` in both modes, keeping the multiplayer vote.
@@ -273,14 +274,15 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 
 ## UI, HUD and layout
 
-- The HUD opens with a centered `X風第 X 局・X 圈` line. Below it the order is
-  **設定 → 玩法說明 → 重來這局** on the left, large centered timer, and **計分 + counters**
-  on the right. Counters read only 門風 and 資金 (with a `$` prefix); 巡, 番數 and 最佳 are not
-  shown during play. The main menu appears before any lobby or game starts. The 設定 panel only
-  contains 鉤速 and 每局時間 (default 05:00); money, winds and 金額倍數 are set only in the
-  solo/聯機 room, ordered 鉤速 → 每局時間 → 圈子數 → 起始資金 → 金額倍數. Each seat uses a
-  distinct full-body icon from `AVATAR_ICONS`, beside the rod, in the lobby avatars and in
-  `各家副露` as ICON → ID → current 門風; 允行 is male, and 一心 and 念慈 are female.
+- The HUD opens with one bar: **設定 → 玩法說明 → 重來這局** on the left, a large centered timer,
+  and **計分 + round block** on the right. The round block stacks `X風第 X 局・X 圈` above
+  counters that read only 門風 and 資金 (with a `$` prefix); 巡, 番數 and 最佳 are not shown
+  during play. The main menu appears before any lobby or game starts. The 設定 panel keeps only
+  player name, music and 回到主選單 — 鉤速 (default 1.0×) and 每局時間 (default 05:00) live in
+  the solo/聯機 room alongside money, winds and 金額倍數, ordered 鉤速 → 每局時間 → 圈子數 →
+  起始資金 → 金額倍數. Each seat uses a distinct full-body icon from `AVATAR_ICONS`, beside the
+  rod, in the lobby avatars and in `各家副露` as ICON → ID → current 門風; 允行 is male, and
+  一心 and 念慈 are female.
 - `#hud` has a fixed `--hud-height`, `overflow: hidden` and a grid that distributes spare
   vertical space. Status, toast, claim boxes, meld rows, flowers, hand, score UI and modals must
   never resize the HUD, canvas or sea; only viewport resizes may change geometry. `resizeCanvas()`
@@ -291,9 +293,10 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   comes first: the floor (`WORLD_H`) or the nearest side (`view.width / 2 - TILE_W / 2`), and
   `hookPositionFor()` clamps only at half a tile so the hook still reaches the edge without
   leaving the canvas.
-- `各家副露` sits above the hand, is always expanded (never collapsible), and lists only the
-  other three seats' melds and flower counts with original tile sizes. Your own flowers and
-  concealed kongs stay in the HUD flower/meld panels. The `打出 → 暫無聽牌` preview row keeps a
+- `各家副露` sits above your own 副露 (flowers and concealed kongs), below status/toast and above
+  the hand; it is always expanded (never collapsible) and lists only the other three seats' melds
+  and flower counts with original tile sizes. Your own flowers and concealed kongs stay in the
+  HUD flower/meld panels. The `打出 → 暫無聽牌` preview row keeps a
   full tile image of height. Mouse users discard with one click; on touch-only devices
   `isTouchOnly()` makes the first tap select a tile (via `selectDiscard`) and only a second tap on
   that same tile call `discard()`, with hover/focus auto-selection disabled so the first tap cannot
@@ -348,7 +351,7 @@ Beyond syntax/tests:
 - Solo: settings editable before the first deal and locked afterwards; `重來這局` preserves turn
   count; money/dealer/winds survive mid-match restart; new match resets purses.
 - Scoring: typed and slider inputs stay in sync (`1–100000000`, `1–4`, `1×–100×`); payout values,
-  放槍/自摸, 連莊, dealer rotation, match winner and history are exact; settlements happen once.
+  出銃/自摸, 連莊, dealer rotation, match winner and history are exact; settlements happen once.
 - 聯機: host controls sync to guests; guests see room info not host controls; room join,
   full/dead room messages, start lock, rematch/restart votes and host disconnect behave as
   specified. Real two-device PeerJS WebRTC smoke tests are still pending; message-level/browser

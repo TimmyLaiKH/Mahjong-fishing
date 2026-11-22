@@ -4,7 +4,7 @@
  * V(f) = 2^f x B                                                  if f <= 4
  * V(f) = 16 x 2^floor((f-4)/2) x (1.5 if (f-4) is odd, else 1) x B  if f >= 5
  *
- * 放槍: the discarder pays V.
+ * 出銃: the discarder pays V.
  * 自摸: each of the other three pays V/2, so the winner gains 1.5 x V.
  * ------------------------------------------------------------------ */
 
@@ -25,7 +25,7 @@ export function payoutValue(fan, base) {
 /**
  * Describe a win's money movement.
  * { value, each, total, selfDraw }
- *   value  — discarder's payment (放槍) or each payer's share (自摸)
+ *   value  — discarder's payment (出銃) or each payer's share (自摸)
  *   each   — per-payer amount
  *   total  — winner's gain
  */

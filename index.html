@@ -28,7 +28,6 @@
 <div id="claimBoxes" class="claim-boxes" hidden aria-label="對手出牌與宣告"></div>
 
 <header id="hud" class="panel">
-  <div id="roundInfo" class="round-info" aria-label="場次"></div>
   <div class="hud-bar">
     <div id="game-options" class="option-row">
       <button id="settingsBtn" class="chip" type="button">設定</button>
@@ -38,23 +37,26 @@
     <div id="timer" class="timer" aria-label="剩餘時間">05:00</div>
     <div class="hud-right">
       <button id="scoreBtn" class="chip" type="button">計分</button>
-      <div id="counters" class="counters">
-        <span>門風 <b id="seatWind">南</b></span>
-        <span>資金 <b id="moneyCount">—</b></span>
+      <div class="round-block">
+        <div id="roundInfo" class="round-info" aria-label="場次"></div>
+        <div id="counters" class="counters">
+          <span>門風 <b id="seatWind">南</b></span>
+          <span>資金 <b id="moneyCount">—</b></span>
+        </div>
       </div>
     </div>
   </div>
 
   <div id="status" role="status" aria-live="polite"></div>
   <div id="toast" role="status" aria-live="polite"></div>
-  <div id="tilesMeta" class="tiles-meta" aria-label="花牌與暗槓">
-    <div id="flowers" class="flowers"></div>
-    <div id="exposedKongs" class="meld-list"></div>
-  </div>
   <section id="meldPanel" class="meld-panel" hidden>
     <div class="meld-title">各家副露</div>
     <div id="meldRows" class="meld-rows"></div>
   </section>
+  <div id="tilesMeta" class="tiles-meta" aria-label="花牌與暗槓">
+    <div id="flowers" class="flowers"></div>
+    <div id="exposedKongs" class="meld-list"></div>
+  </div>
   <div id="hand" class="hand" aria-label="手牌"></div>
   <div id="target" class="target" aria-live="polite"></div>
 </header>
@@ -200,19 +202,6 @@
       <h2>設定</h2>
       <button class="close-btn" data-close="settingsPanel" type="button" aria-label="關閉">✕</button>
     </div>
-    <label class="field">鉤速
-      <span class="duration-controls">
-        <input id="hookSpeed" type="range" min="0.5" max="2" step="0.1" value="1" aria-label="鉤子速度" />
-        <b id="hookSpeedValue">1.0×</b>
-      </span>
-    </label>
-    <label class="field">每局時間
-      <span class="duration-controls">
-        <input id="gameDuration" type="range" min="30" max="1800" step="1" value="300" aria-label="每局時間滑桿" />
-        <b id="gameDurationValue">05:00</b>
-        <input id="gameDurationText" class="duration-text" type="text" inputmode="numeric" value="05:00" aria-label="輸入每局時間（分:秒）" />
-      </span>
-    </label>
     <label class="player-name-input settings-player-name">玩家名稱
       <input id="settingsPlayerName" type="text" maxlength="12" autocomplete="off" aria-label="玩家名稱" value="幼羚" />
     </label>
@@ -226,7 +215,7 @@
     <div class="settings-quit">
       <button id="settingsQuit" class="quit-btn" type="button">回到主選單</button>
     </div>
-    <p class="hint-text">每局時間可在 00:30–30:00 調整：拖曳滑桿或直接輸入「分:秒」（例如 05:00、0:30、30:00），調整後立即重新計時。竿子的左右擺動、出鉤與收鉤速度可用「鉤速」滑桿調整，並會隨巡數與時間逐漸加快；「重來這局」會保留目前巡數。背景音樂音量可在此調整，0% 即靜音。</p>
+    <p class="hint-text">鉤速與每局時間請在開始前的遊戲房間設定（每局時間可輸入 00:30–30:00 的「分:秒」）。竿子會隨巡數與時間逐漸加快；「重來這局」會保留目前巡數。背景音樂音量可在此調整，0% 即靜音。</p>
   </div>
 </section>
 
@@ -240,7 +229,7 @@
     <div id="scoreStandings" class="score-standings"></div>
     <h3>每局派彩紀錄</h3>
     <div id="scoreHistory" class="score-history"></div>
-    <p class="hint-text">放槍由出銃者支付 V；自摸三家各付 V／2。V = 2^番 × B（番 ≤ 4）；番 ≥ 5 時每兩番加倍、單數番先乘 1.5。連莊不推進圈數。</p>
+    <p class="hint-text">出銃時由出銃者支付 V；自摸三家各付 V／2。V = 2^番 × B（番 ≤ 4）；番 ≥ 5 時每兩番加倍、單數番先乘 1.5。連莊不推進圈數。</p>
   </div>
 </section>
 

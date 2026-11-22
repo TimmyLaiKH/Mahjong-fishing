@@ -30,7 +30,7 @@ test('金額倍數線性放大', () => {
   assert.equal(payoutValue(13, 100), 38400);
 });
 
-test('放槍由出銃者支付 V', () => {
+test('出銃由出銃者支付 V', () => {
   assert.deepEqual(winPayout(5, 100, false), {
     value: 2400, each: 2400, total: 2400, selfDraw: false,
   });
@@ -53,7 +53,7 @@ test('自摸從三家扣錢給贏家', () => {
   assert.equal(r.payout.total, 36);
 });
 
-test('放槍只有出銃者付錢', () => {
+test('出銃只有出銃者付錢', () => {
   const r = settleRound({
     money: [1000, 1000, 1000, 1000], winner: 1, discarder: 3,
     fan: 4, base: 1, selfDraw: false, dealerSeat: 0, totalWinds: 4,

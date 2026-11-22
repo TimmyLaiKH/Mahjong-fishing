@@ -57,9 +57,6 @@ const ui = {
   roomStart: el('roomStart'), roomLeave: el('roomLeave'), roomMessage: el('roomMessage'),
   settingsSound: el('settingsSound'),
   musicVolume: el('musicVolume'), musicVolumeValue: el('musicVolumeValue'),
-  gameDuration: el('gameDuration'), gameDurationValue: el('gameDurationValue'),
-  gameDurationText: el('gameDurationText'),
-  hookSpeed: el('hookSpeed'), hookSpeedValue: el('hookSpeedValue'),
   matchStartingMoney: el('matchStartingMoney'), matchStartingMoneyText: el('matchStartingMoneyText'),
   matchStartingMoneyValue: el('matchStartingMoneyValue'),
   matchWinds: el('matchWinds'), matchBase: el('matchBase'), matchBaseText: el('matchBaseText'),
@@ -256,14 +253,6 @@ function parseClock(text) {
     return Number(parts[0]) * 60 + Number(parts[1]);
   }
   return null;
-}
-function commitDurationText() {
-  const parsed = parseClock(ui.gameDurationText.value);
-  if (parsed === null) {
-    ui.gameDurationText.value = formatClock(game.settings.gameSeconds);
-    return;
-  }
-  setGameSeconds(parsed);
 }
 function save(key, value) {
   try { localStorage.setItem(key, String(value)); } catch { /* private mode */ }
@@ -1721,7 +1710,7 @@ function payoutSummary(log = game.match?.lastPayout) {
     if (log.selfDraw) {
       lines.push(`自摸：三家各付 ${moneyText(log.payout.each)}，共得 ${moneyText(log.payout.total)}`);
     } else {
-      lines.push(`放槍：${scoreSeatName(log.discarder)} 支付 ${moneyText(log.payout.value)}`);
+      lines.push(`出銃：${scoreSeatName(log.discarder)} 支付 ${moneyText(log.payout.value)}`);
     }
   } else {
     lines.push('流局：不派彩');
@@ -2327,6 +2316,8 @@ function updateRoomSettings() {
     gameSeconds: Number(ui.roomGameDuration.value),
     ...setup,
   };
+  save('mf-hookspeed', game.roomSettings.hookSpeed);
+  save('mf-gameseconds', game.roomSettings.gameSeconds);
   applyMatchSetup(setup);
   if (game.mode === 'multi') net.broadcast({ t: 'settings', settings: game.roomSettings });
   renderRoom();
@@ -2376,6 +2367,8 @@ function startRoomGame() {
     gameSeconds: Number(ui.roomGameDuration.value),
     ...setup,
   };
+  save('mf-hookspeed', game.roomSettings.hookSpeed);
+  save('mf-gameseconds', game.roomSettings.gameSeconds);
   game.hookSpeed = game.roomSettings.hookSpeed;
   game.settings.gameSeconds = game.roomSettings.gameSeconds;
   resetMatch(setup, game.match?.dealerSeat ?? null);
@@ -2550,11 +2543,14 @@ function declareOpenMeldMulti(type, discardId, kinds) {
   clearClaim();
   clearSelfWin();
   game.lastDraw = null;
-  game.kongChain = 0;
-  game.mustDiscard = true;
+  // 明槓 waits for a replacement hook instead of a forced discard; only
+  // 碰／上 must play a tile before the next claim.
+  game.kongChain = type === 'kong' ? 1 : 0;
+  game.mustDiscard = type !== 'kong';
   game.grabPending = true;
   setState(type === 'kong' ? S.AWAIT_CAST : S.AWAIT_DISCARD);
-  setStatus(`${type === 'pung' ? '碰' : type === 'chow' ? '上' : '明槓'}成功！請先打出一張牌。`);
+  if (type === 'kong') setStatus('明槓成功！再釣一張牌補槓。');
+  else setStatus(`${type === 'pung' ? '碰' : '上'}成功！請選一張牌打出。`);
 }
 
 function handleClaim(msg) {
@@ -4201,7 +4197,7 @@ function updateScoreUI() {
           ? '流局'
           : `${scoreSeatName(log.winner)} ${log.fan} 番・${log.selfDraw
             ? `自摸 三家各 ${moneyText(log.payout.each)}`
-            : `放槍 ${scoreSeatName(log.discarder)} 付 ${moneyText(log.payout.value)}`}`;
+            : `出銃 ${scoreSeatName(log.discarder)} 付 ${moneyText(log.payout.value)}`}`;
         item.textContent = `第 ${log.windIndex * 4 + 1} 局　${detail}${log.dealerWon ? '・連莊' : ''}`;
         ui.scoreHistory.appendChild(item);
       }
@@ -4730,25 +4726,13 @@ function commitMatchBaseText() {
 function updateSettingsUI() {
   renderMatchSettingsUI();
   if (ui.settingsPlayerName) ui.settingsPlayerName.value = game.playerName;
-  ui.gameDuration.value = String(game.settings.gameSeconds);
-  ui.gameDurationValue.textContent = formatClock(game.settings.gameSeconds);
-  ui.gameDurationText.value = formatClock(game.settings.gameSeconds);
   ui.settingsSound.checked = game.settings.sound;
   ui.musicVolume.value = String(Math.round(game.settings.musicVolume * 100));
   ui.musicVolumeValue.textContent = `${Math.round(game.settings.musicVolume * 100)}%`;
-  ui.hookSpeed.value = String(game.hookSpeed);
-  ui.hookSpeedValue.textContent = `${game.hookSpeed.toFixed(1)}×`;
-  // The room host picks these before the round starts; nobody may change them
-  // mid-game or the four screens would drift apart.
-  const locked = game.mode === 'multi' || Boolean(game.match?.active);
-  for (const input of [ui.hookSpeed, ui.gameDuration, ui.gameDurationText]) {
-    if (!input) continue;
-    input.disabled = locked;
-    input.closest('.field')?.classList.toggle('disabled', locked);
-  }
+  // 鉤速與每局時間只在開始前的房間設定，設定面板不再提供。
   // Scoring is chosen before the first deal. Once a solo match is underway it
   // is locked just like the host's room settings.
-  const scoringLocked = locked || Boolean(game.match?.active);
+  const scoringLocked = game.mode === 'multi' || Boolean(game.match?.active);
   for (const input of [
     ui.matchStartingMoney, ui.matchStartingMoneyText, ui.matchWinds,
     ui.matchBase, ui.matchBaseText,
@@ -4782,28 +4766,7 @@ function setMusicVolume(value) {
   save('mf-volume', game.settings.musicVolume);
 }
 
-function setHookSpeed(value) {
-  const speed = Number(value);
-  if (!Number.isFinite(speed)) return;
-  game.hookSpeed = Math.min(2, Math.max(0.5, Math.round(speed * 10) / 10));
-  ui.hookSpeed.value = String(game.hookSpeed);
-  ui.hookSpeedValue.textContent = `${game.hookSpeed.toFixed(1)}×`;
-  save('mf-hookspeed', game.hookSpeed);
-}
-
-function setGameSeconds(value) {
-  const seconds = clampGameSeconds(value);
-  game.settings.gameSeconds = seconds;
-  ui.gameDuration.value = String(seconds);
-  ui.gameDurationValue.textContent = formatClock(seconds);
-  ui.gameDurationText.value = formatClock(seconds);
-  save('mf-gameseconds', seconds);
-  game.timeLeft = seconds;
-  updateHUD();
-}
-
 function applySettings() {
-  setGameSeconds(ui.gameDuration.value);
   setMusicVolume(Number(ui.musicVolume.value) / 100);
   setSoundEnabled(el('settingsSound').checked);
   updateHUD();
@@ -4918,18 +4881,8 @@ function wireInput() {
       }
     });
   }
-  ui.hookSpeed.addEventListener('input', (event) => setHookSpeed(event.target.value));
   ui.musicVolume.addEventListener('input', (event) => setMusicVolume(Number(event.target.value) / 100));
-  for (const id of ['gameDuration', 'settingsSound']) {
-    el(id).addEventListener('change', applySettings);
-  }
-  ui.gameDurationText.addEventListener('change', commitDurationText);
-  ui.gameDurationText.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter') return;
-    event.preventDefault();
-    commitDurationText();
-    ui.gameDurationText.blur();
-  });
+  el('settingsSound').addEventListener('change', applySettings);
   document.addEventListener('keydown', (event) => {
     if (event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar') {
       event.preventDefault();
@@ -5000,7 +4953,7 @@ if (new URLSearchParams(location.search).has('test')) {
     handFrom: (ids) => ids.map((id) => ({ id, uid: game.nextUid++ })),
     setState, resolveDraw, declareKong, commitWin, commitAiWin, endDrawGame, startGame,
     renderHand, renderTarget, updateHUD, findKongTile, hookPosition, music,
-    paceFactor, GAME_SECONDS, MIN_GAME_SECONDS, MAX_GAME_SECONDS, setGameSeconds, formatClock, parseClock,
+    paceFactor, GAME_SECONDS, MIN_GAME_SECONDS, MAX_GAME_SECONDS, formatClock, parseClock,
     HAIDI_SECONDS, winContext, openingWinContext, checkCatch, randomTileKind, analyzeDiscards, selectDiscard,
     finishReel, startCast, renderFlowers, checkInitialSelfDraw, checkAiOpeningWins, hookPositionFor,
     MEMORY_FLIP_CHANCE, MEMORY_FLIP_DELAY, MEMORY_FLIP_DURATION, CLAIM_SECONDS, fishFaceDown,
