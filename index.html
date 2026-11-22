@@ -138,25 +138,25 @@
       <label class="field">圈子數
         <span class="duration-controls">
           <select id="roomWinds" aria-label="房間圈子數">
-            <option value="1">1 圈</option>
+            <option value="1" selected>1 圈</option>
             <option value="2">2 圈</option>
             <option value="3">3 圈</option>
-            <option value="4" selected>4 圈</option>
+            <option value="4">4 圈</option>
           </select>
         </span>
       </label>
       <label class="field">起始資金
         <span class="duration-controls">
-          <input id="roomStartingMoney" type="range" min="1" max="100000000" step="1" value="10000" aria-label="房間起始資金滑桿" />
-          <b id="roomStartingMoneyValue">10,000</b>
-          <input id="roomStartingMoneyText" class="duration-text" type="text" inputmode="numeric" value="10000" aria-label="輸入房間起始資金" />
+          <input id="roomStartingMoney" type="range" min="1" max="100000000" step="1" value="20" aria-label="房間起始資金滑桿" />
+          <b id="roomStartingMoneyValue">20</b>
+          <input id="roomStartingMoneyText" class="duration-text" type="text" inputmode="numeric" value="20" aria-label="輸入房間起始資金" />
         </span>
       </label>
-      <label class="field">底注 B
+      <label class="field">金額倍數
         <span class="duration-controls">
-          <input id="roomBase" type="range" min="1" max="100" step="1" value="1" aria-label="房間底注滑桿" />
+          <input id="roomBase" type="range" min="1" max="100" step="1" value="1" aria-label="房間金額倍數滑桿" />
           <b id="roomBaseValue">1×</b>
-          <input id="roomBaseText" class="duration-text" type="text" inputmode="numeric" value="1" aria-label="輸入房間底注" />
+          <input id="roomBaseText" class="duration-text" type="text" inputmode="numeric" value="1" aria-label="輸入房間金額倍數" />
         </span>
       </label>
     </div>
@@ -183,7 +183,7 @@
       <li>允行、一心、念慈三位對手（聯機時為其他玩家或 AI）各有自己的手牌與釣竿，和大家在同一片海裡搶魚，也能自己胡牌。他們打出的牌會展示五秒；該牌的圖片、出牌者與門風，以及胡／碰／上／明槓按鈕會顯示在釣竿右側（每位對手各有一欄），桿子仍會繼續擺動，你可照常拋竿與打牌。胡、碰、明槓可向任一對手宣告；上只能向你的上家（前一個門風）宣告；逾時自動放棄。</li>
       <li>自己釣牌成胡時，釣竿左側會出現「胡牌／過」提示：選「胡牌」才會結算，選「過」則打出一張牌繼續。集齊七張花牌時也可選「過」拒絕花糊，之後只接受八花胡牌，並於手牌胡牌時加計花糊番。</li>
       <li>所有玩家共用同一片無限魚海：魚的牌種隨機產生，普通牌與花牌維持 4：1 加權；沒有發牌輔助，也沒有四張上限，四家都可能同時搶同一種牌。</li>
-      <li>畫面會顯示胡牌聽牌；打牌階段會顯示目前選中的牌打出後的聽牌。設定的每局時間到仍未胡牌即為「流局」。累計番數與最佳番數會記錄在本機瀏覽器中。點「計分」可看四家資金與每局派彩紀錄；單機在開始前、聯機由房主在大廳設定起始資金、圈子數與底注 B。有人破產或打完指定圈數即結束，資金最多者勝；莊家胡牌可連莊。</li>
+      <li>畫面會顯示胡牌聽牌；打牌階段會顯示目前選中的牌打出後的聽牌。設定的每局時間到仍未胡牌即為「流局」。累計番數與最佳番數會記錄在本機瀏覽器中。點「計分」可看四家資金與每局派彩紀錄；單機在開始前、聯機由房主在大廳設定起始資金、圈子數與金額倍數。有人破產或打完指定圈數即結束，資金最多者勝；莊家胡牌可連莊。</li>
     </ol>
     <h3>常見香港麻雀牌型一覽</h3>
     <p class="hint-text">範例牌型由規則引擎產生並經測試驗證；番數無上限。</p>
@@ -218,28 +218,28 @@
     </label>
     <div class="match-setup">
       <div class="match-setup-title">計分設定（單機遊戲開始前可調整）</div>
-      <label class="field">起始資金
-        <span class="duration-controls">
-          <input id="matchStartingMoney" type="range" min="1" max="100000000" step="1" value="10000" aria-label="起始資金滑桿" />
-          <b id="matchStartingMoneyValue">10,000</b>
-          <input id="matchStartingMoneyText" class="duration-text" type="text" inputmode="numeric" value="10000" aria-label="輸入起始資金（1–100000000）" />
-        </span>
-      </label>
       <label class="field">圈子數
         <span class="duration-controls">
           <select id="matchWinds" aria-label="圈子數">
-            <option value="1">1 圈</option>
+            <option value="1" selected>1 圈</option>
             <option value="2">2 圈</option>
             <option value="3">3 圈</option>
-            <option value="4" selected>4 圈</option>
+            <option value="4">4 圈</option>
           </select>
         </span>
       </label>
-      <label class="field">底注 B
+      <label class="field">起始資金
         <span class="duration-controls">
-          <input id="matchBase" type="range" min="1" max="100" step="1" value="1" aria-label="底注滑桿" />
+          <input id="matchStartingMoney" type="range" min="1" max="100000000" step="1" value="20" aria-label="起始資金滑桿" />
+          <b id="matchStartingMoneyValue">20</b>
+          <input id="matchStartingMoneyText" class="duration-text" type="text" inputmode="numeric" value="20" aria-label="輸入起始資金（1–100000000）" />
+        </span>
+      </label>
+      <label class="field">金額倍數
+        <span class="duration-controls">
+          <input id="matchBase" type="range" min="1" max="100" step="1" value="1" aria-label="金額倍數滑桿" />
           <b id="matchBaseValue">1×</b>
-          <input id="matchBaseText" class="duration-text" type="text" inputmode="numeric" value="1" aria-label="輸入底注（1–100）" />
+          <input id="matchBaseText" class="duration-text" type="text" inputmode="numeric" value="1" aria-label="輸入金額倍數（1–100）" />
         </span>
       </label>
       <p class="hint-text">四人各有相同起始資金。有人破產或打完指定圈數即結束，資金最多者勝。莊家胡牌可連莊。</p>

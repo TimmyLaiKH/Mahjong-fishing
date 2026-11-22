@@ -72,7 +72,8 @@ const net = createNet();
 const MULTI_CLAIM_SECONDS = 5;
 const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const AVATAR_COLORS = ['#a9e5ff', '#ffd27f', '#c8a9ff', '#ff9b9b'];
-const AVATAR_ICONS = ['🧑', '👩', '👨', '🧒'];
+// Full-body icons: neutral player, male 允行, female 一心, female 念慈.
+const AVATAR_ICONS = ['🧍', '🧍‍♂️', '🧍‍♀️', '💃'];
 // Codes that failed to produce a live host this session. PeerJS can leave a
 // stale id registered for a while after the host leaves, so never retry them.
 const deadRooms = new Set();
@@ -113,13 +114,13 @@ const MIN_GAME_SECONDS = 30;
 const MAX_GAME_SECONDS = 1800;
 /** 海底撈月: any tile won within the final 5 seconds; 自摸 is still scored separately. */
 const HAIDI_SECONDS = 5;
-/** Match scoring: one shared stake, a wind limit and a starting purse per seat. */
+/** Match scoring: one shared amount multiplier, a wind limit and a starting purse per seat. */
 const MIN_STARTING_MONEY = 1;
 const MAX_STARTING_MONEY = 100000000;
-const DEFAULT_STARTING_MONEY = 10000;
+const DEFAULT_STARTING_MONEY = 20;
 const MIN_WINDS = 1;
 const MAX_WINDS = 4;
-const DEFAULT_WINDS = 4;
+const DEFAULT_WINDS = 1;
 const MIN_BASE = 1;
 const MAX_BASE = 100;
 const DEFAULT_BASE = 1;
@@ -1045,9 +1046,18 @@ function takeHandTiles(kinds) {
   return takeTilesFromList(game.hand, kinds);
 }
 
-/** A claim on a played tile is only possible while we are free to react. */
+/** A claim needs a 13-tile-equivalent hand: a freshly hooked tile must be
+ *  discarded first, and a successful 碰／上／明槓 also locks claims until then. */
+function handReadyForClaim() {
+  return game.hand.length === Math.max(0, 13 - game.melds.length * 3);
+}
+
+/** A claim on a played tile is only possible while we are free to react.
+ *  胡 stays available while the hook is in the water, but never while a caught
+ *  tile is still waiting to be discarded or a kong replacement is owed. */
 function canDeclareClaim() {
-  if (game.mustDiscard) return false;
+  if (game.mustDiscard || game.lastDraw || game.kongChain > 0) return false;
+  if (!handReadyForClaim()) return false;
   return ![S.LOADING, S.RESOLVE_DRAW, S.WIN, S.DRAW_GAME].includes(game.state);
 }
 
@@ -1365,7 +1375,8 @@ function publishDiscard(seat, tile, isBot) {
 
 function bestAiClaim(seat, tileId, discarderSeat) {
   const state = game.aiStates[seat];
-  if (!state || state.mustDiscard || state.melds.length >= 4) return null;
+  if (!state || state.mustDiscard || state.caught || state.lastDraw || state.kongChain > 0) return null;
+  if (state.hand.length !== Math.max(0, 13 - state.melds.length * 3)) return null;
   const result = claimWinResultFor(seat, tileId);
   if (result.isWin) {
     return {
@@ -1375,6 +1386,7 @@ function bestAiClaim(seat, tileId, discarderSeat) {
       bestFan: Math.max(state.bestFan, result.totalFan),
     };
   }
+  if (state.melds.length >= 4) return null;
   const counts = countTiles(state.hand.map((tile) => tile.id));
   if ((counts[tileId] ?? 0) >= 3) return { type: 'kong', kinds: [tileId, tileId, tileId] };
   if ((counts[tileId] ?? 0) >= 2) return { type: 'pung', kinds: [tileId, tileId] };
@@ -1405,6 +1417,29 @@ function scheduleAiClaims(tile, discarderSeat, sharedSourceKey = null) {
   }
 }
 
+/** Re-check an AI reaction when its delay expires: it may have hooked a tile
+ *  or completed a meld in the meantime, which must invalidate the old claim. */
+function aiClaimStillValid(claim) {
+  const state = game.aiStates[claim.seat];
+  if (!state || game.state === S.WIN || game.state === S.DRAW_GAME) return false;
+  if (state.mustDiscard || state.caught || state.lastDraw || state.kongChain > 0) return false;
+  if (state.hand.length !== Math.max(0, 13 - state.melds.length * 3)) return false;
+  if (claim.type === 'win') {
+    // Flowers or a freshly fished tile can change the result, so evaluate the
+    // still-waiting 13-tile hand against the old discard one more time.
+    const fresh = claimWinResultFor(claim.seat, claim.tileId);
+    if (!fresh.isWin) return false;
+    claim.result = fresh;
+    claim.fanTotal = state.fanTotal + fresh.totalFan;
+    claim.bestFan = Math.max(state.bestFan, fresh.totalFan);
+    return true;
+  }
+  if (state.melds.length >= 4) return false;
+  const counts = countTiles(state.hand.map((tile) => tile.id));
+  const needed = countTiles(claim.kinds ?? []);
+  return Object.keys(needed).every((id) => (counts[id] ?? 0) >= needed[id]);
+}
+
 function aiClaimTick(dt) {
   if (!game.pendingAiClaims.length) return;
   const due = [];
@@ -1416,6 +1451,7 @@ function aiClaimTick(dt) {
   });
   for (const claim of due) {
     if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
+    if (!aiClaimStillValid(claim)) continue;
     handleClaim({
       t: 'claim',
       claimId: claim.claimId,
@@ -1573,6 +1609,7 @@ function declareOpenMeld(type, discardId, handKinds) {
   game.kongChain = 0;
   // The replacement draw (or forced discard) must happen before another claim.
   game.grabPending = true;
+  game.mustDiscard = type !== 'kong';
   if (type === 'kong') {
     game.kongChain = 1;
     setState(S.AWAIT_CAST);
@@ -2120,7 +2157,7 @@ function renderRoom() {
     ui.roomGuestInfo.hidden = isHost;
     if (!isHost) {
       const setup = normalizeMatchSetup(game.roomSettings);
-      ui.roomGuestInfo.textContent = `房主設定：鉤速 ${Number(game.roomSettings.hookSpeed).toFixed(1)}×・每局 ${formatClock(game.roomSettings.gameSeconds)}・起始資金 ${formatMoney(setup.startingMoney)}・${setup.winds} 圈・底注 ${setup.base}×`;
+      ui.roomGuestInfo.textContent = `房主設定：鉤速 ${Number(game.roomSettings.hookSpeed).toFixed(1)}×・每局 ${formatClock(game.roomSettings.gameSeconds)}・起始資金 ${formatMoney(setup.startingMoney)}・${setup.winds} 圈・金額倍數 ${setup.base}×`;
     }
   }
   if (ui.roomHookSpeed) {
@@ -2390,7 +2427,20 @@ function sendClaimMessage(msg) {
 
 function claimFromBox(box, action) {
   if (box.resolved || box.awaiting) return;
-  if (action.type === 'win' ? !canDeclareClaim() : !canDeclareMeld()) return;
+  const bot = { name: box.name, wind: box.wind };
+  // The hand can change while a discard is still inside its five-second
+  // window. Rebuild the actions on press so a stale 上／碰／明槓 button can
+  // never spend tiles we no longer hold, and a newly completed 胡 is offered.
+  const fresh = buildClaimActions(box.tileId, bot, false).find((item) => item.type === action.type
+    && (item.kinds ?? []).join(',') === (action.kinds ?? []).join(','));
+  if (!fresh) {
+    renderClaimBoxes();
+    return;
+  }
+  if (fresh.type === 'win' ? !canDeclareClaim() : !canDeclareMeld()) {
+    renderClaimBoxes();
+    return;
+  }
   box.awaiting = true;
   renderClaimBoxes();
   const msg = {
@@ -2399,14 +2449,14 @@ function claimFromBox(box, action) {
     sourceKey: box.sourceKey,
     seat: game.seat,
     tileId: box.tileId,
-    type: action.type,
-    kinds: action.kinds ?? null,
+    type: fresh.type,
+    kinds: fresh.kinds ?? null,
     discarderSeat: box.seat,
   };
-  if (action.type === 'win') {
-    msg.result = action.result;
-    msg.fanTotal = game.fanTotal + action.result.totalFan;
-    msg.bestFan = Math.max(game.bestFan, action.result.totalFan);
+  if (fresh.type === 'win') {
+    msg.result = fresh.result;
+    msg.fanTotal = game.fanTotal + fresh.result.totalFan;
+    msg.bestFan = Math.max(game.bestFan, fresh.result.totalFan);
   }
   // Wait for the host's first-press-wins ruling before touching our own hand.
   sendClaimMessage(msg);
@@ -2436,7 +2486,13 @@ function declareOpenMeldMulti(type, discardId, kinds) {
 }
 
 function handleClaim(msg) {
-  const box = game.claimBoxes.find((item) => item.claimId === msg.claimId);
+  // AI claims carry an `ai:<seat>:` claim id, so match the shared discard key
+  // first; every human claim carries it too.
+  const box = game.claimBoxes.find((item) => msg.sourceKey
+    ? item.sourceKey === msg.sourceKey
+    : item.claimId === msg.claimId);
+  // A late press must not win a tile whose five-second window has already closed.
+  if (box && box.expiresAt !== undefined && box.expiresAt <= Date.now()) return;
   if (game.mode === 'multi' && (!box || box.resolved)) return;
   if (!box && !game.aiStates[msg.seat]) return;
   if (msg.sourceKey) {
@@ -2454,6 +2510,7 @@ function handleClaim(msg) {
   const result = {
     t: 'claimResult',
     claimId: msg.claimId,
+    sourceKey: msg.sourceKey ?? box?.sourceKey ?? null,
     seat: msg.seat,
     tileId,
     type: msg.type,
@@ -2469,7 +2526,9 @@ function handleClaim(msg) {
 }
 
 function applyClaimResult(msg) {
-  const box = game.claimBoxes.find((item) => item.claimId === msg.claimId);
+  const box = game.claimBoxes.find((item) => msg.sourceKey
+    ? item.sourceKey === msg.sourceKey
+    : item.claimId === msg.claimId);
   if (box) box.resolved = true;
   if (msg.type === 'win') {
     const winMeta = { discarder: msg.discarderSeat ?? null, selfDraw: false };
@@ -3642,7 +3701,7 @@ function drawPlayerAvatars() {
     ctx.arc(x, y, 26, 0, Math.PI * 2);
     ctx.fillStyle = AVATAR_COLORS[seat];
     ctx.fill();
-    ctx.font = '30px sans-serif';
+    ctx.font = '34px sans-serif';
     ctx.fillStyle = '#06384a';
     ctx.fillText(AVATAR_ICONS[seat], x, y + 1);
   }
@@ -3964,7 +4023,7 @@ function updateScoreUI() {
       const pieces = [
         `${TILE_INFO[wind]?.name ?? wind}風第 ${match.handNumber % 4 + 1} 局`,
         `${match.winds} 圈`,
-        `底注 ${match.base}×`,
+        `金額倍數 ${match.base}×`,
       ];
       if (match.repeatCount) pieces.push(`連莊 ${match.repeatCount}`);
       if (match.over) pieces.push('比賽結束');
@@ -4771,6 +4830,7 @@ if (new URLSearchParams(location.search).has('test')) {
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,
     renderMeldsPanel, handleCatchRequest, applyFishCaught, applySea, applyHook,
     aiTick, createAiState, resetAiRod, publishDiscard, scheduleAiClaims, bestAiClaim,
+    canDeclareClaim, canDeclareMeld, handReadyForClaim, claimFromBox, handleClaim, aiClaimStillValid,
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
     renderClaimBoxes, leaveMultiRoom, deadRooms, commitRoomDurationText, renderRoom,

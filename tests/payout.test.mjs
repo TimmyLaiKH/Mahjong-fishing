@@ -21,11 +21,11 @@ const TABLE = [
 test('賠率表與 Wikipedia 一致並延伸到 25 番', () => {
   for (const [fan, expected] of TABLE) {
     assert.equal(payoutMultiplier(fan), expected, `${fan} 番應為 ${expected}`);
-    assert.equal(payoutValue(fan, 1), expected, `${fan} 番底注 1 應為 ${expected}`);
+    assert.equal(payoutValue(fan, 1), expected, `${fan} 番金額倍數 1 應為 ${expected}`);
   }
 });
 
-test('底注倍率線性放大', () => {
+test('金額倍數線性放大', () => {
   assert.equal(payoutValue(5, 100), 2400);
   assert.equal(payoutValue(13, 100), 38400);
 });
