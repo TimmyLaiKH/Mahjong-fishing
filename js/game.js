@@ -1143,8 +1143,8 @@ function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass 
       onClick: () => declareOpenMeld('chow', discardId, combo.tiles),
     });
   }
-  // The 過 button does nothing that the five-second timeout doesn't already do,
-  // so claim boxes never show it (single player included).
+  // The self-win bar offers 過 here; opponent claim boxes add their own pass
+  // button in renderClaimBoxes so it only dismisses that one box.
   if (includePass) actions.push({ label: '過', primary: false, onClick: passClaim });
   return actions;
 }
@@ -2480,7 +2480,7 @@ function addClaimBox(entry) {
     ...entry,
     isBot: entry.isBot ?? Boolean(game.players.find((player) => player.seat === entry.seat)?.isBot),
     expiresAt: claimDeadline(entry),
-    timeLeft: MULTI_CLAIM_SECONDS, resolved: false, awaiting: false,
+    timeLeft: MULTI_CLAIM_SECONDS, resolved: false, awaiting: false, passed: false,
   });
   renderClaimBoxes();
 }
@@ -2490,8 +2490,18 @@ function sendClaimMessage(msg) {
   else net.sendToHost(msg);
 }
 
+/** Dismiss only this opponent's claim box; timers and other boxes keep running. */
+function passClaimBox(box) {
+  if (!box || box.resolved || box.passed) return;
+  box.passed = true;
+  box.awaiting = false;
+  box.timerEl = null;
+  box.progressEl = null;
+  renderClaimBoxes();
+}
+
 function claimFromBox(box, action) {
-  if (box.resolved || box.awaiting) return;
+  if (box.resolved || box.awaiting || box.passed) return;
   const bot = { name: box.name, wind: box.wind };
   // The hand can change while a discard is still inside its five-second
   // window. Rebuild the actions on press so a stale 上／碰／明槓 button can
@@ -3326,7 +3336,7 @@ function renderClaimBoxes() {
     box.tileId, { name: box.name, wind: box.wind }, false, { potential: true },
   );
   const boxes = game.claimBoxes
-    .filter((box) => box.seat !== game.seat && !box.resolved)
+    .filter((box) => box.seat !== game.seat && !box.resolved && !box.passed)
     .map((box) => ({ box, actions: actionsFor(box) }))
     .filter(({ actions }) => actions.length > 0);
   ui.claimBoxes.hidden = boxes.length === 0;
@@ -3362,6 +3372,15 @@ function renderClaimBoxes() {
       button.addEventListener('click', () => claimFromBox(box, action));
       actions.appendChild(button);
     }
+    // 過 is a local dismissal, not a claim: it never blocks other seats or AI
+    // claims on the same discard, and stays usable while the rod is out.
+    const pass = document.createElement('button');
+    pass.type = 'button';
+    pass.textContent = '過';
+    pass.dataset.pass = 'true';
+    pass.disabled = box.awaiting;
+    pass.addEventListener('click', () => passClaimBox(box));
+    actions.appendChild(pass);
     const progress = document.createElement('span');
     progress.className = 'claim-progress';
     progress.style.width = `${box.timeLeft / MULTI_CLAIM_SECONDS * 100}%`;
@@ -4969,7 +4988,7 @@ if (new URLSearchParams(location.search).has('test')) {
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,
     renderMeldsPanel, handleCatchRequest, applyFishCaught, applySea, applyHook,
     aiTick, createAiState, resetAiRod, publishDiscard, scheduleAiClaims, bestAiClaim,
-    canDeclareClaim, canDeclareMeld, handReadyForClaim, claimFromBox, handleClaim, aiClaimStillValid,
+    canDeclareClaim, canDeclareMeld, handReadyForClaim, claimFromBox, passClaimBox, handleClaim, aiClaimStillValid,
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
     renderClaimBoxes, leaveMultiRoom, deadRooms, commitRoomDurationText, renderRoom,

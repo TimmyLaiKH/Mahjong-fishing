@@ -102,9 +102,12 @@ cachebusts (`index.html`, `js/game.js`, `js/payout.js`, `css/style.css`).
   `所有人加入後，請等待房主按下「開始遊戲」。` at the top of the 聯機 room screen.
   The solo lobby instead shows `三位 AI 對手已自動補位，按下「開始遊戲」即可開始。` and hides all
   room-code/share-link UI.
-- **Help and pattern table.** 玩法說明 has exactly six `<li>` items. 牌型一覽 lives inside it and
-  is generated from `PATTERN_TABLE` + `FLOWER_PATTERN_TABLE`; every pattern needs a validated
-  `example` there.
+- **Help and pattern table.** 玩法說明 has exactly six `<li>` items. A footnote outside the list
+  explains the payout using 金額倍數 `B`: `V = 2^番 × B` for 番 ≤ 4, then every two 番 doubles with
+  a 1.5× factor for odd 番; 出銃 pays `V`, 自摸 pays `V／2` each, 流局 pays nothing. 牌型一覽 lives
+  inside it and is generated from `PATTERN_TABLE` + `FLOWER_PATTERN_TABLE`; every pattern needs a
+  validated `example` there. The closing footnote says `碰、上、明槓不計門前清。` without adding
+  the old 自摸-source clause.
 - **No bottom `釣魚` button.** Click/tap the canvas or press Space to cast. Hints are always on;
   terminology is 聽牌, not a hint toggle.
 
@@ -197,7 +200,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   hand with the rod home, no pending kong replacement or forced discard; `canDeclareMeld()` adds
   the four-meld limit.
   Delayed AI claims are revalidated at execution for the same conditions and recomputed as wins.
-  Claim boxes never show `過`. Self wins, concealed kongs and 七花 use the
+  Opponent claim boxes include a local `過` button that only marks that box `passed` and hides it;
+  it sends no network message and never cancels AI or other seats' claims on the same discard.
+  `claimFromBox()` also ignores a passed box. Self wins, concealed kongs and 七花 use the
   enlarged inline `selfWinBar` left of the rod with `胡牌`／`開槓` and `過`／`不開槓` — never a
   blocking popup. 碰／上 show `成功！請選一張牌打出。`; 明槓 (solo and multiplayer) shows
   `明槓成功！再釣一張牌補槓。` and sets `kongChain = 1`, never asking for an immediate discard.
@@ -304,8 +309,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 - Claim bars are anchored above the waterline, not in the HUD: one compact box per opponent with
   tile, name/wind, `N.N 秒`, progress bar and actionable buttons. The self-win/暗槓 bar is larger
   and anchored left of the rod. A claim box offering 胡牌 gets `win-claim`: the same enlarged green
-  prompt with `可以胡牌！` and a big tile/button, still anchored on the right. Buttons stay visible
-  but disabled while the rod is out. No `過` in opponent claim boxes.
+  prompt with `可以胡牌！` and a big tile/button, still anchored on the right. Claim action buttons
+  stay visible but disabled while the rod is out; the grey `過` dismissal stays enabled and hides
+  only its own box.
 - Modals: ordinary modals close on backdrop click, but `overlay`, `loading`, `menuScreen`,
   `joinScreen` and `roomScreen` never do. In-game `回到主選單` quits the round, clears pending
   prompts, sets `LOADING`, and shows the menu. Settings must not mention AI or 番數上限; host
