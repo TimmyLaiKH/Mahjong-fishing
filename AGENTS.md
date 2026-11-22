@@ -1,55 +1,319 @@
 # Project instructions
 
-## Architecture
+## What this project is
 
-- Pure static site: plain HTML, CSS and ES modules. **No build step, framework or bundler.**
-- Serve locally with `python3 -m http.server 8000 --bind 127.0.0.1`, then open `http://localhost:8000/index.html`.
-- `js/rules.js` is the pure rule engine. It must stay runnable in Node and must never import DOM, audio, images or `localStorage`.
-- `js/payout.js` is the pure payout engine: payout table V(f), 放槍／自摸 settlement, 連莊 and match-end state. It must also stay Node-runnable and DOM/`localStorage`-free.
-- `js/game.js` owns state (including match money, dealer continuity and score UI), the shared fish sea, canvas/rendering and input. `js/tiles.js` owns tile IDs/faces. `js/audio.js` owns the CC0 music.
-- `tests/rules.test.mjs` is the source of truth for rules. Every new pattern needs an entry in both `FAN_VALUES` and `PATTERN_TABLE`, plus a validated example and explicit tests. `tests/payout.test.mjs` is the source of truth for the payout table and settlement.
+`Mahjong-fishing` is **香港麻雀釣魚**, a static Hong Kong mahjong fishing game published at
+https://timmylaikh.github.io/Mahjong-fishing/. Four seats cast rods into one shared underwater
+sea, hook random tiles from an endless weighted pool, and race to form a legal winning hand.
+Solo play replaces the other three seats with full AI players; casual 4-player multiplayer uses
+PeerJS P2P room codes. There is no backend, account system, matchmaking service, build step,
+framework or bundler. All gameplay state lives in the browser.
 
-## Verification
+The play link must stay at the top of `README.md`. All player-facing text is **Traditional
+Chinese**. Keep changes small, explicit and testable; this repository has grown through careful
+incremental fixes, each recorded in `CHANGELOG.md`.
 
-Run before committing:
+## Quick start
+
+```sh
+cd /home/timmy/Mahjong-fishing
+python3 -m http.server 8000 --bind 127.0.0.1
+# open http://localhost:8000/index.html?test=1&v=<unique-number>
+```
+
+`?test=1` exposes `window.__mf` for browser probes; it must not change production behaviour.
+Use a fresh cache-busting `v` for every browser check. If `node` is not on PATH use
+`/home/timmy/.local/node/bin/node`.
+
+Before committing, run:
 
 ```sh
 node --check js/rules.js
 node --check js/payout.js
 node --check js/game.js
-node tests/rules.test.mjs
-node tests/payout.test.mjs
+node --check js/net.js
+node tests/rules.test.mjs        # must print 64 通過，0 失敗
+node tests/payout.test.mjs       # must print 12 通過，0 失敗
+git diff --check
 ```
 
-Browser checks should use a cache-busting query such as `?test=1&v=42`. `window.__mf` is exposed only when the URL contains `?test`. Check several widths (320–1366px), console errors, no horizontal overflow, and that both the resting and fully lowered hook stay on screen. For scoring changes also check that the 計分 panel fits and does not scroll horizontally, that solo settings lock after the first deal, that host lobby score controls sync to guests, and that a win/draw updates money, 連莊 and the payout history exactly once on every device.
+`npm test` currently runs **only** `tests/rules.test.mjs`; always run the payout suite explicitly.
+Both suites use a tiny local harness with `process.exitCode`, not an external test framework.
 
-## Game rules and UI invariants
+Regenerating image assets (requires `curl`, `file`, `python3`, Pillow):
 
-- All player-facing text is **Traditional Chinese**. Accumulated fan and best fan stay local records; match money is a separate, per-game amount shown in the HUD and 計分 panel.
-- Endless weighted pool: every ordinary kind has weight 4, every flower kind has weight 1; there is no finite wall and no four-copy cap. Flower IDs are 春／夏／秋／冬／梅／蘭／菊／竹.
-- All four seats share one fish sea. The host owns fish movement and catch arbitration; other seats see ghost hooks. AI seats are full players with private hands, their own hook loop and their own wins. Four plain colored player avatars (no self outline, "你" or name labels) are drawn beside the rod and repeated in the multiplayer waiting room; each ghost hook carries a name label. Concealed-kong decisions are inline on the left of the rod via the self-win bar (`offerSelfWin(null, kongTile, onDecline)`), never a screen popup. The host lobby offers both a slider and a typed `分:秒` clock for the round length, plus starting money / 圈數 / base B controls; a session-level `deadRooms` set prevents rejoining codes whose host never responded, and guests only enter the room screen after a `welcome`. The 副露 panel sits above the hand (original order), is always expanded (never collapsible), and shows melds and flowers for the other three seats only with the original tile sizes/clamp; your own flowers and melds stay in the HUD. The discard-preview row (打出 → 暫無聽牌) keeps enough height for its tile image.
-- Flowers never enter the hand. Reveal them in the HUD flower panel; the next tile is fished manually rather than dealt automatically. 7 flowers = 花糊 (3 fan, includes 自摸), 8 = 大花糊／八仙過海 (8 fan), both instant wins.
-- Flower seat mapping: 東＝春/梅, 南＝夏/蘭, 西＝秋/菊, 北＝冬/竹. 一檯花 suppresses same-series 正花.
-- 海底撈月 (1 fan) is awarded for any win with `game.timeLeft <= 5`, both a self-draw and a win on an opponent's played tile; 自摸 is scored separately when the win is a self-draw. No wall needs to be empty.
-- The opening self-draw is checked once after the 13 ordinary tiles and any supplemental flowers: the dealer wins as 天胡, other seats as 地胡 (13 fan each, including 自摸／門前清). Opening 7/8-flower wins stack the same limit hand. If it does not win, the peeked tiles are not consumed. All four seats, including AI, get this check.
-- Fan cap is always `無上限`; do not add a cap setting. Money is shown only as the four-seat match purse/payout history; do not add a `牌牆` HUD readout or any separate point system.
-- Exact status text when waiting to cast: `拋竿釣起你需要的牌吧！(點擊屏幕)`.
-- There is no bottom `釣魚` button. Click/tap the canvas or press Space to cast. Hints are always on; do not add a hint toggle.
-- 牌型一覽 lives inside the 玩法說明 modal and is generated from `PATTERN_TABLE`.
+```sh
+bash scripts/fetch_assets.sh
+python3 scripts/process_assets.py
+```
 
-## Match scoring and money
+Deployment is GitHub Pages from `main`. Commit, push, then verify the live site with distinct
+cachebusts (`index.html`, `js/game.js`, `js/payout.js`, `css/style.css`).
 
-- Before the first deal the host (or the solo player in 設定) chooses starting money per seat `1–100000000`, number of 圈 `1–4`, and base stake B `1–100`. Sliders and typed inputs must stay in sync; once play starts these values are locked. Multiplayer broadcasts the setup and every settlement snapshot to all seats; settlement is idempotent by round key so relayed win/match messages cannot double-pay.
-- Payouts live only in `js/payout.js`: `V(f) = 2^f × B` for `f <= 4`; `V(f) = 16 × 2^floor((f-4)/2) × (1.5 if (f-4) odd else 1) × B` for `f >= 5`. 放槍: discarder pays `V`. 自摸: each other seat pays `Math.round(V/2)`, winner receives `each × 3` (at least 1 fan). Draw pays nothing. Record one log entry after every hand.
-- 連莊: if the dealer wins, keep `dealerSeat`, increment `repeatCount` and do not advance `handNumber`/wind; otherwise advance the dealer, reset `repeatCount` and advance one hand. Wind assignment derives from `match.dealerSeat` and `match.handNumber`, never from a random per-hand roll.
-- The match ends when any seat's money is `<= 0` or `handNumber >= winds × 4`; the winner is every seat tied for the most money. End overlays show the payout breakdown and winner; the 計分 modal shows standings, current wind/連莊 and payout history. A new match (menu start, or full rematch after a finished match) resets purses with the same setup; mid-match `重來這局` preserves money, dealer and winds.
+## Repository map
 
-## Layout notes
+| Path | Role and constraints |
+| --- | --- |
+| `index.html` | Markup only: canvas, HUD, lobbies, modals, claim bars, score panel, help/settings. No inline CSS or JS. Loads PeerJS from CDN with `js/vendor/peerjs.min.js` fallback, then `js/game.js` as a module. |
+| `css/style.css` | All styling and responsive rules. Fixed HUD height, canvas positioning, claim bars, modals, score UI. |
+| `js/tiles.js` | Node-safe tile IDs, names, image paths and draw helpers. 34 regular kinds + 8 flowers; DOM work only inside functions. |
+| `js/rules.js` | Pure scoring engine. Node-runnable; imports only `tiles.js`; never touches DOM, audio, images, timers or `localStorage`. |
+| `js/payout.js` | Pure payout/settlement engine. Node-runnable; no DOM or storage. |
+| `js/game.js` | Browser orchestration: state machine, shared sea, canvas rendering, input, AI, network messages, HUD, settings and score UI. |
+| `js/net.js` | Thin PeerJS wrapper: room IDs, host/guest connections, message relay. |
+| `js/audio.js` | CC0 background-music player: five tracks, random next track, enable/volume controls. |
+| `js/vendor/peerjs.min.js` | Local fallback when the CDN script fails. |
+| `assets/` | Runtime tile faces, underwater background, five MP3s. Source originals live under `assets/tiles/raw/` and `assets/bg/underwater.source.jpg`. |
+| `scripts/` | Asset download and processing scripts. Not part of runtime. |
+| `tests/rules.test.mjs` | 64 rule tests: T1–T13, table-driven patterns, flowers, weighted pool, 1000-game simulation. |
+| `tests/payout.test.mjs` | 12 payout/settlement tests. |
+| `README.md`, `CHANGELOG.md`, `CREDITS.md`, `AGENTS.md` | Player docs, change history, asset licences, agent instructions. |
 
-- The canvas uses a logical world height of 1080 and a viewport-derived world width. Its CSS `top` is synced to the HUD bottom with `ResizeObserver` so the rod/hook are never hidden. Fish `x` is a 0..1 fraction of the sea and `vx` a fraction of the fixed `REFERENCE_W` (1920) per second, so fish speed never depends on the host's screen size or orientation; whenever the host pauses (hidden tab OR open modal — `paused()`) the sea freezes and `syncHostSeaPause()` advances it by real elapsed wall-clock time on resume, immediately rebroadcasting so guests never snap backwards; the visibilitychange handler also calls it because rAF is throttled while hidden. `startGame()` resets `hostSeaPausedAt` so a completed restart never applies stale pause time to fresh fish. `resizeCanvas()` ignores zero-size canvas dimensions. Claim boxes only render when `buildClaimActions()` is non-empty. AI hooks only add the fish to the hand in `finishAiReel()` once the hook returns to the rod, and carry the caught tile during reeling (also broadcast to guests). The HUD has a fixed CSS height (`--hud-height`) sized to fit the always-expanded meld rows, flowers, hand and discard preview without scrolling; extra vertical space is distributed between rows instead of piling up at the bottom, and HUD contents must never resize the HUD or the sea.
-- Keep the resting hook at the waterline (`ROD_BASE_Y + ROD_LENGTH === WATER_TOP`). Compute full-cast depth from the current rod angle with `maxHookLength()` so the hook reaches `WORLD_H` at every allowed angle, and keep `swingLimit()` bounded by the on-screen horizontal margin.
-- The shoreline is drawn in canvas: mountains, houses, bamboo and a grassy bank. No external image assets are needed for scenery.
+## Core game invariants
+
+- **No finite wall.** The sea and opening tiles use `randomTileKind()` from the endless weighted
+  pool: each of the 34 regular kinds has weight 4, each of the 8 flowers weight 1 (4:1).
+  Sampling is independent; there is no depletion, no wall display, no four-copy cap. The
+  evaluator deliberately allows 5+ identical tiles and four identical tiles as two pairs in
+  七對子. `createWall()` exists as a tested utility but gameplay must not depend on it.
+- **No dealing help.** AI seats are real players with private hands, their own rods, their own
+  fishing and their own decisions. They never read other hands and never receive dealt tiles.
+  `shanten`, `getUsefulTiles` and `getAssistTiles` are engine/test utilities; `game.js` does not
+  import them. Do not reintroduce an assist mode or an AI strength/fan-cap setting.
+- **Flowers are separate.** Flower IDs `H1`–`H8` are 春／夏／秋／冬／梅／蘭／菊／竹. They are
+  revealed in the HUD flower panel, never enter the concealed hand, and never auto-replace a
+  tile. Seat mapping is 東＝春/梅, 南＝夏/蘭, 西＝秋/菊, 北＝冬/竹. A full season or plant
+  series gives 一檯花 (2) and suppresses that series' own 正花. 七花＝花糊 (3, includes 自摸),
+  八花＝大花糊 (8); 七花 can be declined, after which only 八花 wins immediately and a later
+  hand win adds 花糊. 七對子 is never called 花糊.
+- **Every fished tile is a self-draw.** `evaluateHand` defaults `context.selfDraw` to `true`;
+  claim wins pass `selfDraw: false`. 自摸 is scored from the flag, not from meld state.
+- **Opening wins.** After the 13 ordinary tiles and any supplemental flowers, check once for
+  天胡 (dealer) / 地胡 (other seats), both 13 fan including 自摸 and 門前清. A failed check
+  consumes nothing. All four seats, including AI, get the check.
+- **海底撈月.** Any win with `game.timeLeft <= 5` gains 1 fan, self-draw or claim; 自摸 is
+  added separately when applicable. No wall needs to be empty.
+- **Fan cap stays `Infinity`.** `FAN_CAP` and default behaviour never change. `context.fanCap`
+  is only an internal/test override. There is no 番數上限 UI and no separate point system.
+- **Player-facing strings are contractual.** Waiting-to-cast status is exactly
+  `拋竿釣起你需要的牌吧！(點擊屏幕)`. Other fixed strings include `房主已離開`,
+  `房主已離開，請重新開房間`, `房間已滿，請換一個房間。`,
+  `房間已關閉，請重新開房間。`, and
+  `所有人加入後，請等待房主按下「開始遊戲」。` at the top of the room screen.
+- **Help and pattern table.** 玩法說明 has exactly six `<li>` items. 牌型一覽 lives inside it and
+  is generated from `PATTERN_TABLE` + `FLOWER_PATTERN_TABLE`; every pattern needs a validated
+  `example` there.
+- **No bottom `釣魚` button.** Click/tap the canvas or press Space to cast. Hints are always on;
+  terminology is 聽牌, not a hint toggle.
+
+## Rules engine (`js/rules.js`)
+
+Keep it pure and side-effect free. It imports only `./tiles.js`; `tiles.js` also stays
+Node-importable by keeping DOM access inside functions.
+
+Key exports:
+
+- Tile groups: `WINDS`, `DRAGONS`, `TERMINALS`, `ORPHANS`.
+- Scoring tables: `FAN_VALUES` (fan dictionary), `PATTERN_TABLE` (27 ordinary patterns with
+  `desc` and executable `example`), `FLOWER_PATTERN_TABLE` (5 flower patterns), `ABSORBS`
+  (transitive higher-pattern → absorbed-pattern map, including `番子:*` pseudo-keys), `FAN_CAP`.
+- Core: `countTiles`, `normalizeMelds`, `decompose`, `isValidWinningHand`, `isThirteenOrphans`,
+  `isSevenPairs`, `isNineGates`.
+- Flowers: `evaluateFlowers`, `flowerWin`, `withFlowers`, `flowerWinResult`.
+- Evaluation: `evaluateHand`, `findWaits`, `shanten`, `getUsefulTiles`, `getAssistTiles`.
+- Pool/utilities: `createWall`, `randomTileKind`, `shuffle`, `formatWinBreakdown`.
+
+Scoring notes:
+
+- `decompose()` enumerates all 4-sets+pair decompositions from the lowest remaining tile and
+  dedupes them; do not restore the old greedy "first key only" behaviour.
+- `evaluateDecomposition()` scores special/limit hands first, then suit/honour families, then
+  timing and seat patterns. `betterResult()` picks by `totalFan → rawFan → pattern count`.
+- `resolveOverlaps()` drops transitively absorbed patterns and emits `重疊扣減` once per shared
+  sub-pattern with fan `-base × (sharers - 1)`. Attach `includes` for the breakdown text.
+  `海底撈月` never absorbs `自摸`; `天胡`/`地胡` absorb 自摸+門前清; 暗槓 stays concealed;
+  open melds suppress only 門前清. A 番子-only hand is not 雞糊.
+- `formatWinBreakdown()` is the shared zh-Hant text used by win dialogs; it reports **fan only**
+  and must never print money or 分. The game adds payout text separately.
+- Adding a pattern requires entries in both `FAN_VALUES` and `PATTERN_TABLE` (or the flower
+  tables), a validated example, and explicit tests. Preserve the 64-test baseline when adding
+  coverage.
+
+`tests/rules.test.mjs` has six named groups and exactly 64 tests: basic wins/waits, kongs and
+decomposition, fan rules/table, flowers, pool/AI/simulation (including 1000 seeded games), and
+T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and fan within bounds.
+
+## Payout engine (`js/payout.js`)
+
+- `payoutMultiplier(fan)` and `payoutValue(fan, base)` implement
+  `V(f)=2^f×B` for `f<=4` and
+  `V(f)=16×2^floor((f-4)/2)×(1.5 if (f-4) odd else 1)×B` for `f>=5`.
+  Reference multipliers: 0=1, 1=2, 2=4, 3=8, 4=16, 5=24, 6=32, 7=48, 8=64, 9=96, 10=128,
+  11=192, 12=256, 13=384, 14=512, 15=768, 16=1024, 17=1536, 18=2048, 19=3072, 20=4096,
+  22=8192, 25=24576.
+- `winPayout()` returns `{ value, each, total, selfDraw }`. 放槍: discarder pays `V`. 自摸:
+  each other seat pays `Math.round(V/2)`; winner receives `each × 3`. 自摸 always has at least
+  1 fan. Draw pays nothing.
+- `settleRound()` is **non-mutating** and returns `{ money, payout, log, dealerSeat,
+  repeatCount, handNumber, windIndex, over }`. 連莊 keeps the dealer, increments `repeatCount`
+  and does not advance `handNumber`; otherwise dealer advances by one and the hand number
+  increments. Match ends when any seat has `<= 0` money or `handNumber >= winds × 4`; every
+  seat tied for the most money is a winner.
+- Game-side settlement must stay idempotent by
+  `roundKey = ${handNumber}:${repeatCount}:${dealerSeat}` stored on `match.lastPayout`, so relayed
+  win/match messages cannot double-pay. Keep the pure engine free of that runtime detail.
+
+## Game orchestration (`js/game.js`)
+
+- **State machine.** `S` has nine states: `LOADING`, `DEAL`, `AWAIT_CAST`, `CASTING`, `REELING`,
+  `RESOLVE_DRAW`, `AWAIT_DISCARD`, `WIN`, `DRAW_GAME`. The menu and rematch screens are modals,
+  not states. `setState()` clears stale discard highlights, sets the exact status text, selects
+  the just-drawn tile by uid for `AWAIT_DISCARD`, and refreshes the HUD. Exact statuses:
+  `派牌中…`, `拋竿釣起你需要的牌吧！(點擊屏幕)`, `鉤子下降中，看準時機！`, `收線中…`,
+  `檢查牌型…`, `請選一張牌打出（或直接點擊手牌）`, `胡牌！`, `流局`.
+- **Deal.** `startGame()` resets the sea, uids, hands, flowers, melds, river, clocks, votes and
+  kong/claim state; sets `match.active`; derives `roundWind`/`seatWind` from
+  `match.dealerSeat` + `match.handNumber` (never from a random per-hand roll); deals private
+  hands; checks opening flower / 天胡 / 地胡 wins for all seats; spawns fish; then reaches
+  `AWAIT_CAST` (offering an inline concealed-kong prompt first if applicable).
+- **Cast/reel.** Only host/solo (`fishAuthority()`) spawns and moves fish. Casting and reeling
+  both check catches; the host arbitrates first-request-wins, broadcasts `fishCaught`, and
+  rejects stale requests with `catchRejected`. Flowers go to the HUD panel and trigger another
+  fish without consuming a turn; ordinary/kong tiles enter the hand only when the hook returns,
+  then `resolveDraw()` checks win → inline kong prompt → `AWAIT_DISCARD`.
+- **Discard and claims.** `discard()` bumps the turn, publishes a 5-second claim window with a
+  shared `sourceKey`, and returns the human to fishing. `claimBoxes[]` gives each opponent one
+  box; `renderClaimBoxes()` renders a box **only** when `buildClaimActions()` is non-empty.
+  胡／碰／明槓 can target any opponent; 上 only the previous wind's 上家 (label prefix
+  `上家・`). First valid claim wins; a claimant must discard before claiming again; timeout
+  implicitly passes. Claim boxes never show `過`. Self wins, concealed kongs and 七花 use the
+  enlarged inline `selfWinBar` left of the rod with `胡牌`／`開槓` and `過`／`不開槓` — never a
+  blocking popup. 碰／上／明槓 results show `成功！請先打出一張牌。`-style status text.
+- **AI seats.** `createAiState()` deals private tiles and a rod to each AI. `aiTick()` sweeps the
+  rod, casts to `maxHookLength()`, and checks catches on both descent and return; the tile is
+  added in `finishAiReel()` only when the hook reaches the rod, and is drawn on the hook while
+  reeling. AI handles flowers, concealed kongs, self-draw wins, delayed 胡／碰／上／明槓 claims,
+  and discards the tile leaving the most waits. AI names render with ` (AI)`. AI states and
+  ticks exist only on host/solo; the host relays their hooks and actions.
+- **End of hand/match.** `commitWin`, `commitAiWin` and `finishMultiWin` settle through
+  `recordRoundResult()` and show a terminal overlay; `endDrawGame` / `applyMultiDraw` settle a
+  no-payment draw. Solo offers `再玩一局`; multiplayer requires every human to press `再來一局`
+  (AI auto-agrees). Mid-hand `重來這局` opens a separate `重新開始投票` requiring all humans;
+  anyone can cancel. Requester is stored as a seat so `你` appears only on that device; each
+  seat is marked `（你）` in vote lists.
+- **Scoring integration.** `normalizeMatchSetup()` clamps money `1–100000000`, winds `1–4`,
+  base `1–100`. `resetMatch()` builds the four-purse runtime state; `cloneMatch()` /
+  `adoptMatch()` snapshot it for the network. `recordRoundResult()` is the only settlement
+  funnel: it checks `lastPayout.roundKey`, calls pure `settleRound()`, writes money/dealer/
+  repeat/hand/history/over/winner, and has the host broadcast `{t:'match'}`. `payoutSummary()`,
+  `matchEndMessage()` and `withMatchSummary()` produce the overlay/detail text; `updateScoreUI()`
+  fills the HUD purse and 計分 modal (standings, current wind/連莊, payout history).
+  Solo score settings lock once `match.active`; multiplayer uses host lobby controls only.
+- **Test hook.** `window.__mf` is created only when the URL contains `test` and exposes the
+  broad internal surface used by browser probes (`game`, `S`, `view`, `startFromMenu`,
+  `startGame`, `commitWin`, `endDrawGame`, `updateHUD`, scoring helpers, `renderRoom`, `net`,
+  votes, etc.). Do not depend on it in production paths.
+
+## Multiplayer (`js/net.js` and game-side protocol)
+
+- `createNet()` wraps PeerJS with room prefix `mf-`, four-character room codes, host/guest
+  connections, `on`/`emit`, `sendToHost`, `sendToPeer`, `broadcast`, `close`, `isHost`,
+  `available`. `index.html` loads PeerJS from CDN and falls back to `js/vendor/peerjs.min.js`.
+- **Lobby.** `openRoom()` creates a host plus three empty seats; the host toggles AI per seat.
+  Guests fill the first empty seat before replacing AI; four humans means
+  `房間已滿，請換一個房間。`. A stale PeerJS id with no responding host is rejected after an
+  8-second watchdog with `房間已關閉，請重新開房間。`; that code is added to a session-only
+  `deadRooms` set and never reopened. Guests stay on the join screen until `welcome`, then see
+  the room screen with the large waiting hint at the top. Clicking the room background must not
+  dismiss it.
+- **Names.** Solo/host default `幼羚`; joining guests default by seat `允行`, `一心`, `念慈`.
+  Names are editable from menu/lobby/settings, limited to 12 characters, synced via `name`, and
+  AI seats always render ` (AI)`.
+- **Authority.** The host owns the room code, seat list, fish sea, host-clock timer, catch and
+  claim arbitration, AI seats, settings, and match snapshots. Guards keep private hands on each
+  device: there is no dealing, no hand validation, and no server. Win results are evaluated
+  locally then broadcast; the host relays and settles with `win` + `match`.
+- **Message types.** `welcome`, `full`, `players`, `name`, `settings`, `start`, `discard`, `sea`,
+  `time`, `hook`, `catch`, `catchRejected`, `fishCaught`, `flowers`, `claim`, `claimResult`,
+  `meld`, `win`, `match`, `draw`, `rematch`, `rematchStatus`, `restartRequest`, `restartVote`,
+  `restartCancel`, `restartStatus`, `restartNow`, `leave`, `notice`. Host re-stamps guest
+  discard deadlines with its own clock; guests apply `clockOffset` so claim timers end together
+  and the round timer keeps counting when the host changes tabs.
+- **Sea sync.** Fish x is a 0..1 sea fraction and vx a fraction of fixed `REFERENCE_W = 1920`
+  per second. Snapshots every 0.1 s; guests ease toward targets and extrapolate briefly (capped
+  at 30 s). Host pauses fish on hidden tab **or** any open modal and advances by real elapsed
+  time on resume before rebroadcasting, so guests never snap backwards. `startGame()` clears
+  stale pause time. Guest hooks are relayed through the host so all four rods are visible.
+- **Disconnect.** `hostClose` shows exactly `房主已離開` / `房主已離開，請重新開房間` and
+  returns to menu. There is no host migration. Guest departures show a notice and leave the seat
+  to AI; a deliberate leaver does not see the host-left message.
+
+## UI, HUD and layout
+
+- Top HUD order is **設定 → 玩法說明 → 重來這局** on the left, large centered timer, and
+  **計分 + counters** on the right. Counters read 圈風／門風／巡／資金／番數／最佳. The main
+  menu appears before any game starts.
+- `#hud` has a fixed `--hud-height`, `overflow: hidden` and a grid that distributes spare
+  vertical space. Status, toast, claim boxes, meld rows, flowers, hand, score UI and modals must
+  never resize the HUD, canvas or sea; only viewport resizes may change geometry. `resizeCanvas()`
+  syncs CSS `top`/`height` to the HUD bottom with `ResizeObserver`, ignores zero-size dimensions,
+  and keeps the resting hook at the waterline (`ROD_BASE_Y + ROD_LENGTH === WATER_TOP`) with full
+  casts on screen via `maxHookLength()` and `swingLimit()`.
+- `各家副露` sits above the hand, is always expanded (never collapsible), and lists only the
+  other three seats' melds and flower counts with original tile sizes. Your own flowers and
+  concealed kongs stay in the HUD flower/meld panels. The `打出 → 暫無聽牌` preview row keeps a
+  full tile image of height.
+- Claim bars are anchored above the waterline, not in the HUD: one compact box per opponent with
+  tile, name/wind, `N.N 秒`, progress bar and actionable buttons. The self-win/暗槓 bar is larger
+  and anchored left of the rod. No `過` in opponent claim boxes.
+- Modals: ordinary modals close on backdrop click, but `overlay`, `loading`, `menuScreen`,
+  `joinScreen` and `roomScreen` never do. In-game `回到主選單` quits the round, clears pending
+  prompts, sets `LOADING`, and shows the menu. Settings must not mention AI or 番數上限; host
+  hook speed and duration lock after start; music volume saves as `mf-volume`.
+- Exact waiting status, help count, pattern table source and no-bottom-button rules are listed
+  under **Core game invariants**; keep them in sync with `index.html`.
+
+## Assets, audio and credits
+
+- Tile faces are 43 runtime PNGs (34 regular, 8 flowers, 1 back) at 120×160, generated from CC0
+  artwork by FluffyStuff and Lilia Chen May Wither. `H6.png` uses 繁體「蘭」.
+- `assets/bg/underwater.jpg` is under 400 KB, derived from a CC BY 4.0 Wikimedia image by
+  Olivier Dugornay / Ifremer; the game draws mountains, houses, bamboo and grass in canvas, so
+  no extra scenery images are needed.
+- `js/audio.js` plays five CC0 Freesound tracks, switches to a different track after each one,
+  starts only after a user gesture, and supports enable/volume. Music volume is `mf-volume`.
+- `CREDITS.md` is the licence source of truth. The in-game 資料來源 panel must show the required
+  attribution strings and links. Do not add assets with unclear licences.
 
 ## Storage
 
-Only these keys are used: `mf-sound`, `mf-volume`, `mf-fantotal`, `mf-bestfan`, `mf-hookspeed`, `mf-gameseconds`. Match setup and money live in runtime state only — never add a localStorage key for them. There is no AI assist or tile-dealing help; the former `mf-strength`, `mf-fancap` and `mf-assist` keys are no longer read or written. Do not reintroduce `mf-hints` or point-related keys.
+Only these keys may be read or written:
+
+```
+mf-sound  mf-volume  mf-fantotal  mf-bestfan  mf-hookspeed  mf-gameseconds
+```
+
+They cover music on/off, volume, accumulated fan, best fan, hook speed and round length.
+Match setup, money, dealer continuity and payout history live in runtime state only — never add
+a localStorage key for them. Do not reintroduce `mf-strength`, `mf-fancap`, `mf-assist`,
+`mf-hints` or any point-related key.
+
+## Verification checklist
+
+Beyond syntax/tests:
+
+- Use `?test=1&v=...` and check widths 320, 375, 768, 1073 and 1366 px.
+- No console warnings/errors, no horizontal overflow, no HUD scrolling. HUD height stays fixed;
+  status, toast, claim boxes, meld rows, flowers, hand and score UI must not resize the canvas
+  or sea. Only viewport resizes may change geometry.
+- Resting hook sits at the waterline and fully lowered hook stays on screen at every angle.
+- Solo: settings editable before the first deal and locked afterwards; `重來這局` preserves turn
+  count; money/dealer/winds survive mid-match restart; new match resets purses.
+- Scoring: typed and slider inputs stay in sync (`1–100000000`, `1–4`, `1×–100×`); payout values,
+  放槍/自摸, 連莊, dealer rotation, match winner and history are exact; settlements happen once.
+- Multiplayer: host controls sync to guests; guests see room info not host controls; room join,
+  full/dead room messages, start lock, rematch/restart votes and host disconnect behave as
+  specified. Real two-device PeerJS WebRTC smoke tests are still pending; message-level/browser
+  simulations are the current practical check.
+- Deployment: after push, fetch live assets with distinct cachebusts and confirm the new code is
+  served.
