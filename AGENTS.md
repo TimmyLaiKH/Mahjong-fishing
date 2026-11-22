@@ -185,14 +185,17 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   then `resolveDraw()` checks win → inline kong prompt → `AWAIT_DISCARD`.
 - **Discard and claims.** `discard()` bumps the turn, publishes a 5-second claim window with a
   shared `sourceKey`, and returns the human to fishing. `claimBoxes[]` gives each opponent one
-  box; `renderClaimBoxes()` renders a box **only** when `buildClaimActions()` is non-empty.
-  Actions are rebuilt from the live hand, so a tile that becomes winning after the player
-  fishes and discards gains a `胡牌` button inside the same five-second window, and stale
-  上／碰／明槓 buttons disappear instead of spending tiles that are no longer held.
-  胡／碰／明槓 can target any opponent; 上 only the previous wind's 上家 (label prefix
-  `上家・`). First valid claim wins; a claimant must discard before claiming again; timeout
-  implicitly passes. `canDeclareClaim()` requires a 13-tile-equivalent hand with no caught tile,
-  pending kong replacement or forced discard; `canDeclareMeld()` adds the four-meld limit.
+  box; `renderClaimBoxes()` renders a box whenever `buildClaimActions({ potential: true })` is
+  non-empty, even while the hook is out. Potential actions are rebuilt from the live
+  13-tile-equivalent hand, so a tile that becomes winning after the player fishes and discards
+  gains a `胡牌` button inside the same five-second window, and stale 上／碰／明槓 buttons
+  disappear instead of spending tiles that are no longer held. While the rod is out, the box
+  stays visible but every button is disabled; it unlocks when the hook returns empty or when a
+  caught tile has been discarded. 胡／碰／明槓 can target any opponent; 上 only the previous
+  wind's 上家 (label prefix `上家・`). First valid claim wins; a claimant must discard before
+  claiming again; timeout implicitly passes. `canDeclareClaim()` requires a 13-tile-equivalent
+  hand with the rod home, no pending kong replacement or forced discard; `canDeclareMeld()` adds
+  the four-meld limit.
   Delayed AI claims are revalidated at execution for the same conditions and recomputed as wins.
   Claim boxes never show `過`. Self wins, concealed kongs and 七花 use the
   enlarged inline `selfWinBar` left of the rod with `胡牌`／`開槓` and `過`／`不開槓` — never a
@@ -263,9 +266,11 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 
 - Top HUD order is **設定 → 玩法說明 → 重來這局** on the left, large centered timer, and
   **計分 + counters** on the right. Counters read 圈風／門風／巡／資金／番數／最佳. The main
-  menu appears before any lobby or game starts. Room and settings controls are ordered
-  鉤速 → 每局時間 → 圈子數 → 起始資金 → 金額倍數. Each seat uses a distinct full-body icon from `AVATAR_ICONS`,
-  both beside the rod and in the lobby avatars; 允行 is male, and 一心 and 念慈 are female.
+  menu appears before any lobby or game starts. The 設定 panel only contains 鉤速 and 每局時間
+  (default 05:00); money, winds and 金額倍數 are set only in the solo/聯機 room, ordered
+  鉤速 → 每局時間 → 圈子數 → 起始資金 → 金額倍數. Each seat uses a distinct full-body icon from
+  `AVATAR_ICONS`, both beside the rod and in the lobby avatars; 允行 is male, and 一心 and 念慈
+  are female.
 - `#hud` has a fixed `--hud-height`, `overflow: hidden` and a grid that distributes spare
   vertical space. Status, toast, claim boxes, meld rows, flowers, hand, score UI and modals must
   never resize the HUD, canvas or sea; only viewport resizes may change geometry. `resizeCanvas()`

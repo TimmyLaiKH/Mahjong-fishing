@@ -216,34 +216,6 @@
         <input id="gameDurationText" class="duration-text" type="text" inputmode="numeric" value="05:00" aria-label="輸入每局時間（分:秒）" />
       </span>
     </label>
-    <div class="match-setup">
-      <div class="match-setup-title">計分設定（單機遊戲開始前可調整）</div>
-      <label class="field">圈子數
-        <span class="duration-controls">
-          <select id="matchWinds" aria-label="圈子數">
-            <option value="1" selected>1 圈</option>
-            <option value="2">2 圈</option>
-            <option value="3">3 圈</option>
-            <option value="4">4 圈</option>
-          </select>
-        </span>
-      </label>
-      <label class="field">起始資金
-        <span class="duration-controls">
-          <input id="matchStartingMoney" type="range" min="1" max="100000000" step="1" value="20" aria-label="起始資金滑桿" />
-          <b id="matchStartingMoneyValue">20</b>
-          <input id="matchStartingMoneyText" class="duration-text" type="text" inputmode="numeric" value="20" aria-label="輸入起始資金（1–100000000）" />
-        </span>
-      </label>
-      <label class="field">金額倍數
-        <span class="duration-controls">
-          <input id="matchBase" type="range" min="1" max="100" step="1" value="1" aria-label="金額倍數滑桿" />
-          <b id="matchBaseValue">1×</b>
-          <input id="matchBaseText" class="duration-text" type="text" inputmode="numeric" value="1" aria-label="輸入金額倍數（1–100）" />
-        </span>
-      </label>
-      <p class="hint-text">四人各有相同起始資金。有人破產或打完指定圈數即結束，資金最多者勝。莊家胡牌可連莊。</p>
-    </div>
     <label class="player-name-input settings-player-name">玩家名稱
       <input id="settingsPlayerName" type="text" maxlength="12" autocomplete="off" aria-label="玩家名稱" value="幼羚" />
     </label>

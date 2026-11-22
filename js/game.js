@@ -979,19 +979,33 @@ function flowersForSeat(seat) {
   return game.aiStates[seat]?.flowers ?? game.seatFlowers[seat] ?? [];
 }
 
+/** The 13-tile-equivalent hand used while a discard is still claimable. If a
+ *  fish has already been reeled in, wait until that tile is discarded before
+ *  treating it as part of the hand. */
+function claimReadyTiles() {
+  let tiles = game.hand;
+  const uid = game.lastDraw?.uid;
+  if (uid != null) {
+    const index = tiles.findIndex((tile) => tile.uid === uid);
+    if (index !== -1) tiles = tiles.filter((_, i) => i !== index);
+  }
+  return tiles;
+}
+
 /** Winning off a discard is never 自摸; open calls additionally remove 門前清. */
-function claimWinResultFor(seat, discardId) {
+function claimWinResultFor(seat, discardId, tiles = null) {
   const context = seatWinContext(seat, { selfDraw: false });
+  const concealed = tiles ? tiles.map((tile) => tile.id) : handIdsForSeat(seat);
   return withFlowers(evaluateHand({
-    concealed: [...handIdsForSeat(seat), discardId],
+    concealed: [...concealed, discardId],
     melds: meldsForSeat(seat),
     winningTile: discardId,
     context,
   }), flowersForSeat(seat), seatWindOf(seat), game.settings.fanCap, context);
 }
 
-function claimWinResult(discardId) {
-  return claimWinResultFor(game.seat, discardId);
+function claimWinResult(discardId, tiles = null) {
+  return claimWinResultFor(game.seat, discardId, tiles);
 }
 
 function clearClaim() {
@@ -1052,11 +1066,12 @@ function handReadyForClaim() {
   return game.hand.length === Math.max(0, 13 - game.melds.length * 3);
 }
 
-/** A claim on a played tile is only possible while we are free to react.
- *  胡 stays available while the hook is in the water, but never while a caught
- *  tile is still waiting to be discarded or a kong replacement is owed. */
+/** A claim on a played tile is only possible while we are free to react: the
+ *  hook must be home empty, or its tile must already have been discarded. No
+ *  claim may be made while the rod is out, a kong replacement is owed, or a
+ *  forced discard is still pending. */
 function canDeclareClaim() {
-  if (game.mustDiscard || game.lastDraw || game.kongChain > 0) return false;
+  if (game.mustDiscard || game.grabPending || game.lastDraw || game.kongChain > 0) return false;
   if (!handReadyForClaim()) return false;
   return ![S.LOADING, S.RESOLVE_DRAW, S.WIN, S.DRAW_GAME].includes(game.state);
 }
@@ -1068,32 +1083,48 @@ function canDeclareMeld() {
   return game.melds.length < 4 && game.hand.length >= 4;
 }
 
-function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass = false) {
-  const hand = concealedIds();
+/** Build the actions a discard can offer. In `potential` mode the buttons are
+ *  produced even while the rod is out; they are marked disabled so the box stays
+ *  visible and only becomes clickable once the hook is home and the hand is
+ *  ready again. */
+function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass = false, { potential = false } = {}) {
+  const tiles = potential ? claimReadyTiles() : game.hand;
+  const hand = tiles.map((tile) => tile.id);
   const counts = countTiles(hand);
   const actions = [];
-  if (canDeclareClaim()) {
-    const win = claimWinResult(discardId);
-    if (win.isWin) actions.push({ label: '胡牌', type: 'win', result: win, onClick: () => commitWin(win) });
+  const win = claimWinResult(discardId, tiles);
+  if (win.isWin) {
+    actions.push({
+      label: '胡牌', type: 'win', result: win,
+      disabled: !canDeclareClaim(),
+      onClick: () => commitWin(win),
+    });
   }
 
+  // `callShape` decides whether the box should list a call at all; `canCall`
+  // is the live permission that only controls whether its button is disabled.
+  const callShape = potential
+    ? game.melds.length < 4 && tiles.length >= 4
+    : canDeclareMeld();
   const canCall = canDeclareMeld();
-  const canChow = canCall && canChowFrom(bot);
+  const canChow = canChowFrom(bot);
   // The shared pool is endless, so a replacement tile is always available.
   const hasReplacement = true;
-  if (canCall && hasReplacement && (counts[discardId] ?? 0) >= 3) {
+  if (callShape && hasReplacement && (counts[discardId] ?? 0) >= 3) {
     const kinds = [discardId, discardId, discardId];
     actions.push({
       label: `明槓 ${tileName(discardId)}`,
       type: 'kong', kinds,
+      disabled: !canCall,
       onClick: () => declareOpenMeld('kong', discardId, kinds),
     });
   }
-  if (canCall && (counts[discardId] ?? 0) >= 2) {
+  if (callShape && (counts[discardId] ?? 0) >= 2) {
     const kinds = [discardId, discardId];
     actions.push({
       label: `碰 ${tileName(discardId)}`,
       type: 'pung', kinds,
+      disabled: !canCall,
       onClick: () => declareOpenMeld('pung', discardId, kinds),
     });
   }
@@ -1102,6 +1133,7 @@ function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass 
     actions.push({
       label: `上 ${combo.tiles.map(tileName).join('')}`,
       type: 'chow', kinds: combo.tiles,
+      disabled: !canCall || !canChow,
       onClick: () => declareOpenMeld('chow', discardId, combo.tiles),
     });
   }
@@ -2431,9 +2463,9 @@ function claimFromBox(box, action) {
   // The hand can change while a discard is still inside its five-second
   // window. Rebuild the actions on press so a stale 上／碰／明槓 button can
   // never spend tiles we no longer hold, and a newly completed 胡 is offered.
-  const fresh = buildClaimActions(box.tileId, bot, false).find((item) => item.type === action.type
+  const fresh = buildClaimActions(box.tileId, bot, false, { potential: true }).find((item) => item.type === action.type
     && (item.kinds ?? []).join(',') === (action.kinds ?? []).join(','));
-  if (!fresh) {
+  if (!fresh || fresh.disabled) {
     renderClaimBoxes();
     return;
   }
@@ -3225,12 +3257,14 @@ function wireNetEvents() {
 
 function renderClaimBoxes() {
   if (!ui.claimBoxes) return;
-  // Only show a box when this seat can actually declare something. Most
-  // discards cannot be claimed, and an empty box was just noise on the sea.
+  // Keep a box for every claimable discard even while the rod is out; only its
+  // buttons are disabled. An empty box for an unclaimable tile is still noise.
+  const actionsFor = (box) => buildClaimActions(
+    box.tileId, { name: box.name, wind: box.wind }, false, { potential: true },
+  );
   const boxes = game.claimBoxes.filter((box) => {
     if (box.seat === game.seat || box.resolved) return false;
-    const bot = { name: box.name, wind: box.wind };
-    return buildClaimActions(box.tileId, bot, false).length > 0;
+    return actionsFor(box).length > 0;
   });
   ui.claimBoxes.hidden = boxes.length === 0;
   ui.claimBoxes.innerHTML = '';
@@ -3248,12 +3282,11 @@ function renderClaimBoxes() {
     timer.textContent = `${box.timeLeft.toFixed(1)} 秒`;
     const actions = document.createElement('span');
     actions.className = 'claim-actions';
-    const bot = { name: box.name, wind: box.wind };
-    for (const action of buildClaimActions(box.tileId, bot, false)) {
+    for (const action of actionsFor(box)) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = action.label;
-      button.disabled = game.mustDiscard || box.awaiting;
+      button.disabled = action.disabled || box.awaiting;
       button.addEventListener('click', () => claimFromBox(box, action));
       actions.appendChild(button);
     }
@@ -4818,7 +4851,7 @@ if (new URLSearchParams(location.search).has('test')) {
     renderHand, renderTarget, updateHUD, findKongTile, hookPosition, music,
     paceFactor, GAME_SECONDS, MIN_GAME_SECONDS, MAX_GAME_SECONDS, setGameSeconds, formatClock, parseClock,
     HAIDI_SECONDS, winContext, openingWinContext, checkCatch, randomTileKind, analyzeDiscards, selectDiscard,
-    finishReel, renderFlowers, checkInitialSelfDraw, checkAiOpeningWins, hookPositionFor,
+    finishReel, startCast, renderFlowers, checkInitialSelfDraw, checkAiOpeningWins, hookPositionFor,
     MEMORY_FLIP_CHANCE, MEMORY_FLIP_DELAY, MEMORY_FLIP_DURATION, CLAIM_SECONDS, fishFaceDown,
     discard, nextBotDiscard, passClaim, buildClaimActions, chooseOpponentDiscardKind,
     previousWind, canChowFrom, botLabel, positionClaimBar,
