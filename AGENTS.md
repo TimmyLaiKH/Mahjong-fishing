@@ -243,7 +243,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   the 牌型 bullets and `共 N 番`, so a claimed tile sits at the far right like a self-drawn one.
   `payoutSummary()` adds the 出銃／自摸 and 連莊 lines, `matchEndMessage()` is rendered as a larger
   standalone line and appended to the 胡/draw speech as `比賽結束！資金最多：X（$N）.`, and
-  `renderStandings()` supplies the ranked 計分 board with this 小局's `+x`／`-x` beside each purse.
+  `renderStandings()` supplies the ranked 計分 board with this 小局's `(+x)`／`(-x)` beside each purse.
   `進入下一局` advances
   solo immediately; multiplayer requires every human to press `準備下一局` (AI auto-agrees).
   A finished match swaps the button to `開新一場` in both modes, keeping the multiplayer vote.
@@ -266,8 +266,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `adoptMatch()` snapshot it for the network. `recordRoundResult()` is the only settlement
   funnel: it checks `lastPayout.roundKey`, calls pure `settleRound()`, writes money/dealer/
   repeat/hand/history/over/winner, and has the host broadcast `{t:'match'}`. A dealer win on the
-  final scheduled hand is converted game-side to a normal hand advance with `over: true`, so no
-  連莊 can extend a finished match and the highest purse becomes the match winner. `payoutSummary()`
+  final scheduled hand ends the match only when that dealer is already among the highest purses
+  after settlement; otherwise the normal 連莊 applies and play continues. `payoutSummary()`
   emits only the payment/連莊 lines; `handEndMessage()` adds the breakdown, and
   `matchEndMessage()` supplies the large match-over notice. `moneyText()` prefixes every displayed
   purse or payout with `$`. `roundInfoText()` supplies `X風第 X 局・X 圈` to the HUD top line,
@@ -277,7 +277,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   line keeps showing the current hand until the next hand actually starts; the 計分 panel still
   shows the latest match state and adds `起糊 N 番` from the match so players can see the deal's
   minimum. `renderStandings()` is shared by the 計分 modal and overlay; the overlay passes the
-  settled log so each row also shows its `+x`／`-x` movement.
+  settled log so each row also shows its `(+x)`／`(-x)` movement.
   Solo lobby score settings lock once `match.active`; 聯機 uses host lobby controls only.
 - **Test hook.** `window.__mf` is created only when the URL contains `test` and exposes the
   broad internal surface used by browser probes (`game`, `S`, `view`, `startFromMenu`,

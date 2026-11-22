@@ -8,7 +8,7 @@ import {
   createTileElement, tileName,
 } from './tiles.js';
 import { createMusic } from './audio.js?v=1.4.63';
-import { createNet, randomPlayerId } from './net.js?v=1.4.66';
+import { createNet, randomPlayerId } from './net.js?v=1.4.67';
 import { settleRound } from './payout.js';
 import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
@@ -1880,10 +1880,12 @@ function recordRoundResult({ winner = null, discarder = null, result = null, sel
     handNumber: match.handNumber,
     totalWinds: match.winds,
   });
-  // A dealer win on the final scheduled hand must not trigger 連莊: there is no
-  // next hand to repeat into. End the match and rotate the displayed dealer so
-  // the payout line never claims another round is coming.
-  if (match.handNumber >= match.winds * 4 - 1 && winner === match.dealerSeat) {
+  // A dealer win on the final scheduled hand only ends the match when that
+  // dealer is already among the highest purses after settlement. Otherwise the
+  // normal 連莊 applies and play continues until the dealer does lead.
+  if (match.handNumber >= match.winds * 4 - 1
+    && winner === match.dealerSeat
+    && bestSeats(settled.money).includes(match.dealerSeat)) {
     const nextDealer = (match.dealerSeat + 1) % 4;
     settled.dealerSeat = nextDealer;
     settled.repeatCount = 0;
@@ -4721,7 +4723,7 @@ function renderStandings(container, log = null) {
       if (delta) {
         const change = document.createElement('span');
         change.className = `score-delta ${delta > 0 ? 'gain' : 'loss'}`;
-        change.textContent = ` ${delta > 0 ? '+' : '-'}${moneyText(Math.abs(delta))}`;
+        change.textContent = ` (${delta > 0 ? '+' : '-'}${moneyText(Math.abs(delta))})`;
         money.appendChild(change);
       }
     }
