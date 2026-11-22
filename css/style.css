@@ -220,6 +220,18 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
   max-width: min(46vw, 330px);
 }
 .claim-box.resolved { opacity: 0.45; }
+.claim-box.win-claim {
+  max-width: min(92vw, 430px);
+  padding: 10px 14px;
+  gap: 8px 12px;
+  border-width: 2px;
+  border-color: rgba(165, 255, 107, 0.95);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.7);
+}
+.claim-win-label { color: #a5ff6b; font-size: clamp(14px, 1.8vw, 20px); font-weight: 700; }
+.claim-box.win-claim .claim-tile .tile-img img { height: calc(var(--tile-h) * 1.35); }
+.claim-box.win-claim .claim-tile .tile-img.fallback { font-size: calc(var(--tile-h) * 1.35); }
+.claim-box.win-claim .claim-actions button { font-size: clamp(14px, 1.8vw, 20px); padding: 8px 16px; }
 .claim-box .claim-label { font-size: clamp(11px, 1.3vw, 14px); }
 .claim-box .claim-tile .tile-img img { height: var(--tile-h); }
 .claim-box .claim-tile .tile-img.fallback { font-size: var(--tile-h); }

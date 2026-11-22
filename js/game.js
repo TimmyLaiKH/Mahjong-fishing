@@ -1751,8 +1751,10 @@ function handEndMessage({ winner = null, result = null, log = null } = {}) {
     parts.push('時間到，沒有胡牌。');
   } else {
     const fan = result?.totalFan ?? log?.fan ?? 0;
-    parts.push(formatWinBreakdown(result ?? { isWin: true, patterns: [], totalFan: fan })
-      || `胡牌！\n\n共 ${fan} 番`);
+    // The heading already reads `胡牌!`, so drop the breakdown's first line.
+    const breakdown = formatWinBreakdown(result ?? { isWin: true, patterns: [], totalFan: fan })
+      .replace(/^胡牌！\n+/, '');
+    parts.push(breakdown || `共 ${fan} 番`);
   }
   const message = parts.join('\n\n');
   const summary = payoutSummary(log);
@@ -3326,15 +3328,24 @@ function renderClaimBoxes() {
   const actionsFor = (box) => buildClaimActions(
     box.tileId, { name: box.name, wind: box.wind }, false, { potential: true },
   );
-  const boxes = game.claimBoxes.filter((box) => {
-    if (box.seat === game.seat || box.resolved) return false;
-    return actionsFor(box).length > 0;
-  });
+  const boxes = game.claimBoxes
+    .filter((box) => box.seat !== game.seat && !box.resolved)
+    .map((box) => ({ box, actions: actionsFor(box) }))
+    .filter(({ actions }) => actions.length > 0);
   ui.claimBoxes.hidden = boxes.length === 0;
   ui.claimBoxes.innerHTML = '';
-  for (const box of boxes) {
+  for (const { box, actions: available } of boxes) {
+    // A discard you can win on gets the same enlarged prompt as a self-draw,
+    // still anchored on the right side of the screen.
+    const canWin = available.some((action) => action.type === 'win');
     const node = document.createElement('div');
-    node.className = 'claim-box';
+    node.className = canWin ? 'claim-box win-claim' : 'claim-box';
+    if (canWin) {
+      const hint = document.createElement('span');
+      hint.className = 'claim-win-label';
+      hint.textContent = '可以胡牌！';
+      node.appendChild(hint);
+    }
     const who = document.createElement('span');
     who.className = 'claim-label';
     who.textContent = `${withAiTag(box.name, box.isBot)}（${TILE_INFO[box.wind]?.name ?? box.wind}）打出`;
@@ -3346,7 +3357,7 @@ function renderClaimBoxes() {
     timer.textContent = `${box.timeLeft.toFixed(1)} 秒`;
     const actions = document.createElement('span');
     actions.className = 'claim-actions';
-    for (const action of actionsFor(box)) {
+    for (const action of available) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = action.label;
@@ -3497,9 +3508,10 @@ function maxHookLength(angle = game.rodAngle) {
   return Math.max(0, verticalDrop / Math.max(Math.cos(angle), 0.01) - ROD_LENGTH);
 }
 
-/** Largest swing whose fully lowered hook stays on screen at the sea floor. */
+/** Largest swing whose fully lowered hook reaches the sea edge while half a
+ *  tile of the hook stays on screen. */
 function swingLimit() {
-  const available = Math.max(0, view.width / 2 - TILE_W);
+  const available = Math.max(0, view.width / 2 - TILE_W / 2);
   return Math.atan2(available, WORLD_H - ROD_BASE_Y);
 }
 
@@ -3508,9 +3520,9 @@ function hookPositionFor(angle, hookLen) {
   const tipX = baseX + Math.sin(angle) * ROD_LENGTH;
   const tipY = ROD_BASE_Y + Math.cos(angle) * ROD_LENGTH;
   // Safety net after a resize; normal play is bounded by swingLimit() so the
-  // hook never visibly sits still against the edge.
-  const hookX = Math.max(TILE_W, Math.min(
-    view.width - TILE_W,
+  // hook can sweep right up to the sea edge without leaving the canvas.
+  const hookX = Math.max(TILE_W / 2, Math.min(
+    view.width - TILE_W / 2,
     tipX + Math.sin(angle) * hookLen,
   ));
   return { baseX, tipX, tipY, hookX, hookY: tipY + Math.cos(angle) * hookLen };

@@ -209,7 +209,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 - **End of hand/match.** `commitWin`, `commitAiWin` and `finishMultiWin` settle through
   `recordRoundResult()` and show a shared terminal overlay; `endDrawGame` / `applyMultiDraw`
   settle a no-payment draw. The overlay leads with `X風第 X 局・X 圈`, then `ICON ID 胡牌!` and
-  `formatWinBreakdown()`; `showOverlay({ inlineTiles })` inserts `handEndTiles(result)` between
+  `formatWinBreakdown()` with its leading `胡牌！` line stripped (the heading already says `胡牌!`);
+  `showOverlay({ inlineTiles })` inserts `handEndTiles(result)` between
   the 牌型 bullets and `共 N 番`, so a claimed tile sits at the far right like a self-drawn one.
   `payoutSummary()` adds the 放槍／自摸 and 連莊 lines, `matchEndMessage()` is rendered as a larger
   standalone line, and `renderStandings()` supplies the ranked 計分 board. `進入下一局` advances
@@ -284,8 +285,10 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   vertical space. Status, toast, claim boxes, meld rows, flowers, hand, score UI and modals must
   never resize the HUD, canvas or sea; only viewport resizes may change geometry. `resizeCanvas()`
   syncs CSS `top`/`height` to the HUD bottom with `ResizeObserver`, ignores zero-size dimensions,
-  and keeps the resting hook at the waterline (`ROD_BASE_Y + ROD_LENGTH === WATER_TOP`) with full
-  casts on screen via `maxHookLength()` and `swingLimit()`.
+  and keeps the resting hook at the waterline (`ROD_BASE_Y + ROD_LENGTH === WATER_TOP`). `swingLimit()`
+  aims a fully lowered hook at the sea edge (`view.width / 2 - TILE_W / 2` of sideways reach), and
+  `hookPositionFor()` clamps only at half a tile so the hook still reaches the edge without leaving
+  the canvas.
 - `各家副露` sits above the hand, is always expanded (never collapsible), and lists only the
   other three seats' melds and flower counts with original tile sizes. Your own flowers and
   concealed kongs stay in the HUD flower/meld panels. The `打出 → 暫無聽牌` preview row keeps a
@@ -295,7 +298,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   discard accidentally.
 - Claim bars are anchored above the waterline, not in the HUD: one compact box per opponent with
   tile, name/wind, `N.N 秒`, progress bar and actionable buttons. The self-win/暗槓 bar is larger
-  and anchored left of the rod. No `過` in opponent claim boxes.
+  and anchored left of the rod. A claim box offering 胡牌 gets `win-claim`: the same enlarged green
+  prompt with `可以胡牌！` and a big tile/button, still anchored on the right. Buttons stay visible
+  but disabled while the rod is out. No `過` in opponent claim boxes.
 - Modals: ordinary modals close on backdrop click, but `overlay`, `loading`, `menuScreen`,
   `joinScreen` and `roomScreen` never do. In-game `回到主選單` quits the round, clears pending
   prompts, sets `LOADING`, and shows the menu. Settings must not mention AI or 番數上限; host
@@ -336,7 +341,8 @@ Beyond syntax/tests:
 - No console warnings/errors, no horizontal overflow, no HUD scrolling. HUD height stays fixed;
   status, toast, claim boxes, meld rows, flowers, hand and score UI must not resize the canvas
   or sea. Only viewport resizes may change geometry.
-- Resting hook sits at the waterline and fully lowered hook stays on screen at every angle.
+- Resting hook sits at the waterline; at full swing the lowered hook reaches the sea edge while
+  staying fully on screen.
 - Solo: settings editable before the first deal and locked afterwards; `重來這局` preserves turn
   count; money/dealer/winds survive mid-match restart; new match resets purses.
 - Scoring: typed and slider inputs stay in sync (`1–100000000`, `1–4`, `1×–100×`); payout values,
