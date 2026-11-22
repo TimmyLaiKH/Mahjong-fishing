@@ -8,7 +8,7 @@ import {
   createTileElement, tileName,
 } from './tiles.js';
 import { createMusic } from './audio.js?v=1.4.63';
-import { createNet, randomPlayerId } from './net.js';
+import { createNet, randomPlayerId } from './net.js?v=1.4.64';
 import { settleRound } from './payout.js';
 import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,

@@ -34,6 +34,7 @@ node --check js/game.js
 node --check js/net.js
 node tests/rules.test.mjs        # must print 64 通過，0 失敗
 node tests/payout.test.mjs       # must print 12 通過，0 失敗
+node tests/net.test.mjs          # must print 2 通過，0 失敗
 git diff --check
 ```
 
@@ -70,6 +71,7 @@ the audio helper changes so UI sounds are not cached separately.
 | `scripts/` | Asset download and processing scripts. Not part of runtime. |
 | `tests/rules.test.mjs` | 64 rule tests: T1–T13, table-driven patterns, flowers, weighted pool, 1000-game simulation. |
 | `tests/payout.test.mjs` | 12 payout/settlement tests. |
+| `tests/net.test.mjs` | 2 tests for PeerJS-safe outgoing message normalisation. |
 | `README.md`, `CHANGELOG.md`, `CREDITS.md`, `AGENTS.md` | Player docs, change history, asset licences, agent instructions. |
 
 ## Core game invariants
@@ -296,8 +298,11 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   device: there is no dealing, no hand validation, and no server. A win is an authoritative
   notice: the winner sends `{t:'win', winId, seat, result, ...}` to the host, the host relays the
   exact notice to every other seat, and each device settles once. Repeats share the same `winId`
-  and are deduped; receivers do not reject a win for a round-key or local 起糊 mismatch. The host's
-  `{t:'match'}` payout snapshot is still a fallback for a guest that missed `win` entirely.
+  and are deduped; receivers do not reject a win for a round-key or local 起糊 mismatch. Every
+  outgoing message passes through `networkSafe()` in `js/net.js`, which converts non-finite numbers
+  (notably the `fanCap: Infinity` inside real win results) to `null`; PeerJS's binary packer throws
+  on `Infinity`, so without this a guest's win never left its device. The host's `{t:'match'}`
+  payout snapshot remains a fallback for a device that missed `win` entirely.
 - **Message types.** `welcome`, `full`, `players`, `name`, `settings`, `start`, `discard`, `sea`,
   `time`, `hook`, `catch`, `catchRejected`, `fishCaught`, `flowers`, `claim`, `claimResult`,
   `meld`, `win`, `match`, `draw`, `emoji`, `rematch`, `rematchStatus`, `backToRoom`, `restartRequest`,

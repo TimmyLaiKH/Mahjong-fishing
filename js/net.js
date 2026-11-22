@@ -14,6 +14,24 @@ export function randomPlayerId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
+/** PeerJS's binary packer rejects non-finite numbers (real win results carry
+ *  `fanCap: Infinity`) and anything other than plain data. Normalise every
+ *  outgoing message here so one bad value cannot silently kill a 胡 notice. */
+export function networkSafe(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) return value.map(networkSafe);
+  if (value instanceof Date) return value.toISOString();
+  if (value && typeof value === 'object') {
+    if (value.constructor === Object || value.constructor === undefined) {
+      const plain = {};
+      for (const [key, item] of Object.entries(value)) plain[key] = networkSafe(item);
+      return plain;
+    }
+  }
+  return null;
+}
+
 export function createNet() {
   let peer = null;
   let hostConn = null;
@@ -95,7 +113,7 @@ export function createNet() {
   // 胡): a failed send is dropped here instead of throwing into the win path.
   function deliver(conn, msg) {
     if (!conn?.open) return;
-    try { conn.send(msg); } catch { /* peer disappeared mid-send */ }
+    try { conn.send(networkSafe(msg)); } catch { /* peer disappeared mid-send */ }
   }
 
   function sendToHost(msg) {
