@@ -1179,7 +1179,8 @@ function nextBotDiscard() {
  * ------------------------------------------------------------------ */
 
 /** Choose where an AI aims its next cast. Some casts deliberately go all the
- *  way to a side so the hook visibly reaches the bottom corner like a player's. */
+ *  way to a side so the hook visibly reaches the sea's top corners like a
+ *  player's. */
 function aiCastTarget() {
   const limit = swingLimit();
   const roll = Math.random();
@@ -1583,9 +1584,9 @@ function aiTick(dt) {
       continue;
     }
     if (rod.phase === 'swing') {
-      // Aim across the whole player-reachable range, including the bottom
-      // corners. Sweep to that aim point before casting instead of freezing at
-      // whatever angle the previous reel happened to finish.
+      // Aim across the whole player-reachable range, including the top and
+      // bottom corners. Sweep to that aim point before casting instead of
+      // freezing at whatever angle the previous reel happened to finish.
       const limit = swingLimit();
       const target = Math.max(-limit, Math.min(limit, rod.targetAngle ?? 0));
       rod.targetAngle = target;
@@ -3502,25 +3503,34 @@ window.addEventListener('resize', resizeCanvas);
 // The HUD height is fixed by CSS; the observer only reacts to viewport changes.
 if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => resizeCanvas()).observe(ui.hud);
 
-/** Line length needed for the hook to reach the sea floor at this rod angle. */
+/** Rod sweeps almost 170° (±85° from vertical), so its ray can reach the sea's
+ *  top corners as well as the floor. */
+const MAX_SWING_ANGLE = (85 * Math.PI) / 180;
+
+/** Line length at which the hook reaches the floor or the nearest side edge,
+ *  whichever comes first. Keeping both caps lets a nearly sideways cast stop
+ *  near the top of the sea instead of shooting off screen. */
 function maxHookLength(angle = game.rodAngle) {
-  const verticalDrop = WORLD_H - ROD_BASE_Y;
-  return Math.max(0, verticalDrop / Math.max(Math.cos(angle), 0.01) - ROD_LENGTH);
+  const toFloor = (WORLD_H - ROD_BASE_Y) / Math.max(Math.cos(angle), 0.01) - ROD_LENGTH;
+  const sideways = Math.max(0, view.width / 2 - TILE_W / 2);
+  const toSide = Math.abs(Math.sin(angle)) > 0.001
+    ? sideways / Math.abs(Math.sin(angle)) - ROD_LENGTH
+    : Infinity;
+  return Math.max(0, Math.min(toFloor, toSide));
 }
 
-/** Largest swing whose fully lowered hook reaches the sea edge while half a
- *  tile of the hook stays on screen. */
+/** Full sweep is a fixed ±85° so the hook covers the fan of water under the
+ *  rod, from the top corners down to the bottom edge. */
 function swingLimit() {
-  const available = Math.max(0, view.width / 2 - TILE_W / 2);
-  return Math.atan2(available, WORLD_H - ROD_BASE_Y);
+  return MAX_SWING_ANGLE;
 }
 
 function hookPositionFor(angle, hookLen) {
   const baseX = view.width / 2;
   const tipX = baseX + Math.sin(angle) * ROD_LENGTH;
   const tipY = ROD_BASE_Y + Math.cos(angle) * ROD_LENGTH;
-  // Safety net after a resize; normal play is bounded by swingLimit() so the
-  // hook can sweep right up to the sea edge without leaving the canvas.
+  // Safety net after a resize; maxHookLength() normally stops at the edge so
+  // the hook reaches it without leaving the canvas.
   const hookX = Math.max(TILE_W / 2, Math.min(
     view.width - TILE_W / 2,
     tipX + Math.sin(angle) * hookLen,

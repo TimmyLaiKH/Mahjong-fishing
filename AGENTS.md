@@ -285,10 +285,12 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   vertical space. Status, toast, claim boxes, meld rows, flowers, hand, score UI and modals must
   never resize the HUD, canvas or sea; only viewport resizes may change geometry. `resizeCanvas()`
   syncs CSS `top`/`height` to the HUD bottom with `ResizeObserver`, ignores zero-size dimensions,
-  and keeps the resting hook at the waterline (`ROD_BASE_Y + ROD_LENGTH === WATER_TOP`). `swingLimit()`
-  aims a fully lowered hook at the sea edge (`view.width / 2 - TILE_W / 2` of sideways reach), and
-  `hookPositionFor()` clamps only at half a tile so the hook still reaches the edge without leaving
-  the canvas.
+  and keeps the resting hook at the waterline (`ROD_BASE_Y + ROD_LENGTH === WATER_TOP`).
+  `swingLimit()` is a fixed ±85° (`MAX_SWING_ANGLE`), covering almost 170° under the rod so the
+  ray reaches the sea's top corners as well as its floor. `maxHookLength()` stops at whichever
+  comes first: the floor (`WORLD_H`) or the nearest side (`view.width / 2 - TILE_W / 2`), and
+  `hookPositionFor()` clamps only at half a tile so the hook still reaches the edge without
+  leaving the canvas.
 - `各家副露` sits above the hand, is always expanded (never collapsible), and lists only the
   other three seats' melds and flower counts with original tile sizes. Your own flowers and
   concealed kongs stay in the HUD flower/meld panels. The `打出 → 暫無聽牌` preview row keeps a
@@ -341,8 +343,8 @@ Beyond syntax/tests:
 - No console warnings/errors, no horizontal overflow, no HUD scrolling. HUD height stays fixed;
   status, toast, claim boxes, meld rows, flowers, hand and score UI must not resize the canvas
   or sea. Only viewport resizes may change geometry.
-- Resting hook sits at the waterline; at full swing the lowered hook reaches the sea edge while
-  staying fully on screen.
+- Resting hook sits at the waterline; a vertical cast reaches the sea floor and a full ±85° swing
+  reaches the top side edges while staying fully on screen.
 - Solo: settings editable before the first deal and locked afterwards; `重來這局` preserves turn
   count; money/dealer/winds survive mid-match restart; new match resets purses.
 - Scoring: typed and slider inputs stay in sync (`1–100000000`, `1–4`, `1×–100×`); payout values,
