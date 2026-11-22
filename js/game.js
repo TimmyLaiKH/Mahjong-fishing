@@ -11,7 +11,7 @@ import { createMusic } from './audio.js';
 import { createNet, randomPlayerId } from './net.js';
 import { settleRound } from './payout.js';
 import {
-  WINDS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
+  WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown,
   withFlowers, flowerWin, flowerWinResult,
 } from './rules.js';
@@ -4669,7 +4669,8 @@ function closeTopModal() {
 function showMenu() {
   if (ui.menuTiles) {
     ui.menuTiles.innerHTML = '';
-    for (const id of ['m1', 'm2', 'm3', 'p2', 'p3', 'p4', 's7', 's7']) {
+    // A legal 十三幺 hand: every orphan once, plus one duplicate as the pair.
+    for (const id of [...ORPHANS, ORPHANS[0]]) {
       addTileTo(ui.menuTiles, id);
     }
   }
