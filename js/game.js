@@ -8,7 +8,7 @@ import {
   createTileElement, tileName,
 } from './tiles.js';
 import { createMusic } from './audio.js?v=1.4.63';
-import { createNet, randomPlayerId } from './net.js?v=1.4.65';
+import { createNet, randomPlayerId } from './net.js?v=1.4.66';
 import { settleRound } from './payout.js';
 import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
@@ -612,6 +612,12 @@ function dealTiles(count = 13) {
   return { hand, flowers };
 }
 
+/** The dealer begins with the extra tile already in hand; everyone else still
+ *  has to fish their first tile before any 暗槓 prompt can appear. */
+function openingTileCount(seat) {
+  return seat === game.match?.dealerSeat ? 14 : 13;
+}
+
 function seatWindOf(seat) {
   if (seat === game.seat) return game.seatWind;
   return game.players.find((player) => player?.seat === seat)?.wind
@@ -655,11 +661,16 @@ function broadcastFlowers(seat) {
 
 /** Return true when the opening self-draw ended the round (天胡／地胡 or 花糊). */
 function checkInitialSelfDraw() {
+  const dealer = game.seat === game.match?.dealerSeat;
   const flowers = [];
-  let tile = randomTileKind();
-  while (isFlower(tile)) {
-    flowers.push(tile);
+  let tile = null;
+  // The dealer already holds 14 tiles, so there is no extra opening draw.
+  if (!dealer) {
     tile = randomTileKind();
+    while (isFlower(tile)) {
+      flowers.push(tile);
+      tile = randomTileKind();
+    }
   }
   const allFlowers = [...game.flowers, ...flowers];
   const context = seatWinContext(game.seat, { opening: true });
@@ -677,18 +688,24 @@ function checkInitialSelfDraw() {
     return true;
   }
 
+  const drawn = dealer ? game.hand[game.hand.length - 1] : null;
+  const winningTile = dealer ? drawn?.id ?? null : tile;
   const tiangu = withFlowers(evaluateHand({
-    concealed: [...concealedIds(), tile],
+    concealed: dealer ? concealedIds() : [...concealedIds(), winningTile],
     melds: game.melds,
-    winningTile: tile,
+    winningTile,
     context,
   }), allFlowers, game.seatWind, game.settings.fanCap, context);
   if (!qualifyingWin(tiangu)) return false;
 
   game.flowers = [...allFlowers];
-  const drawn = { id: tile, uid: game.nextUid++, source: 'tiangu' };
-  game.hand.push(drawn);
-  game.lastDraw = drawn;
+  if (dealer) {
+    game.lastDraw = drawn;
+  } else {
+    const extra = { id: tile, uid: game.nextUid++, source: 'tiangu' };
+    game.hand.push(extra);
+    game.lastDraw = extra;
+  }
   sortHand();
   syncSeatFlowers(game.seat);
   updateHUD();
@@ -701,10 +718,11 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   // old round — never apply its elapsed time to brand-new fish.
   hostSeaPausedAt = 0;
   const nextTurn = keepTurn ? game.turn : 1;
+  if (!game.match) resetMatch();
   // Uids must be allocated before dealing so AI hands and discards never reuse
   // a human tile's uid (claim ids and click handlers depend on uniqueness).
   game.nextUid = 1;
-  const dealt = dealTiles(13);
+  const dealt = dealTiles(openingTileCount(game.seat));
   game.hand = dealt.hand;
   game.flowers = dealt.flowers;
   game.melds = [];
@@ -746,7 +764,6 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   clearSelfWin();
   // Winds follow the match's dealer: the dealer holds the round wind, and 連莊
   // keeps both the dealer and the wind unchanged for the next hand.
-  if (!game.match) resetMatch();
   game.match.active = true;
   updateSettingsUI();
   const roundWind = WINDS[windIndexFor(game.match)];
@@ -816,15 +833,22 @@ function startGame({ keepTurn = false, preset = null } = {}) {
 function continueAfterOpeningFlowerDecline() {
   // 天胡／地胡：補花後的第一張自摸若已胡牌，直接以 13 番例牌結局。
   if (checkInitialSelfDraw()) return;
+  prepareAiDealerOpening();
 
+  const dealer = game.seat === game.match?.dealerSeat;
+  if (dealer) game.lastDraw = game.hand[game.hand.length - 1] ?? null;
   sortHand();
   setState(S.DEAL);
   spawnFish(5);
   updateHUD();
-  const kongTile = findKongTile();
+  // Only the dealer starts with 14 tiles. Everyone else must fish first, so an
+  // opening quad in a 13-tile hand must not offer an immediate 暗槓.
+  const kongTile = dealer ? findKongTile() : null;
   if (kongTile) {
     // Inline on the left of the rod, just like the self-win prompt.
-    offerSelfWin(null, kongTile, () => setState(S.AWAIT_CAST));
+    offerSelfWin(null, kongTile, () => setState(S.AWAIT_DISCARD));
+  } else if (dealer) {
+    setState(S.AWAIT_DISCARD);
   } else {
     setState(S.AWAIT_CAST);
   }
@@ -1306,7 +1330,7 @@ function resetAiRod(state, minWait = 0.35) {
 }
 
 function createAiState(seat) {
-  const dealt = dealTiles(13);
+  const dealt = dealTiles(openingTileCount(seat));
   const state = {
     seat,
     hand: dealt.hand,
@@ -1316,6 +1340,7 @@ function createAiState(seat) {
     lastDraw: null,
     kongChain: 0,
     mustDiscard: false,
+    openingReady: false,
     discardTimer: 0,
     caught: null,
     fanTotal: 0,
@@ -1352,12 +1377,17 @@ function checkAiOpeningWins() {
         return true;
       }
     }
-    let tile = randomTileKind();
-    while (isFlower(tile)) tile = randomTileKind();
+    const dealer = state.seat === game.match?.dealerSeat;
+    const tile = dealer ? state.hand[state.hand.length - 1]?.id ?? null : null;
+    let extra = tile;
+    if (!dealer) {
+      extra = randomTileKind();
+      while (isFlower(extra)) extra = randomTileKind();
+    }
     const result = withFlowers(evaluateHand({
-      concealed: [...state.hand.map((item) => item.id), tile],
+      concealed: dealer ? state.hand.map((item) => item.id) : [...state.hand.map((item) => item.id), extra],
       melds: state.melds,
-      winningTile: tile,
+      winningTile: extra,
       context,
     }), state.flowers, seatWind, game.settings.fanCap, context);
     if (qualifyingWin(result)) {
@@ -1366,6 +1396,43 @@ function checkAiOpeningWins() {
     }
   }
   return false;
+}
+
+/** The AI dealer holds 14 tiles, so it may declare a concealed kong at once.
+ *  Everyone else must fish first; their kong is handled in finishAiReel(). */
+function prepareAiDealerOpening() {
+  const dealer = game.match?.dealerSeat;
+  const state = game.aiStates[dealer];
+  if (!state || state.openingReady) return;
+  state.openingReady = true;
+  const counts = countTiles(state.hand.map((tile) => tile.id));
+  const kongTile = state.melds.length < 4
+    ? Object.keys(counts).find((id) => counts[id] >= 4)
+    : null;
+  if (kongTile) {
+    aiDeclareConcealedKong(state, kongTile);
+    return;
+  }
+  state.mustDiscard = true;
+  state.discardTimer = 0.6 + Math.random() * 1.2;
+}
+
+function aiDeclareConcealedKong(state, kind) {
+  let removed = 0;
+  state.hand = state.hand.filter((tile) => {
+    if (tile.id === kind && removed < 4) { removed += 1; return false; }
+    return true;
+  });
+  if (removed !== 4) return;
+  const meld = { tile: kind, type: 'kong', tiles: Array(4).fill(kind), open: false };
+  state.melds.push(meld);
+  addSeatMeld(state.seat, meld);
+  if (game.mode === 'multi' && net.isHost) broadcastOrSend({ t: 'meld', seat: state.seat, meld });
+  state.kongChain += 1;
+  state.lastDraw = null;
+  state.mustDiscard = false;
+  state.discardTimer = 0;
+  resetAiRod(state);
 }
 
 function canChowFromSeat(seat, discarderSeat) {
@@ -1813,6 +1880,21 @@ function recordRoundResult({ winner = null, discarder = null, result = null, sel
     handNumber: match.handNumber,
     totalWinds: match.winds,
   });
+  // A dealer win on the final scheduled hand must not trigger 連莊: there is no
+  // next hand to repeat into. End the match and rotate the displayed dealer so
+  // the payout line never claims another round is coming.
+  if (match.handNumber >= match.winds * 4 - 1 && winner === match.dealerSeat) {
+    const nextDealer = (match.dealerSeat + 1) % 4;
+    settled.dealerSeat = nextDealer;
+    settled.repeatCount = 0;
+    settled.handNumber = match.handNumber + 1;
+    settled.windIndex = Math.floor(settled.handNumber / 4);
+    settled.over = true;
+    settled.log.dealerSeat = nextDealer;
+    settled.log.dealerWon = false;
+    settled.log.repeatCount = 0;
+    settled.log.windIndex = Math.floor(match.handNumber / 4);
+  }
   settled.log.roundKey = roundKey;
   // Keep the finished hand's number for the end-overlay heading (the match
   // state below immediately advances to the upcoming hand).
@@ -1854,7 +1936,9 @@ function matchEndMessage() {
   const match = game.match;
   if (!match?.over) return '';
   const winners = bestSeats(match.money);
-  const names = winners.map((seat) => scoreSeatName(seat)).join('、');
+  const names = winners
+    .map((seat) => scoreSeatName(seat).replace(/\s*\(AI\)\s*$/, ''))
+    .join('、');
   const amounts = winners.map((seat) => moneyText(match.money[seat])).join('、');
   return amounts
     ? `比賽結束！資金最多：${names}（${amounts}）`
@@ -1952,15 +2036,17 @@ function speakAction(type) {
   speakCantonese(`${word}！`);
 }
 
-/** Read the winner, patterns and fan count aloud when anyone wins. */
-function speakWin(result, seat = game.seat) {
+/** Read the winner, patterns and fan count aloud when anyone wins. When the
+ *  whole match is over, append the final purse announcement to the same speech
+ *  so it is never cancelled by a second utterance. */
+function speakWin(result, seat = game.seat, extra = '') {
   if (!result?.isWin) return;
   const names = (result.patterns ?? [])
     .filter((pattern) => pattern && pattern.id !== '重疊扣減' && pattern.name)
     .map((pattern) => pattern.name);
   const name = scoreSeatName(seat).replace(/\s*\(AI\)\s*$/, '');
   const text = `胡牌，${name}，${names.join('、') || '雞糊'}，共 ${fanInCantonese(result.totalFan)} 番。`;
-  speakCantonese(text);
+  speakCantonese(extra ? `${text} ${extra}` : text);
 }
 
 /** Every winning seat uses one terminal screen; a broken result or speech
@@ -1977,7 +2063,7 @@ function showWinEnd(seat, result, log) {
     console.warn('[mf] 結算畫面顯示失敗', error);
     showOverlay({ title: handEndTitle(seat), message: `共 ${result?.totalFan ?? 0} 番` });
   }
-  speakWin(result, seat);
+  speakWin(result, seat, game.match?.over ? `${matchEndMessage()}.` : '');
 }
 
 function commitWin(result, { discarder = null, selfDraw = null } = {}) {
@@ -2021,6 +2107,7 @@ function endDrawGame() {
   setStatus('時間到，流局。');
   updateTimer();
   showHandEndOverlay({ title: '流局', message: handEndMessage({ log }), log });
+  if (game.match?.over) speakCantonese(`${matchEndMessage()}.`);
 }
 
 function winningTiles(result) {
@@ -2947,6 +3034,7 @@ function showHandEndOverlay({ title, message, tiles = [], log = null }) {
     inlineTiles: tiles,
     roundInfo: roundInfoText(log),
     standings: true,
+    standingsLog: log,
     matchWinner: matchEndMessage(),
     actions: [
       {
@@ -3273,6 +3361,7 @@ function applyMultiDraw() {
   setStatus('時間到，流局。');
   updateTimer();
   showHandEndOverlay({ title: '流局', message: handEndMessage({ log }), log });
+  if (game.match?.over) speakCantonese(`${matchEndMessage()}.`);
 }
 
 function resetMultiState() {
@@ -4599,8 +4688,9 @@ function updateFish(dt) {
  * HUD
  * ------------------------------------------------------------------ */
 
-/** Ranked four-seat purse board, shared by the 計分 panel and hand-end overlay. */
-function renderStandings(container) {
+/** Ranked four-seat purse board, shared by the 計分 panel and hand-end overlay.
+ *  A finished-hand log adds this 小局's win/loss beside each purse. */
+function renderStandings(container, log = null) {
   if (!container) return;
   container.innerHTML = '';
   const match = game.match;
@@ -4626,6 +4716,15 @@ function renderStandings(container) {
     const money = document.createElement('span');
     money.className = 'score-money';
     money.textContent = moneyText(value);
+    if (log?.after && log?.before) {
+      const delta = (log.after[seat] ?? 0) - (log.before[seat] ?? 0);
+      if (delta) {
+        const change = document.createElement('span');
+        change.className = `score-delta ${delta > 0 ? 'gain' : 'loss'}`;
+        change.textContent = ` ${delta > 0 ? '+' : '-'}${moneyText(Math.abs(delta))}`;
+        money.appendChild(change);
+      }
+    }
     row.append(rank, name, money);
     container.appendChild(row);
   });
@@ -4987,7 +5086,7 @@ function renderTarget() {
 
 function showOverlay({
   title, message, tiles = [], actions = [], roundInfo = '', standings = false,
-  inlineTiles = null, matchWinner = '',
+  standingsLog = null, inlineTiles = null, matchWinner = '',
 }) {
   ui.overlay.innerHTML = '';
   const card = document.createElement('div');
@@ -5032,7 +5131,7 @@ function showOverlay({
   if (standings) {
     const board = document.createElement('div');
     board.className = 'score-standings overlay-standings';
-    renderStandings(board);
+    renderStandings(board, standingsLog);
     card.appendChild(board);
   }
   if (tiles.length) {
@@ -5440,7 +5539,8 @@ if (new URLSearchParams(location.search).has('test')) {
     renderHand, renderTarget, updateHUD, findKongTile, hookPosition, music,
     paceFactor, GAME_SECONDS, MIN_GAME_SECONDS, MAX_GAME_SECONDS, formatClock, parseClock,
     HAIDI_SECONDS, winContext, openingWinContext, checkCatch, randomTileKind, analyzeDiscards, selectDiscard,
-    finishReel, startCast, renderFlowers, checkInitialSelfDraw, checkAiOpeningWins, hookPositionFor,
+    finishReel, startCast, renderFlowers, checkInitialSelfDraw, checkAiOpeningWins,
+    continueAfterOpeningFlowerDecline, hookPositionFor,
     MEMORY_FLIP_CHANCE, MEMORY_FLIP_DELAY, MEMORY_FLIP_DURATION, CLAIM_SECONDS, fishFaceDown,
     discard, nextBotDiscard, passClaim, buildClaimActions, chooseOpponentDiscardKind,
     previousWind, canChowFrom, botLabel, positionClaimBar,

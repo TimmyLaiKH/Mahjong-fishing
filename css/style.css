@@ -668,6 +668,9 @@ kbd {
 .score-row.you { border-color: #c62828; background: rgba(198, 40, 40, 0.09); font-weight: 700; }
 .score-row.dealer .score-seat::after { content: ' 莊'; color: #c62828; font-size: 0.8em; }
 .score-money { font-variant-numeric: tabular-nums; color: #8c1d1d; font-weight: 700; }
+.score-delta { margin-left: 6px; font-size: 0.85em; font-variant-numeric: tabular-nums; }
+.score-delta.gain { color: #1b7f3a; }
+.score-delta.loss { color: #c62828; }
 .score-history { display: grid; gap: 6px; max-height: 34vh; overflow-y: auto; }
 .score-history-item {
   padding: 6px 8px;
