@@ -265,7 +265,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 - **Message types.** `welcome`, `full`, `players`, `name`, `settings`, `start`, `discard`, `sea`,
   `time`, `hook`, `catch`, `catchRejected`, `fishCaught`, `flowers`, `claim`, `claimResult`,
   `meld`, `win`, `match`, `draw`, `rematch`, `rematchStatus`, `restartRequest`, `restartVote`,
-  `restartCancel`, `restartStatus`, `restartNow`, `leave`, `notice`. Host re-stamps guest
+  `restartCancel`, `restartStatus`, `restartNow`, `leave`, `hostGone`, `notice`. Host re-stamps guest
   discard deadlines with its own clock; guests apply `clockOffset` so claim timers end together
   and the round timer keeps counting when the host changes tabs.
 - **Sea sync.** Fish x is a 0..1 sea fraction and vx a fraction of fixed `REFERENCE_W = 1920`
@@ -283,9 +283,13 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   eases `renderX/renderY` toward it, clamping x to 0..1 and y to the canvas, so ghost rods track
   live rods without visible stepping or reversal overshoot. Draw it every frame even when input is
   paused.
-- **Disconnect.** `hostClose` shows exactly `房主已離開` / `房主已離開，請重新開房間` and
-  returns to menu. There is no host migration. Guest departures show a notice and leave the seat
-  to AI; a deliberate leaver does not see the host-left message.
+- **Disconnect.** `hostClose` and the explicit `hostGone` notice both show exactly
+  `房主已離開` / `房主已離開，請重新開房間` and return to menu. There is no host migration.
+  `pagehide` and `beforeunload` call `notifyOthersOnExit()`: a closing guest sends `leave` to the
+  host, a closing host broadcasts `hostGone` to guests, so seats change immediately instead of
+  waiting for the WebRTC timeout. One notice per room is enforced across both events and reset
+  when a new room opens or a guest receives `welcome`. Guest departures show a notice and leave
+  the seat to AI; a deliberate leaver does not see the host-left message.
 
 ## UI, HUD and layout
 

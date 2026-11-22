@@ -216,6 +216,11 @@ game.roomSettings = {
   ...game.matchSetup,
 };
 
+// `beforeunload` and `pagehide` can both fire for one tab close; send only one
+// exit notice per room. Reset when a new room is opened or joined.
+let unloadNotified = false;
+const resetUnloadNotice = () => { unloadNotified = false; };
+
 function readNumber(key) {
   try { return Number(localStorage.getItem(key)) || 0; } catch { return 0; }
 }
@@ -2113,6 +2118,7 @@ async function openRoom() {
   game.clockOffset = 0;
   game.mode = 'multi';
   game.role = 'host';
+  resetUnloadNotice();
   game.seat = 0;
   game.playerId = randomPlayerId();
   game.roomCode = makeRoomCode();
@@ -3014,11 +3020,38 @@ function resetMultiState() {
   game.leavingRoom = false;
 }
 
+/** Tell the other seats immediately when this tab is closing or leaving. */
+function notifyOthersOnExit() {
+  if (unloadNotified) return;
+  if (game.mode !== 'multi' || game.role === 'none' || game.leavingRoom) return;
+  unloadNotified = true;
+  if (game.role === 'guest') {
+    net.sendToHost({
+      t: 'leave', seat: game.seat, playerId: game.playerId, name: game.playerName,
+    });
+  } else {
+    // Guests must not wait for PeerJS's slow WebRTC disconnect timeout.
+    net.broadcast({ t: 'hostGone' });
+  }
+}
+
+/** A host exit is final: show the exact host-left message and close the room. */
+function showHostLeft() {
+  if (game.leavingRoom || game.mode !== 'multi' || game.role !== 'guest') return;
+  // Don't let the player rejoin the same stale id.
+  if (game.roomCode) deadRooms.add(game.roomCode);
+  resetMultiState();
+  showMenu();
+  showOverlay({
+    title: '房主已離開',
+    message: '房主已離開，請重新開房間',
+    actions: [{ label: '返回主選單', onClick: () => ui.overlay.classList.remove('show') }],
+  });
+}
+
 function leaveMultiRoom() {
   if (game.mode !== 'multi') return;
-  net.broadcast({
-    t: 'leave', seat: game.seat, playerId: game.playerId, name: game.playerName,
-  });
+  notifyOthersOnExit();
   resetMultiState();
   showMenu();
 }
@@ -3094,6 +3127,7 @@ function wireNetEvents() {
 
   net.on('welcome', (msg) => {
     if (game.mode !== 'multi' || game.role !== 'guest') return;
+    resetUnloadNotice();
     game.joinOutcome = 'joined';
     clearJoinWatchdog();
     if (game.roomCode) deadRooms.delete(game.roomCode);
@@ -3311,18 +3345,13 @@ function wireNetEvents() {
     fillSeatWithBot(leaving);
   });
 
-  net.on('hostClose', () => {
-    if (game.leavingRoom || game.mode !== 'multi' || game.role !== 'guest') return;
-    // The host is gone for good; don't let the player rejoin the same stale id.
-    if (game.roomCode) deadRooms.add(game.roomCode);
-    resetMultiState();
-    showMenu();
-    showOverlay({
-      title: '房主已離開',
-      message: '房主已離開，請重新開房間',
-      actions: [{ label: '返回主選單', onClick: () => ui.overlay.classList.remove('show') }],
-    });
-  });
+  net.on('hostClose', showHostLeft);
+  net.on('hostGone', showHostLeft);
+  // A closing tab tears WebRTC down slowly, so announce the exit up front on
+  // both desktop and mobile. `pagehide` covers mobile Safari, `beforeunload`
+  // covers desktop browsers; the flag above avoids a duplicate notice.
+  window.addEventListener('pagehide', notifyOthersOnExit);
+  window.addEventListener('beforeunload', notifyOthersOnExit);
 
   net.on('error', ({ error }) => {
     if (game.joinOutcome === 'pending') {
@@ -4692,9 +4721,7 @@ function quitToMenu() {
   clearSelfWin();
   game.pendingResult = null;
   if (game.mode === 'multi') {
-    net.broadcast({
-      t: 'leave', seat: game.seat, playerId: game.playerId, name: game.playerName,
-    });
+    notifyOthersOnExit();
     resetMultiState();
   } else {
     game.state = S.LOADING;
@@ -5032,7 +5059,8 @@ if (new URLSearchParams(location.search).has('test')) {
     canDeclareClaim, canDeclareMeld, handReadyForClaim, claimFromBox, passClaimBox, handleClaim, aiClaimStillValid,
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
-    renderClaimBoxes, leaveMultiRoom, deadRooms, commitRoomDurationText, renderRoom,
+    renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,
+    commitRoomDurationText, renderRoom,
     syncHostSeaPause, updateFish, broadcastSeaSnapshot, paused, simulationPaused, modalOpen, keepsSeaMoving,
     renderGhostRods, HOOK_BROADCAST_INTERVAL,
     resetMatch, cloneMatch, adoptMatch, recordRoundResult, payoutSummary,
