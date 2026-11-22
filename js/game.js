@@ -7,7 +7,7 @@ import {
   TILE_IDS, TILE_INFO, FLOWER_IDS, isFlower, loadImages, drawTile,
   createTileElement, tileName,
 } from './tiles.js';
-import { createMusic } from './audio.js?v=1.4.62';
+import { createMusic } from './audio.js?v=1.4.63';
 import { createNet, randomPlayerId } from './net.js';
 import { settleRound } from './payout.js';
 import {
@@ -151,6 +151,7 @@ const game = {
   aiStates: {},             // host/solo only: seat -> full simulated player state
   hookPeers: {},            // seat -> latest ghost hook state received over the network
   pendingAiClaims: [],      // host/solo only: delayed AI claims on a discard
+  seenWins: new Set(),      // authoritative win ids already handled this session
   bots: [], botIndex: -1,
   nextUid: 1,
   roundWind: 'E', seatWind: 'S',
@@ -2218,11 +2219,16 @@ function broadcastOrSend(msg) {
   else net.sendToHost(msg);
 }
 
-/** A win must reach every device even if a WebRTC channel drops one message.
- *  The round key makes repeats harmless: receivers settle once, then ignore
- *  duplicates or messages from an older hand. */
+/** A win is authoritative: the winner tells the host, the host relays it to
+ *  every other seat, and each device settles once. One id dedupes the repeated
+ *  sends; no receiver re-qualifies or round-key-rejects the notice. */
 function announceWin(msg) {
-  const notice = { ...msg, roundKey: msg.roundKey ?? currentRoundKey() };
+  const winId = msg.winId
+    ?? `${game.seat}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  const notice = {
+    ...msg, winId, roundKey: msg.roundKey ?? currentRoundKey(),
+  };
+  game.seenWins.add(winId);
   broadcastOrSend(notice);
   setTimeout(() => broadcastOrSend(notice), 250);
   setTimeout(() => broadcastOrSend(notice), 800);
@@ -3170,7 +3176,9 @@ function refreshRematchParticipants() {
 
 function finishMultiWin(seat, result, fanTotal, bestFan, meta = {}) {
   if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
-  if (!qualifyingWin(result)) return;
+  // A relayed win was already qualified on the winner's device. Re-checking it
+  // against this device's local settings is another way to drop the notice.
+  if (!meta.authoritative && !qualifyingWin(result)) return;
   // Stop the hand before settling or rendering: if any later step throws, the
   // round must never silently continue with rods, AI and clock still running.
   setState(S.WIN);
@@ -3230,6 +3238,7 @@ function resetMultiState() {
   game.players = [];
   game.claimBoxes = [];
   game.claimedKeys = new Set();
+  game.seenWins = new Set();
   game.seatMelds = {};
   game.seatFlowers = {};
   game.aiStates = {};
@@ -3490,20 +3499,20 @@ function wireNetEvents() {
   });
 
   net.on('win', (msg) => {
-    // Relay before validating locally: a guest's match snapshot can be one
-    // message behind the host's, but the other seats may still share that
-    // guest's round key. Dropping the notice here would leave them playing
-    // after the winner already settled.
+    // One authoritative notice per win. The winner repeats it and the host
+    // relays it; duplicates must not settle another hand if a device is slow.
+    const winId = msg.winId ?? `${msg.seat}:${msg.roundKey ?? ''}:${Date.now()}`;
+    if (game.seenWins.has(winId)) return;
+    game.seenWins.add(winId);
+    // The host forwards the exact notice before doing anything local, so a
+    // guest can never be left waiting for a round-key check to pass.
     if (net.isHost && msg.seat !== game.seat) net.broadcast(msg);
-    // Repeats help surviving a dropped WebRTC message, but a win from an
-    // already finished hand must never settle the next one.
-    const liveKey = currentRoundKey();
-    if (msg.roundKey && msg.roundKey !== liveKey
-      && msg.roundKey !== game.match?.lastPayout?.roundKey) return;
     const selfDraw = msg.selfDraw === undefined ? winIsSelfDraw(msg.result) : Boolean(msg.selfDraw);
     finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan, {
       discarder: msg.discarder ?? null,
       selfDraw,
+      authoritative: true,
+      winId,
     });
   });
 

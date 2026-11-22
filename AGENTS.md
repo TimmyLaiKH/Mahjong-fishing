@@ -207,9 +207,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   it sends no network message and never cancels AI or other seats' claims on the same discard.
   `claimFromBox()` also ignores a passed box. A 胡 never enters the wait-for-ruling path: it calls
   `commitWin()` at once, settling locally and broadcasting `{t:'win'}` so every device ends the
-  hand even if the claim message or host relay is late. `announceWin()` stamps the hand's
-  `roundKey` and repeats the notice at 250/800 ms; the host relays each copy, and receivers ignore
-  stale keys so repeats cannot settle a later hand. A guest that misses `win` entirely still ends
+  hand even if the claim message or host relay is late. `announceWin()` gives the win a unique
+  `winId` and repeats the notice at 250/800 ms; the host relays every copy, and receivers dedupe by
+  `winId` so repeats cannot settle a later hand. A guest that misses `win` entirely still ends
   the hand from the host's `{t:'match'}` payout fallback. Its button is never disabled by
   `canDeclareClaim()`: a rod in flight or a freshly fished tile must not make 胡 a no-op. Network
   sends are guarded in `net.js` so a dead peer cannot throw into the settlement path. Self wins, concealed kongs and 七花 use the
@@ -293,11 +293,11 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   AI seats always render ` (AI)`.
 - **Authority.** The host owns the room code, seat list, fish sea, host-clock timer, catch and
   claim arbitration, AI seats, settings, and match snapshots. Guards keep private hands on each
-  device: there is no dealing, no hand validation, and no server. Win results are evaluated
-  locally then broadcast with a `roundKey`; the host relays `win` before checking its own round
-  key, then settles with `win` + `match`, so a guest whose match snapshot is one message behind
-  still reaches the other seats. `match` alone is enough for a guest to show the terminal overlay
-  if `win` was dropped.
+  device: there is no dealing, no hand validation, and no server. A win is an authoritative
+  notice: the winner sends `{t:'win', winId, seat, result, ...}` to the host, the host relays the
+  exact notice to every other seat, and each device settles once. Repeats share the same `winId`
+  and are deduped; receivers do not reject a win for a round-key or local 起糊 mismatch. The host's
+  `{t:'match'}` payout snapshot is still a fallback for a guest that missed `win` entirely.
 - **Message types.** `welcome`, `full`, `players`, `name`, `settings`, `start`, `discard`, `sea`,
   `time`, `hook`, `catch`, `catchRejected`, `fishCaught`, `flowers`, `claim`, `claimResult`,
   `meld`, `win`, `match`, `draw`, `emoji`, `rematch`, `rematchStatus`, `backToRoom`, `restartRequest`,

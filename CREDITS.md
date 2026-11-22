@@ -6,7 +6,7 @@
 - 授權：**CC0 1.0**（公有領域貢獻）。
 - 處理方式：透明牌面疊加在 `Front.png` 上，再縮放為 120×160 的 `assets/tiles/faces/*.png`。原始下載檔保留在 `assets/tiles/raw/`，以便重新產生。
 - 8 張花牌（春、夏、秋、冬、梅、蘭、菊、竹）改用 [DrCMWither/mahjong-tiles](https://github.com/DrCMWither/mahjong-tiles) 的 `tiles-tmp/1f.svg`–`8f.svg`，作者 **Lilia Chen May Wither**；artwork 延展自上述 FluffyStuff 牌面，並以 **CC0 1.0** 發布。原始 SVG 與預先柵格化的 PNG 存放於 `assets/tiles/raw/flowers/`，再由 `scripts/process_assets.py` 疊在上述 CC0 `Front.png` 底圖上並縮放為 120×160 的 `H1.png`–`H8.png`。
-- 「蘭」牌 `H6.png` 的紅色字樣已由簡體「兰」修正為繁體「蘭」，並改用與其他花牌相近的楷書筆觸。字形輪廓取自 [LXGW WenKai TC](https://fonts.google.com/specimen/LXGW+WenKai+TC)（SIL Open Font License 1.1），已轉成路徑內嵌於 `6f.svg`；其餘花牌 artwork 保持原樣。
+- 「蘭」牌 `H6.png` 的紅色字樣已由簡體「兰」修正為繁體「蘭」，並改用潦草毛筆風格：以 [Liu Jian Mao Cao](https://fonts.google.com/specimen/Liu+Jian+Mao+Cao)（SIL Open Font License 1.1）的草書「艹」與「兰」組合成繁體字。字形輪廓已轉成路徑內嵌於 `6f.svg`；其餘花牌 artwork 保持原樣。
 
 > Tiles: FluffyStuff / Lilia Chen May Wither, CC0.
 
@@ -48,7 +48,7 @@
 ## 字型
 
 - [Noto Sans TC](https://fonts.google.com/noto/specimen/Noto+Sans+TC)，透過 Google Fonts 載入，SIL Open Font License 1.1。
-- 「蘭」花牌的楷書字形輪廓取自 [LXGW WenKai TC](https://fonts.google.com/specimen/LXGW+WenKai+TC)，SIL Open Font License 1.1；字型檔不包含在專案內，只嵌入產生的向量輪廓。
+- 「蘭」花牌的潦草毛筆字形輪廓取自 [Liu Jian Mao Cao](https://fonts.google.com/specimen/Liu+Jian+Mao+Cao)，SIL Open Font License 1.1；字型檔不包含在專案內，只嵌入產生的向量輪廓。
 - 若無法連線，會退回系統字型（PingFang TC / Microsoft JhengHei / system-ui）。
 
 ## 遊戲內標示

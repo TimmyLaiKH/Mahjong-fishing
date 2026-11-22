@@ -99,7 +99,7 @@ export const EMOJI_TO_ID = Object.fromEntries(
 export const BACK_ID = 'BACK';
 export const TILE_IMAGE_DIR = 'assets/tiles/faces';
 // Bump after replacing runtime faces so browsers reload them without a hard refresh.
-export const TILE_ASSET_VERSION = 5;
+export const TILE_ASSET_VERSION = 6;
 
 export function tileImagePath(id) {
   const suffix = `?v=${TILE_ASSET_VERSION}`;
