@@ -26,6 +26,8 @@
   <span id="selfWinActions" class="claim-actions"></span>
 </div>
 <div id="claimBoxes" class="claim-boxes" hidden aria-label="對手出牌與宣告"></div>
+<div id="emojiPanel" class="emoji-panel" hidden aria-label="送出表情"></div>
+<div id="emojiLayer" class="emoji-layer" aria-live="polite"></div>
 
 <header id="hud" class="panel">
   <div class="hud-bar">
@@ -33,6 +35,7 @@
       <button id="settingsBtn" class="chip" type="button">設定</button>
       <button id="helpBtn" class="chip" type="button">玩法說明</button>
       <button id="restartBtn" class="chip" type="button">重來這局</button>
+      <button id="emojiBtn" class="chip" type="button" aria-haspopup="true" aria-expanded="false">表情</button>
     </div>
     <div id="timer" class="timer" aria-label="剩餘時間">05:00</div>
     <div class="hud-right">

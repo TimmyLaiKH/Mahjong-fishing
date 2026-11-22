@@ -202,7 +202,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   Delayed AI claims are revalidated at execution for the same conditions and recomputed as wins.
   Opponent claim boxes include a local `過` button that only marks that box `passed` and hides it;
   it sends no network message and never cancels AI or other seats' claims on the same discard.
-  `claimFromBox()` also ignores a passed box. Self wins, concealed kongs and 七花 use the
+  `claimFromBox()` also ignores a passed box. A 胡 never enters the wait-for-ruling path: it calls
+  `commitWin()` at once, settling locally and broadcasting `{t:'win'}` so every device ends the
+  hand even if the claim message or host relay is late. Self wins, concealed kongs and 七花 use the
   enlarged inline `selfWinBar` left of the rod with `胡牌`／`開槓` and `過`／`不開槓` — never a
   blocking popup. 碰／上 show `成功！請選一張牌打出。`; 明槓 (solo and multiplayer) shows
   `明槓成功！再釣一張牌補槓。` and sets `kongChain = 1`, never asking for an immediate discard.
@@ -281,7 +283,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   locally then broadcast; the host relays and settles with `win` + `match`.
 - **Message types.** `welcome`, `full`, `players`, `name`, `settings`, `start`, `discard`, `sea`,
   `time`, `hook`, `catch`, `catchRejected`, `fishCaught`, `flowers`, `claim`, `claimResult`,
-  `meld`, `win`, `match`, `draw`, `rematch`, `rematchStatus`, `backToRoom`, `restartRequest`,
+  `meld`, `win`, `match`, `draw`, `emoji`, `rematch`, `rematchStatus`, `backToRoom`, `restartRequest`,
   `restartVote`, `restartCancel`, `restartStatus`, `restartNow`, `leave`, `hostGone`, `notice`.
   `backToRoom` carries the host's current `settings` and returns every device to the read-only
   waiting room so the host can pick settings again for a new match. Host re-stamps guest
@@ -312,7 +314,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 
 ## UI, HUD and layout
 
-- The HUD opens with one bar: **設定 → 玩法說明 → 重來這局** on the left, a large centered timer,
+- The HUD opens with one bar: **設定 → 玩法說明 → 重來這局 → 表情** on the left, a large centered timer,
   and **計分 + round block** on the right. The round block stacks `X風第 X 局・X 圈` above
   counters that read only 門風 and 資金 (with a `$` prefix); 巡, 番數 and 最佳 are not shown
   during play. The main menu appears before any lobby or game starts and shows a legal 十三幺
@@ -347,6 +349,11 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   prompt with `可以胡牌！` and a big tile/button, still anchored on the right. Claim action buttons
   stay visible but disabled while the rod is out; the grey `過` dismissal stays enabled and hides
   only its own box.
+- The `表情` chip opens a fixed emoji picker (`emojiPanel`) with 12 emojis; picking one calls
+  `sendEmoji()`, sends `{t:'emoji', seat, emoji}` (host relays to other guests) and appends a
+  `#emojiLayer` bubble beside that seat's avatar using the same offsets as `drawPlayerAvatars()`.
+  The layer is `pointer-events:none` so casts and HUD clicks still work; bubbles remove themselves
+  on `animationend`. The picker closes on outside click, Escape, resize or selection.
 - Modals: ordinary modals close on backdrop click, but `overlay`, `loading`, `menuScreen`,
   `joinScreen` and `roomScreen` never do. The in-game 設定／玩法說明／計分 panels and the
   `重新開始投票` overlay are informational — they block input but not simulation. In-game

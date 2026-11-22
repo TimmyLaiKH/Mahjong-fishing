@@ -30,6 +30,7 @@ const ui = {
   selfWinTile: el('selfWinTile'), selfWinActions: el('selfWinActions'),
   roundInfo: el('roundInfo'), seatWind: el('seatWind'),
   scoreBtn: el('scoreBtn'), moneyCount: el('moneyCount'),
+  emojiBtn: el('emojiBtn'), emojiPanel: el('emojiPanel'), emojiLayer: el('emojiLayer'),
   scorePanel: el('scorePanel'), scoreRoundInfo: el('scoreRoundInfo'),
   scoreStandings: el('scoreStandings'), scoreHistory: el('scoreHistory'),
   timer: el('timer'),
@@ -70,6 +71,7 @@ const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const AVATAR_COLORS = ['#a9e5ff', '#ffd27f', '#c8a9ff', '#ff9b9b'];
 // Full-body icons: neutral player, male 允行, female 一心, female 念慈.
 const AVATAR_ICONS = ['🧍', '🧍‍♂️', '🧍‍♀️', '💃'];
+const EMOJIS = ['😀', '😂', '😍', '😎', '😭', '😡', '😮', '👍', '👏', '🙏', '🎉', '🔥'];
 // Codes that failed to produce a live host this session. PeerJS can leave a
 // stale id registered for a while after the host leaves, so never retry them.
 const deadRooms = new Set();
@@ -496,6 +498,64 @@ function showToast(text, ms = 4500) {
     ui.toast.classList.remove('show');
     game.toastTimer = null;
   }, ms);
+}
+
+/** Floating emoji bubbles appear beside each seat's avatar on the sea. */
+function showEmojiBubble(seat, emoji) {
+  if (!ui.emojiLayer || !EMOJIS.includes(emoji) || seat < 0 || seat > 3) return;
+  const spread = Math.min(160, view.width / 10);
+  const offsets = [-spread, -spread * 0.45, spread * 0.45, spread];
+  const rect = canvas.getBoundingClientRect();
+  const bubble = document.createElement('div');
+  bubble.className = 'emoji-bubble';
+  bubble.style.left = `${rect.left + (view.width / 2 + offsets[seat]) * view.scale}px`;
+  bubble.style.top = `${rect.top + 52 * view.scale}px`;
+  const face = document.createElement('span');
+  face.className = 'emoji-face';
+  face.textContent = emoji;
+  const name = document.createElement('span');
+  name.className = 'emoji-name';
+  name.textContent = scoreSeatName(seat);
+  bubble.append(face, name);
+  bubble.addEventListener('animationend', () => bubble.remove(), { once: true });
+  ui.emojiLayer.appendChild(bubble);
+}
+
+function sendEmoji(emoji) {
+  if (!EMOJIS.includes(emoji)) return;
+  if (game.mode === 'multi') broadcastOrSend({ t: 'emoji', seat: game.seat, emoji });
+  showEmojiBubble(game.seat, emoji);
+  closeEmojiPanel();
+}
+
+function closeEmojiPanel() {
+  if (!ui.emojiPanel) return;
+  ui.emojiPanel.hidden = true;
+  ui.emojiBtn?.setAttribute('aria-expanded', 'false');
+}
+
+function toggleEmojiPanel() {
+  if (!ui.emojiPanel) return;
+  if (!ui.emojiPanel.hidden) {
+    closeEmojiPanel();
+    return;
+  }
+  if (!ui.emojiPanel.childElementCount) {
+    for (const emoji of EMOJIS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = emoji;
+      button.setAttribute('aria-label', `送出 ${emoji}`);
+      button.addEventListener('click', () => sendEmoji(emoji));
+      ui.emojiPanel.appendChild(button);
+    }
+  }
+  ui.emojiPanel.hidden = false;
+  ui.emojiBtn?.setAttribute('aria-expanded', 'true');
+  const btn = ui.emojiBtn?.getBoundingClientRect();
+  const width = ui.emojiPanel.offsetWidth;
+  ui.emojiPanel.style.left = `${Math.max(4, Math.min(btn?.left ?? 4, window.innerWidth - width - 4))}px`;
+  ui.emojiPanel.style.top = `${(btn?.bottom ?? 0) + 6}px`;
 }
 
 function clearNotices() {
@@ -2567,6 +2627,14 @@ function claimFromBox(box, action) {
     renderClaimBoxes();
     return;
   }
+  // 胡 ends the hand at once. Never leave the pressing device with only a
+  // disabled button while it waits for the host to arbitrate: settle locally,
+  // then broadcast the win so every other device ends the same hand too.
+  if (fresh.type === 'win') {
+    box.resolved = true;
+    commitWin(fresh.result, { discarder: box.seat, selfDraw: false });
+    return;
+  }
   box.awaiting = true;
   renderClaimBoxes();
   const msg = {
@@ -3289,6 +3357,11 @@ function wireNetEvents() {
     applyHook(msg);
   });
 
+  net.on('emoji', (msg) => {
+    if (net.isHost && msg.seat !== game.seat) net.broadcast(msg);
+    showEmojiBubble(msg.seat, msg.emoji);
+  });
+
   net.on('catch', (msg) => {
     if (net.isHost) handleCatchRequest(msg, true);
   });
@@ -3651,7 +3724,10 @@ function resizeCanvas() {
   positionClaimBar();
   positionSelfWinBar();
 }
-window.addEventListener('resize', resizeCanvas);
+window.addEventListener('resize', () => {
+  closeEmojiPanel();
+  resizeCanvas();
+});
 // The HUD height is fixed by CSS; the observer only reacts to viewport changes.
 if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => resizeCanvas()).observe(ui.hud);
 
@@ -5037,6 +5113,18 @@ function wireInput() {
   el('restartBtn').addEventListener('click', () => { closeTopModal(); requestRestart(); });
   el('helpBtn').addEventListener('click', () => openModal('helpPanel'));
   el('settingsBtn').addEventListener('click', () => openModal('settingsPanel'));
+  ui.emojiBtn?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    toggleEmojiPanel();
+  });
+  document.addEventListener('click', (event) => {
+    if (ui.emojiPanel?.hidden) return;
+    if (ui.emojiPanel.contains(event.target) || ui.emojiBtn?.contains(event.target)) return;
+    closeEmojiPanel();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeEmojiPanel();
+  });
   el('creditsBtn').addEventListener('click', () => openModal('creditsPanel'));
   ui.scoreBtn?.addEventListener('click', () => {
     updateScoreUI();
@@ -5163,6 +5251,7 @@ if (new URLSearchParams(location.search).has('test')) {
     canDeclareClaim, canDeclareMeld, handReadyForClaim, claimFromBox, passClaimBox, handleClaim, aiClaimStillValid,
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
+    EMOJIS, sendEmoji, showEmojiBubble, toggleEmojiPanel, closeEmojiPanel,
     renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,
     commitRoomDurationText, renderRoom,
     syncHostSeaPause, updateFish, broadcastSeaSnapshot, paused, simulationPaused, modalOpen, keepsSeaMoving,

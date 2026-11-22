@@ -245,6 +245,57 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
 .claim-box .claim-actions button { font-size: clamp(10px, 1.2vw, 13px); padding: 3px 6px; }
 .claim-box .claim-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* Emoji picker and floating bubbles. The layer sits over the sea but never
+   intercepts casts, claim buttons or HUD clicks. */
+.emoji-panel {
+  position: fixed;
+  z-index: 70;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid rgba(255, 235, 59, 0.8);
+  border-radius: 12px;
+  background: rgba(4, 32, 44, 0.96);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.55);
+}
+.emoji-panel[hidden] { display: none; }
+.emoji-panel button {
+  padding: 5px;
+  font-size: clamp(20px, 2.6vw, 28px);
+  line-height: 1.1;
+  border-radius: 8px;
+}
+.emoji-panel button:hover, .emoji-panel button:focus-visible { background: rgba(255, 255, 255, 0.16); }
+.emoji-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 14;
+  overflow: hidden;
+  pointer-events: none;
+}
+.emoji-bubble {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  background: rgba(4, 32, 44, 0.88);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+  animation: emoji-float 2.6s ease-out forwards;
+}
+.emoji-bubble .emoji-face { font-size: clamp(26px, 4vw, 42px); line-height: 1; }
+.emoji-bubble .emoji-name { color: #ffe58f; font-size: clamp(11px, 1.3vw, 14px); font-weight: 700; }
+@keyframes emoji-float {
+  0% { transform: translate(-50%, 12px) scale(0.6); opacity: 0; }
+  15% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+  75% { opacity: 1; }
+  100% { transform: translate(-50%, -72px) scale(1.05); opacity: 0; }
+}
+
 .meld-panel {
   margin: 2px 0;
   font-size: 0.85em;
