@@ -176,6 +176,7 @@ const game = {
   rodAngle: 0, rodDir: 1, hookLen: 0,
   spawnTimer: 0,
   selectedDiscard: 0,
+  touchArmedUid: null,      // tile awaiting the second tap on touch screens
   discardInfo: new Map(),
   pendingResult: null,
   pendingClaim: null,       // { tile: { id, uid }, bot: { name, wind } }
@@ -443,6 +444,7 @@ function setState(next) {
   // Discard analysis only applies while choosing a discard. Clearing it on
   // every state change stops stale tiles bouncing after a discard, win or 流局.
   game.discardInfo = new Map();
+  game.touchArmedUid = null;
   const messages = {
     [S.DEAL]: '派牌中…',
     [S.AWAIT_CAST]: '拋竿釣起你需要的牌吧！(點擊屏幕)',
@@ -1562,13 +1564,10 @@ function commitAiWin(seat, result, fanTotal = null, bestFan = null, meta = {}) {
   const name = seatLabel(seat);
   setStatus(`${name} 胡牌！${result.totalFan} 番`);
   showHandEndOverlay({
-    title: `${name} 胡牌`,
-    message: handEndMessage({ winner: seat, result, fanTotal: total, log }),
+    title: handEndTitle(seat),
+    message: handEndMessage({ winner: seat, result, log }),
     log,
-    tiles: [
-      ...winningTiles(result),
-      ...(result.flowers ?? []).map((id) => ({ id })),
-    ],
+    tiles: handEndTiles(result),
   });
 }
 
@@ -1743,33 +1742,44 @@ function matchEndMessage() {
     : `比賽結束！資金最多：${names}`;
 }
 
-function withMatchSummary(message, log = game.match?.lastPayout) {
-  const summary = payoutSummary(log);
-  const combined = summary ? `${message}\n\n${summary}` : message;
-  const ending = matchEndMessage();
-  return ending ? `${ending}\n\n${combined}` : combined;
-}
-
-/** End-overlay text: the shared 胡牌 breakdown, this hand's and cumulative fan,
- *  then the payout line. The standings and round heading are rendered as DOM. */
-function handEndMessage({ winner = null, result = null, fanTotal = null, log = null } = {}) {
+/** End-overlay text: the shared 胡牌 breakdown followed by the payout line.
+ *  The winning-hand image is inserted before `共 N 番`, and the round heading,
+ *  match winner and 計分 board are rendered as separate DOM nodes. */
+function handEndMessage({ winner = null, result = null, log = null } = {}) {
   const parts = [];
   if (winner === null || winner === undefined) {
     parts.push('時間到，沒有胡牌。');
   } else {
-    const name = winnerName(winner);
     const fan = result?.totalFan ?? log?.fan ?? 0;
-    const total = fanTotal ?? game.fanTotal ?? 0;
-    const breakdown = formatWinBreakdown(result ?? { isWin: true, patterns: [], totalFan: fan });
-    parts.push(breakdown || `胡牌！\n\n共 ${fan} 番`);
-    parts.push(`${name}：本局 ${fan} 番`);
-    parts.push(`${name} ${total} 番`);
+    parts.push(formatWinBreakdown(result ?? { isWin: true, patterns: [], totalFan: fan })
+      || `胡牌！\n\n共 ${fan} 番`);
   }
+  const message = parts.join('\n\n');
   const summary = payoutSummary(log);
-  const ending = matchEndMessage();
-  let message = parts.join('\n\n');
-  if (summary) message = `${message}\n${summary}`;
-  return ending ? `${ending}\n\n${message}` : message;
+  return summary ? `${message}\n\n${summary}` : message;
+}
+
+/** `ICON ID 胡牌!` heading for every winning seat. */
+function handEndTitle(seat) {
+  return `${AVATAR_ICONS[seat] ?? '🧍'} ${scoreSeatName(seat)} 胡牌!`;
+}
+
+/** Winning-hand image: flowers first, then the hand, with the tile that
+ *  completed the hand at the far right — the same place a self-drawn tile has,
+ *  including when it came from another player's discard. */
+function handEndTiles(result) {
+  if (!result?.isWin) return [];
+  const winning = result.winningTile;
+  const concealed = [...(result.concealed ?? [])];
+  if (winning) {
+    const at = concealed.indexOf(winning);
+    if (at !== -1) concealed.splice(at, 1);
+  }
+  return [
+    ...(result.flowers ?? []).map((id) => ({ id })),
+    ...winningTiles({ ...result, concealed }),
+    ...(winning ? [{ id: winning }] : []),
+  ];
 }
 
 function commitWin(result, { discarder = null, selfDraw = null } = {}) {
@@ -1801,13 +1811,10 @@ function commitWin(result, { discarder = null, selfDraw = null } = {}) {
   setState(S.WIN);
   setStatus(`胡牌！${result.totalFan} 番`);
   showHandEndOverlay({
-    title: `${winnerName(game.seat)} 胡牌`,
-    message: handEndMessage({ winner: game.seat, result, fanTotal: game.fanTotal, log }),
+    title: handEndTitle(game.seat),
+    message: handEndMessage({ winner: game.seat, result, log }),
     log,
-    tiles: [
-      ...winningTiles(result),
-      ...(result.flowers ?? []).map((id) => ({ id })),
-    ],
+    tiles: handEndTiles(result),
   });
 }
 
@@ -2627,23 +2634,26 @@ function humanSeats() {
   return game.players.filter((player) => player && !player.isBot && !player.isEmpty).map((player) => player.seat);
 }
 
-/** Shared terminal overlay for solo and 聯機 hands. Everyone presses 準備下一局;
- *  multiplayer waits for all human votes, solo has only one human so one click
- *  advances. Quitting is always available. */
+/** Shared terminal overlay for solo and 聯機 hands. Solo advances with one
+ *  press; multiplayer waits for every human. A completed match swaps the next
+ *  button to 開新一場 and keeps the same vote flow. */
 function showHandEndOverlay({ title, message, tiles = [], log = null }) {
   const isMulti = game.mode === 'multi';
+  const newMatch = Boolean(game.match?.over);
   game.rematchVotes = [];
   game.rematchRequired = humanSeats();
   game.rematchMessage = message;
+  game.rematchNewMatch = newMatch;
   showOverlay({
     title,
     message,
-    tiles,
+    inlineTiles: tiles,
     roundInfo: roundInfoText(log),
     standings: true,
+    matchWinner: matchEndMessage(),
     actions: [
       {
-        label: '準備下一局',
+        label: newMatch ? '開新一場' : (isMulti ? '準備下一局' : '進入下一局'),
         keepOpen: isMulti,
         pendingLabel: '已準備，等待其他玩家…',
         onClick: isMulti ? voteRematch : readySoloNextHand,
@@ -2670,6 +2680,7 @@ function readySoloNextHand() {
   game.rematchVotes = [];
   game.rematchRequired = [];
   game.rematchMessage = '';
+  game.rematchNewMatch = false;
   if (game.match?.over) resetMatch(game.matchSetup);
   startGame();
 }
@@ -2683,7 +2694,8 @@ function updateRematchOverlay() {
     const mark = game.rematchVotes.includes(seat) ? '✓' : '○';
     return `${mark}${seatLabel(seat)}`;
   }).join('　');
-  body.textContent = `${game.rematchMessage}\n\n準備下一局投票：${names}（${game.rematchVotes.length}/${required.length}）`;
+  const voteLabel = game.rematchNewMatch ? '開新一場投票' : '準備下一局投票';
+  body.textContent = `${game.rematchMessage}\n\n${voteLabel}：${names}（${game.rematchVotes.length}/${required.length}）`;
   const button = ui.overlay.querySelector('[data-keep-open]');
   if (button && game.rematchVotes.includes(game.seat)) {
     button.disabled = true;
@@ -2708,6 +2720,7 @@ function checkRematchReady() {
   game.rematchVotes = [];
   game.rematchRequired = [];
   game.rematchMessage = '';
+  game.rematchNewMatch = false;
   ui.overlay.classList.remove('show');
   if (game.match?.over) resetMatch(game.matchSetup);
   startMultiGame();
@@ -2910,13 +2923,10 @@ function finishMultiWin(seat, result, fanTotal, bestFan, meta = {}) {
   const name = winnerName(seat);
   setStatus(`${name} 胡牌！${result?.totalFan ?? 0} 番`);
   showHandEndOverlay({
-    title: `${name} 胡牌`,
-    message: handEndMessage({ winner: seat, result, fanTotal, log }),
+    title: handEndTitle(seat),
+    message: handEndMessage({ winner: seat, result, log }),
     log,
-    tiles: [
-      ...winningTiles(result),
-      ...(result?.flowers ?? []).map((id) => ({ id })),
-    ],
+    tiles: handEndTiles(result),
   });
 }
 
@@ -4333,11 +4343,20 @@ function updateTimer() {
   ui.timer.classList.toggle('urgent', game.timeLeft <= 60);
 }
 
+/** Touch screens need two taps to play a tile: the first selects it and shows
+ *  its 聽牌 preview, the second sends it. Mouse users keep single-click play. */
+function isTouchOnly() {
+  const fine = window.matchMedia?.('(pointer: fine)').matches;
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches;
+  return Boolean(coarse || (!fine && navigator.maxTouchPoints > 0));
+}
+
 /** Hover / focus / arrow-key selection: highlight one tile and preview its 聽牌. */
 function selectDiscard(index) {
   if (game.state !== S.AWAIT_DISCARD || index < 0 || index >= game.hand.length) return;
   if (game.discardInfo.size === 0) analyzeDiscards();
   game.selectedDiscard = index;
+  game.touchArmedUid = null;
   const uid = game.hand[index].uid;
   // Toggle classes in place so hovering never rebuilds the buttons under the cursor.
   for (const button of ui.hand.querySelectorAll('.tile-btn')) {
@@ -4351,6 +4370,7 @@ function renderHand() {
   // Recompute only when entering a discard turn (setState clears the cache).
   // Hover / arrow-key selection then re-renders without re-running 476 evaluations.
   if (game.state === S.AWAIT_DISCARD && game.discardInfo.size === 0) analyzeDiscards();
+  const touch = isTouchOnly();
   for (let i = 0; i < game.hand.length; i += 1) {
     const tile = game.hand[i];
     const button = document.createElement('button');
@@ -4364,9 +4384,19 @@ function renderHand() {
     if (i === game.selectedDiscard && game.state === S.AWAIT_DISCARD) button.classList.add('selected');
     button.disabled = game.state !== S.AWAIT_DISCARD;
     button.appendChild(createTileElement(tile.id, { images: game.images }));
-    button.addEventListener('click', () => discard(tile.uid));
-    button.addEventListener('mouseenter', () => selectDiscard(i));
-    button.addEventListener('focus', () => selectDiscard(i));
+    button.addEventListener('click', () => {
+      if (touch && game.touchArmedUid !== tile.uid) {
+        selectDiscard(i);
+        game.touchArmedUid = tile.uid;
+        return;
+      }
+      game.touchArmedUid = null;
+      discard(tile.uid);
+    });
+    if (!touch) {
+      button.addEventListener('mouseenter', () => selectDiscard(i));
+      button.addEventListener('focus', () => selectDiscard(i));
+    }
     ui.hand.appendChild(button);
   }
 }
@@ -4466,7 +4496,10 @@ function renderTarget() {
  * Modals and settings
  * ------------------------------------------------------------------ */
 
-function showOverlay({ title, message, tiles = [], actions = [], roundInfo = '', standings = false }) {
+function showOverlay({
+  title, message, tiles = [], actions = [], roundInfo = '', standings = false,
+  inlineTiles = null, matchWinner = '',
+}) {
   ui.overlay.innerHTML = '';
   const card = document.createElement('div');
   card.className = 'modal-card';
@@ -4481,8 +4514,32 @@ function showOverlay({ title, message, tiles = [], actions = [], roundInfo = '',
   card.appendChild(heading);
   const body = document.createElement('div');
   body.className = 'breakdown';
-  body.textContent = message;
+  // The winning-hand row belongs between 牌型 and 共 N 番, so render the text
+  // around it instead of appending the images after the whole breakdown.
+  const split = inlineTiles?.length ? message.indexOf('\n共 ') : -1;
+  if (split !== -1) {
+    const lead = document.createElement('span');
+    lead.textContent = message.slice(0, split);
+    body.appendChild(lead);
+    const row = document.createElement('div');
+    row.className = 'win-tiles inline-win-tiles';
+    for (const tile of inlineTiles) {
+      addTileTo(row, tile.id, tile.faceDown ? 'face-down' : '', tile.faceDown);
+    }
+    body.appendChild(row);
+    const tail = document.createElement('span');
+    tail.textContent = message.slice(split);
+    body.appendChild(tail);
+  } else {
+    body.textContent = message;
+  }
   card.appendChild(body);
+  if (matchWinner) {
+    const end = document.createElement('p');
+    end.className = 'overlay-match-winner';
+    end.textContent = matchWinner;
+    card.appendChild(end);
+  }
   if (standings) {
     const board = document.createElement('div');
     board.className = 'score-standings overlay-standings';
@@ -4932,6 +4989,7 @@ if (new URLSearchParams(location.search).has('test')) {
     showMenu, startFromMenu, openSoloRoom, startRoomGame, quitToMenu, net, openRoom, joinRoom,
     askRoomCode, setPlayerName, leaveRoom,
     voteRematch, showMultiEndOverlay, showHandEndOverlay, readySoloNextHand, handEndMessage,
+    handEndTitle, handEndTiles, showOverlay, matchEndMessage, isTouchOnly, selectDiscard,
     roundInfoText, moneyText, renderStandings, requestRestart, startRestartVote, voteRestart, cancelRestart,
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,
     renderMeldsPanel, handleCatchRequest, applyFishCaught, applySea, applyHook,

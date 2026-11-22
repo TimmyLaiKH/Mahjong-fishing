@@ -208,10 +208,14 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   ticks exist only on host/solo; the host relays their hooks and actions.
 - **End of hand/match.** `commitWin`, `commitAiWin` and `finishMultiWin` settle through
   `recordRoundResult()` and show a shared terminal overlay; `endDrawGame` / `applyMultiDraw`
-  settle a no-payment draw. The overlay leads with `X風第 X 局・X 圈`, then the winner line,
-  `formatWinBreakdown()`, `Name：本局 N 番`, cumulative `Name N 番` and the payout line, followed
-  by the ranked 計分 board. `準備下一局` advances solo immediately; multiplayer requires every
-  human to press it (AI auto-agrees), and `回到主選單` quits in both modes. Mid-hand `重來這局`
+  settle a no-payment draw. The overlay leads with `X風第 X 局・X 圈`, then `ICON ID 胡牌!` and
+  `formatWinBreakdown()`; `showOverlay({ inlineTiles })` inserts `handEndTiles(result)` between
+  the 牌型 bullets and `共 N 番`, so a claimed tile sits at the far right like a self-drawn one.
+  `payoutSummary()` adds the 放槍／自摸 and 連莊 lines, `matchEndMessage()` is rendered as a larger
+  standalone line, and `renderStandings()` supplies the ranked 計分 board. `進入下一局` advances
+  solo immediately; multiplayer requires every human to press `準備下一局` (AI auto-agrees).
+  A finished match swaps the button to `開新一場` in both modes, keeping the multiplayer vote.
+  `回到主選單` quits in both modes. Mid-hand `重來這局`
   opens a separate `重新開始投票` requiring all humans; anyone can cancel. Requester is stored as
   a seat so `你` appears only on that device; each seat is marked `（你）` in vote lists.
 - **Scoring integration.** `normalizeMatchSetup()` clamps money `1–100000000` (default 20),
@@ -220,8 +224,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `adoptMatch()` snapshot it for the network. `recordRoundResult()` is the only settlement
   funnel: it checks `lastPayout.roundKey`, calls pure `settleRound()`, writes money/dealer/
   repeat/hand/history/over/winner, and has the host broadcast `{t:'match'}`. `payoutSummary()`
-  now emits only the payment line; `handEndMessage()` adds the breakdown and fan lines, and
-  `matchEndMessage()` supplies the match-over notice. `moneyText()` prefixes every displayed
+  emits only the payment/連莊 lines; `handEndMessage()` adds the breakdown, and
+  `matchEndMessage()` supplies the large match-over notice. `moneyText()` prefixes every displayed
   purse or payout with `$`. `roundInfoText()` supplies `X風第 X 局・X 圈` to the HUD top line,
   計分 panel and end overlay; `renderStandings()` is shared by the 計分 modal and overlay.
   Solo lobby score settings lock once `match.active`; 聯機 uses host lobby controls only.
@@ -285,7 +289,10 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 - `各家副露` sits above the hand, is always expanded (never collapsible), and lists only the
   other three seats' melds and flower counts with original tile sizes. Your own flowers and
   concealed kongs stay in the HUD flower/meld panels. The `打出 → 暫無聽牌` preview row keeps a
-  full tile image of height.
+  full tile image of height. Mouse users discard with one click; on touch-only devices
+  `isTouchOnly()` makes the first tap select a tile (via `selectDiscard`) and only a second tap on
+  that same tile call `discard()`, with hover/focus auto-selection disabled so the first tap cannot
+  discard accidentally.
 - Claim bars are anchored above the waterline, not in the HUD: one compact box per opponent with
   tile, name/wind, `N.N 秒`, progress bar and actionable buttons. The self-win/暗槓 bar is larger
   and anchored left of the rod. No `過` in opponent claim boxes.

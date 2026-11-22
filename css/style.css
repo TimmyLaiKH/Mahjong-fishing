@@ -608,8 +608,10 @@ td:last-child { min-width: 220px; }
 #overlay .modal-card { text-align: center; }
 .overlay-round-info { color: #8c1d1d; font-weight: 700; font-size: 0.95em; }
 .overlay-standings { margin-top: 14px; text-align: left; }
+.overlay-match-winner { margin: 10px 0 0; color: #8c1d1d; font-size: 1.5em; font-weight: 700; line-height: 1.35; }
 .breakdown { white-space: pre-line; line-height: 1.6; margin: 10px 0; }
 .win-tiles { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; margin: 12px 0; }
+.inline-win-tiles { margin: 4px 0; }
 .win-tiles .tile-img img { height: clamp(32px, 5vh, 58px); }
 .win-tiles .tile-img.fallback { font-size: clamp(32px, 5vh, 58px); }
 .button-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 14px; }
