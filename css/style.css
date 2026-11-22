@@ -57,6 +57,15 @@ html, body {
   border-radius: 0 0 14px 14px;
 }
 
+.round-info {
+  text-align: center;
+  font-weight: 700;
+  color: #ffe58f;
+  font-size: clamp(12px, 1.4vw, 16px);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 .hud-bar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -224,7 +233,9 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
 .meld-title { color: #ffe58f; font-weight: 700; margin-bottom: 2px; }
 .meld-rows { display: grid; gap: 3px; margin-top: 4px; }
 .meld-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.meld-row-icon { font-size: 20px; line-height: 1; }
 .meld-row-name { min-width: 4em; font-weight: 700; color: #d7f5ff; }
+.meld-row-wind { color: #ffe58f; font-weight: 700; }
 .meld-row-empty { opacity: 0.65; }
 .meld-row .tile-img img { height: clamp(20px, 3vh, 34px); width: auto; }
 .meld-row .tile-img.fallback { font-size: clamp(20px, 3vh, 34px); }
@@ -595,6 +606,8 @@ td:last-child { min-width: 220px; }
 .example-tiles .tile-img.fallback { font-size: 26px; }
 
 #overlay .modal-card { text-align: center; }
+.overlay-round-info { color: #8c1d1d; font-weight: 700; font-size: 0.95em; }
+.overlay-standings { margin-top: 14px; text-align: left; }
 .breakdown { white-space: pre-line; line-height: 1.6; margin: 10px 0; }
 .win-tiles { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; margin: 12px 0; }
 .win-tiles .tile-img img { height: clamp(32px, 5vh, 58px); }

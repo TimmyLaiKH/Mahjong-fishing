@@ -28,12 +28,11 @@ const ui = {
   claimProgress: el('claimProgress'),
   selfWinBar: el('selfWinBar'), selfWinLabel: el('selfWinLabel'),
   selfWinTile: el('selfWinTile'), selfWinActions: el('selfWinActions'),
-  roundWind: el('roundWind'), seatWind: el('seatWind'),
+  roundInfo: el('roundInfo'), seatWind: el('seatWind'),
   scoreBtn: el('scoreBtn'), moneyCount: el('moneyCount'),
   scorePanel: el('scorePanel'), scoreRoundInfo: el('scoreRoundInfo'),
   scoreStandings: el('scoreStandings'), scoreHistory: el('scoreHistory'),
-  timer: el('timer'), turnCount: el('turnCount'),
-  fanCount: el('fanCount'), bestFanCount: el('bestFanCount'),
+  timer: el('timer'),
   exposedKongs: el('exposedKongs'),
   overlay: el('overlay'), patternsBody: el('patternsBody'),
   claimBoxes: el('claimBoxes'),
@@ -291,6 +290,11 @@ function formatMoney(value) {
   return Math.round(Number(value) || 0).toLocaleString('zh-Hant');
 }
 
+/** Displayed purses and payouts always carry a dollar sign. */
+function moneyText(value) {
+  return `$${formatMoney(value)}`;
+}
+
 function resetMatch(setup = game.matchSetup, dealerSeat = null) {
   const settings = normalizeMatchSetup(setup);
   game.matchSetup = settings;
@@ -347,6 +351,17 @@ function adoptMatch(data) {
 
 function windIndexFor(match = game.match) {
   return Math.min(MAX_WINDS - 1, Math.floor((match?.handNumber ?? 0) / 4));
+}
+
+/** `X風第 X 局・X 圈` for the HUD, 計分 panel and hand-end overlay. A settled
+ *  log shows the hand that just finished; otherwise show the upcoming hand. */
+function roundInfoText(log = null) {
+  const match = game.match;
+  if (!match) return '';
+  const windIndex = log ? (log.windIndex ?? 0) : windIndexFor(match);
+  const wind = WINDS[windIndex] ?? WINDS[0];
+  const hand = log ? windIndex * 4 + 1 : match.handNumber % 4 + 1;
+  return `${TILE_INFO[wind]?.name ?? wind}風第 ${hand} 局・${match.winds} 圈`;
 }
 
 /** Seat 0's wind such that the dealer carries the current round wind. */
@@ -1546,14 +1561,14 @@ function commitAiWin(seat, result, fanTotal = null, bestFan = null, meta = {}) {
   setState(S.WIN);
   const name = seatLabel(seat);
   setStatus(`${name} 胡牌！${result.totalFan} 番`);
-  showOverlay({
+  showHandEndOverlay({
     title: `${name} 胡牌`,
-    message: withMatchSummary(`${formatWinBreakdown(result)}\n\n${name}：本局 ${result.totalFan} 番`, log),
+    message: handEndMessage({ winner: seat, result, fanTotal: total, log }),
+    log,
     tiles: [
       ...winningTiles(result),
       ...(result.flowers ?? []).map((id) => ({ id })),
     ],
-    actions: [{ label: '再玩一局', onClick: restartGame }],
   });
 }
 
@@ -1701,22 +1716,19 @@ function recordRoundResult({ winner = null, discarder = null, result = null, sel
 
 function payoutSummary(log = game.match?.lastPayout) {
   if (!log) return '';
-  const money = log.after.map((value, seat) => `${scoreSeatName(seat)} ${formatMoney(value)}`).join('　');
-  const wind = WINDS[log.windIndex] ?? WINDS[0];
   const lines = [];
   if (log.winner !== null && log.winner !== undefined) {
-    lines.push(`${scoreSeatName(log.winner)} ${log.fan} 番`);
     if (log.selfDraw) {
-      lines.push(`自摸：三家各付 ${formatMoney(log.payout.each)}，共得 ${formatMoney(log.payout.total)}`);
+      lines.push(`自摸：三家各付 ${moneyText(log.payout.each)}，共得 ${moneyText(log.payout.total)}`);
     } else {
-      lines.push(`放槍：${scoreSeatName(log.discarder)} 支付 ${formatMoney(log.payout.value)}`);
+      lines.push(`放槍：${scoreSeatName(log.discarder)} 支付 ${moneyText(log.payout.value)}`);
     }
   } else {
     lines.push('流局：不派彩');
   }
   if (log.dealerWon) lines.push(`${scoreSeatName(log.dealerSeat)} 連莊（第 ${log.repeatCount} 次）`);
-  lines.push(`資金：${money}`);
-  lines.push(`${TILE_INFO[wind]?.name ?? wind}風第 ${log.windIndex * 4 + 1} 局`);
+  // Money and round information are rendered separately by the end overlay's
+  // 計分 board and its `X風第 X 局・X 圈` heading.
   return lines.join('\n');
 }
 
@@ -1725,7 +1737,7 @@ function matchEndMessage() {
   if (!match?.over) return '';
   const winners = bestSeats(match.money);
   const names = winners.map((seat) => scoreSeatName(seat)).join('、');
-  const amounts = winners.map((seat) => formatMoney(match.money[seat])).join('、');
+  const amounts = winners.map((seat) => moneyText(match.money[seat])).join('、');
   return amounts
     ? `比賽結束！資金最多：${names}（${amounts}）`
     : `比賽結束！資金最多：${names}`;
@@ -1736,6 +1748,28 @@ function withMatchSummary(message, log = game.match?.lastPayout) {
   const combined = summary ? `${message}\n\n${summary}` : message;
   const ending = matchEndMessage();
   return ending ? `${ending}\n\n${combined}` : combined;
+}
+
+/** End-overlay text: the shared 胡牌 breakdown, this hand's and cumulative fan,
+ *  then the payout line. The standings and round heading are rendered as DOM. */
+function handEndMessage({ winner = null, result = null, fanTotal = null, log = null } = {}) {
+  const parts = [];
+  if (winner === null || winner === undefined) {
+    parts.push('時間到，沒有胡牌。');
+  } else {
+    const name = winnerName(winner);
+    const fan = result?.totalFan ?? log?.fan ?? 0;
+    const total = fanTotal ?? game.fanTotal ?? 0;
+    const breakdown = formatWinBreakdown(result ?? { isWin: true, patterns: [], totalFan: fan });
+    parts.push(breakdown || `胡牌！\n\n共 ${fan} 番`);
+    parts.push(`${name}：本局 ${fan} 番`);
+    parts.push(`${name} ${total} 番`);
+  }
+  const summary = payoutSummary(log);
+  const ending = matchEndMessage();
+  let message = parts.join('\n\n');
+  if (summary) message = `${message}\n${summary}`;
+  return ending ? `${ending}\n\n${message}` : message;
 }
 
 function commitWin(result, { discarder = null, selfDraw = null } = {}) {
@@ -1755,7 +1789,7 @@ function commitWin(result, { discarder = null, selfDraw = null } = {}) {
     finishMultiWin(game.seat, result, fanTotal, bestFan, meta);
     return;
   }
-  recordRoundResult({ winner: game.seat, result, ...meta });
+  const log = recordRoundResult({ winner: game.seat, result, ...meta });
   game.fanTotal += result.totalFan;
   if (result.totalFan > game.bestFan) {
     game.bestFan = result.totalFan;
@@ -1766,14 +1800,14 @@ function commitWin(result, { discarder = null, selfDraw = null } = {}) {
   clearSelfWin();
   setState(S.WIN);
   setStatus(`胡牌！${result.totalFan} 番`);
-  showOverlay({
-    title: '🎉 胡牌成功！',
-    message: withMatchSummary(`${formatWinBreakdown(result)}\n\n累計 ${game.fanTotal} 番　最佳 ${game.bestFan} 番`),
+  showHandEndOverlay({
+    title: `${winnerName(game.seat)} 胡牌`,
+    message: handEndMessage({ winner: game.seat, result, fanTotal: game.fanTotal, log }),
+    log,
     tiles: [
       ...winningTiles(result),
       ...(result.flowers ?? []).map((id) => ({ id })),
     ],
-    actions: [{ label: '再玩一局', onClick: restartGame }],
   });
 }
 
@@ -1785,11 +1819,7 @@ function endDrawGame() {
   setState(S.DRAW_GAME);
   setStatus('時間到，流局。');
   updateTimer();
-  showOverlay({
-    title: '流局',
-    message: withMatchSummary(`時間到，沒有胡牌。\n累計 ${game.fanTotal} 番　最佳 ${game.bestFan} 番`, log),
-    actions: [{ label: '再玩一局', onClick: restartGame }],
-  });
+  showHandEndOverlay({ title: '流局', message: handEndMessage({ log }), log });
 }
 
 function winningTiles(result) {
@@ -2189,7 +2219,7 @@ function renderRoom() {
     ui.roomGuestInfo.hidden = isHost;
     if (!isHost) {
       const setup = normalizeMatchSetup(game.roomSettings);
-      ui.roomGuestInfo.textContent = `房主設定：鉤速 ${Number(game.roomSettings.hookSpeed).toFixed(1)}×・每局 ${formatClock(game.roomSettings.gameSeconds)}・起始資金 ${formatMoney(setup.startingMoney)}・${setup.winds} 圈・金額倍數 ${setup.base}×`;
+      ui.roomGuestInfo.textContent = `房主設定：鉤速 ${Number(game.roomSettings.hookSpeed).toFixed(1)}×・每局 ${formatClock(game.roomSettings.gameSeconds)}・起始資金 ${moneyText(setup.startingMoney)}・${setup.winds} 圈・金額倍數 ${setup.base}×`;
     }
   }
   if (ui.roomHookSpeed) {
@@ -2207,7 +2237,7 @@ function renderRoom() {
   const setup = normalizeMatchSetup(game.roomSettings);
   if (ui.roomStartingMoney) {
     ui.roomStartingMoney.value = String(setup.startingMoney);
-    ui.roomStartingMoneyValue.textContent = formatMoney(setup.startingMoney);
+    ui.roomStartingMoneyValue.textContent = moneyText(setup.startingMoney);
   }
   if (ui.roomStartingMoneyText && document.activeElement !== ui.roomStartingMoneyText) {
     ui.roomStartingMoneyText.value = String(setup.startingMoney);
@@ -2597,11 +2627,11 @@ function humanSeats() {
   return game.players.filter((player) => player && !player.isBot && !player.isEmpty).map((player) => player.seat);
 }
 
-function showMultiEndOverlay(title, message, tiles = []) {
-  if (game.mode !== 'multi') {
-    showOverlay({ title, message, tiles, actions: [{ label: '再玩一局', onClick: restartGame }] });
-    return;
-  }
+/** Shared terminal overlay for solo and 聯機 hands. Everyone presses 準備下一局;
+ *  multiplayer waits for all human votes, solo has only one human so one click
+ *  advances. Quitting is always available. */
+function showHandEndOverlay({ title, message, tiles = [], log = null }) {
+  const isMulti = game.mode === 'multi';
   game.rematchVotes = [];
   game.rematchRequired = humanSeats();
   game.rematchMessage = message;
@@ -2609,16 +2639,39 @@ function showMultiEndOverlay(title, message, tiles = []) {
     title,
     message,
     tiles,
+    roundInfo: roundInfoText(log),
+    standings: true,
     actions: [
       {
-        label: '再來一局',
-        keepOpen: true,
-        pendingLabel: '已同意，等待其他玩家…',
-        onClick: voteRematch,
+        label: '準備下一局',
+        keepOpen: isMulti,
+        pendingLabel: '已準備，等待其他玩家…',
+        onClick: isMulti ? voteRematch : readySoloNextHand,
       },
-      { label: '回到主選單', primary: false, onClick: leaveMultiRoom },
+      {
+        label: '回到主選單',
+        primary: false,
+        onClick: isMulti ? leaveMultiRoom : quitToMenu,
+      },
     ],
   });
+}
+
+/** Old name kept for the test hook; the end overlay is now shared by all modes. */
+function showMultiEndOverlay(title, message, tiles = []) {
+  showHandEndOverlay({ title, message, tiles });
+}
+
+/** Solo next hand starts from the completed match state (dealer/winds/money),
+ *  with a fresh 巡 count; a finished match resets the purses first. */
+function readySoloNextHand() {
+  if (game.mode === 'multi' || ![S.WIN, S.DRAW_GAME].includes(game.state)) return;
+  ui.overlay.classList.remove('show');
+  game.rematchVotes = [];
+  game.rematchRequired = [];
+  game.rematchMessage = '';
+  if (game.match?.over) resetMatch(game.matchSetup);
+  startGame();
 }
 
 function updateRematchOverlay() {
@@ -2630,7 +2683,7 @@ function updateRematchOverlay() {
     const mark = game.rematchVotes.includes(seat) ? '✓' : '○';
     return `${mark}${seatLabel(seat)}`;
   }).join('　');
-  body.textContent = `${game.rematchMessage}\n\n再來一局投票：${names}（${game.rematchVotes.length}/${required.length}）`;
+  body.textContent = `${game.rematchMessage}\n\n準備下一局投票：${names}（${game.rematchVotes.length}/${required.length}）`;
   const button = ui.overlay.querySelector('[data-keep-open]');
   if (button && game.rematchVotes.includes(game.seat)) {
     button.disabled = true;
@@ -2856,14 +2909,15 @@ function finishMultiWin(seat, result, fanTotal, bestFan, meta = {}) {
   setState(S.WIN);
   const name = winnerName(seat);
   setStatus(`${name} 胡牌！${result?.totalFan ?? 0} 番`);
-  showMultiEndOverlay(
-    seat === game.seat ? '🎉 胡牌成功！' : `${name} 胡牌`,
-    withMatchSummary(`遊戲結束。${formatWinBreakdown(result)}\n\n${name}：累計 ${fanTotal ?? game.fanTotal} 番　最佳 ${bestFan ?? game.bestFan} 番`, log),
-    [
+  showHandEndOverlay({
+    title: `${name} 胡牌`,
+    message: handEndMessage({ winner: seat, result, fanTotal, log }),
+    log,
+    tiles: [
       ...winningTiles(result),
       ...(result?.flowers ?? []).map((id) => ({ id })),
     ],
-  );
+  });
 }
 
 function applyMultiDraw() {
@@ -2877,7 +2931,7 @@ function applyMultiDraw() {
   setState(S.DRAW_GAME);
   setStatus('時間到，流局。');
   updateTimer();
-  showMultiEndOverlay('流局', withMatchSummary('遊戲結束。時間到，沒有胡牌。', log));
+  showHandEndOverlay({ title: '流局', message: handEndMessage({ log }), log });
 }
 
 function resetMultiState() {
@@ -3331,10 +3385,17 @@ function renderMeldsPanel() {
       ?? makeBotPlayer(seat);
     const row = document.createElement('div');
     row.className = 'meld-row';
+    // ICON · ID · current 門風, in that order, for every opponent.
+    const icon = document.createElement('span');
+    icon.className = 'meld-row-icon';
+    icon.textContent = AVATAR_ICONS[seat] ?? '🧍';
     const name = document.createElement('span');
     name.className = 'meld-row-name';
     name.textContent = playerDisplayName(player);
-    row.appendChild(name);
+    const wind = document.createElement('span');
+    wind.className = 'meld-row-wind';
+    wind.textContent = TILE_INFO[seatWindOf(seat)]?.name ?? '';
+    row.append(icon, name, wind);
 
     const flowers = game.seatFlowers[seat] ?? flowersForSeat(seat) ?? [];
     if (flowers.length) {
@@ -4042,20 +4103,51 @@ function updateFish(dt) {
  * HUD
  * ------------------------------------------------------------------ */
 
+/** Ranked four-seat purse board, shared by the 計分 panel and hand-end overlay. */
+function renderStandings(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  const match = game.match;
+  if (!match) {
+    container.innerHTML = '<div class="score-empty">開始遊戲後顯示資金。</div>';
+    return;
+  }
+  const rows = match.money
+    .map((value, seat) => ({ value, seat }))
+    .sort((a, b) => b.value - a.value);
+  rows.forEach(({ value, seat }, index) => {
+    const row = document.createElement('div');
+    row.className = 'score-row';
+    if (seat === game.seat) row.classList.add('you');
+    if (seat === match.dealerSeat) row.classList.add('dealer');
+    const rank = document.createElement('span');
+    rank.textContent = String(index + 1);
+    const name = document.createElement('span');
+    name.className = 'score-seat';
+    const wind = TILE_INFO[seatWindOf(seat)]?.name ?? '';
+    const suffix = seat === game.seat ? '（你）' : '';
+    name.textContent = `${AVATAR_ICONS[seat] ?? '🧍'} ${wind} ${scoreSeatName(seat)}${suffix}`;
+    const money = document.createElement('span');
+    money.className = 'score-money';
+    money.textContent = moneyText(value);
+    row.append(rank, name, money);
+    container.appendChild(row);
+  });
+}
+
 function updateScoreUI() {
+  if (ui.roundInfo) ui.roundInfo.textContent = roundInfoText();
   if (ui.moneyCount) {
     ui.moneyCount.textContent = game.match
-      ? formatMoney(game.match.money[game.seat] ?? 0) : '—';
+      ? moneyText(game.match.money[game.seat] ?? 0) : '—';
   }
   if (ui.scoreRoundInfo) {
     const match = game.match;
     if (!match) {
       ui.scoreRoundInfo.textContent = '尚未開始';
     } else {
-      const wind = WINDS[windIndexFor(match)];
       const pieces = [
-        `${TILE_INFO[wind]?.name ?? wind}風第 ${match.handNumber % 4 + 1} 局`,
-        `${match.winds} 圈`,
+        roundInfoText(),
         `金額倍數 ${match.base}×`,
       ];
       if (match.repeatCount) pieces.push(`連莊 ${match.repeatCount}`);
@@ -4063,35 +4155,7 @@ function updateScoreUI() {
       ui.scoreRoundInfo.textContent = pieces.join('・');
     }
   }
-  if (ui.scoreStandings) {
-    ui.scoreStandings.innerHTML = '';
-    const match = game.match;
-    if (!match) {
-      ui.scoreStandings.innerHTML = '<div class="score-empty">開始遊戲後顯示資金。</div>';
-    } else {
-      const rows = match.money
-        .map((value, seat) => ({ value, seat }))
-        .sort((a, b) => b.value - a.value);
-      rows.forEach(({ value, seat }, index) => {
-        const row = document.createElement('div');
-        row.className = 'score-row';
-        if (seat === game.seat) row.classList.add('you');
-        if (seat === match.dealerSeat) row.classList.add('dealer');
-        const rank = document.createElement('span');
-        rank.textContent = String(index + 1);
-        const name = document.createElement('span');
-        name.className = 'score-seat';
-        const wind = TILE_INFO[seatWindOf(seat)]?.name ?? '';
-        const suffix = seat === game.seat ? '（你）' : '';
-        name.textContent = `${wind} ${scoreSeatName(seat)}${suffix}`;
-        const money = document.createElement('span');
-        money.className = 'score-money';
-        money.textContent = formatMoney(value);
-        row.append(rank, name, money);
-        ui.scoreStandings.appendChild(row);
-      });
-    }
-  }
+  renderStandings(ui.scoreStandings);
   if (ui.scoreHistory) {
     ui.scoreHistory.innerHTML = '';
     const history = [...(game.match?.history ?? [])].reverse();
@@ -4104,8 +4168,8 @@ function updateScoreUI() {
         const detail = log.winner === null
           ? '流局'
           : `${scoreSeatName(log.winner)} ${log.fan} 番・${log.selfDraw
-            ? `自摸 三家各 ${formatMoney(log.payout.each)}`
-            : `放槍 ${scoreSeatName(log.discarder)} 付 ${formatMoney(log.payout.value)}`}`;
+            ? `自摸 三家各 ${moneyText(log.payout.each)}`
+            : `放槍 ${scoreSeatName(log.discarder)} 付 ${moneyText(log.payout.value)}`}`;
         item.textContent = `第 ${log.windIndex * 4 + 1} 局　${detail}${log.dealerWon ? '・連莊' : ''}`;
         ui.scoreHistory.appendChild(item);
       }
@@ -4115,11 +4179,7 @@ function updateScoreUI() {
 
 function updateHUD() {
   updateScoreUI();
-  ui.roundWind.textContent = TILE_INFO[game.roundWind].name;
-  ui.seatWind.textContent = TILE_INFO[game.seatWind].name;
-  ui.turnCount.textContent = String(game.turn);
-  ui.fanCount.textContent = String(game.fanTotal);
-  ui.bestFanCount.textContent = String(game.bestFan);
+  if (ui.seatWind) ui.seatWind.textContent = TILE_INFO[game.seatWind]?.name ?? '';
   updateTimer();
   renderFlowers();
   renderClaim();
@@ -4406,10 +4466,16 @@ function renderTarget() {
  * Modals and settings
  * ------------------------------------------------------------------ */
 
-function showOverlay({ title, message, tiles = [], actions = [] }) {
+function showOverlay({ title, message, tiles = [], actions = [], roundInfo = '', standings = false }) {
   ui.overlay.innerHTML = '';
   const card = document.createElement('div');
   card.className = 'modal-card';
+  if (roundInfo) {
+    const info = document.createElement('p');
+    info.className = 'overlay-round-info';
+    info.textContent = roundInfo;
+    card.appendChild(info);
+  }
   const heading = document.createElement('h2');
   heading.textContent = title;
   card.appendChild(heading);
@@ -4417,6 +4483,12 @@ function showOverlay({ title, message, tiles = [], actions = [] }) {
   body.className = 'breakdown';
   body.textContent = message;
   card.appendChild(body);
+  if (standings) {
+    const board = document.createElement('div');
+    board.className = 'score-standings overlay-standings';
+    renderStandings(board);
+    card.appendChild(board);
+  }
   if (tiles.length) {
     const row = document.createElement('div');
     row.className = 'win-tiles';
@@ -4546,7 +4618,7 @@ function updateMatchSettings() {
 function renderMatchSettingsUI() {
   const setup = game.matchSetup;
   if (ui.matchStartingMoney) ui.matchStartingMoney.value = String(setup.startingMoney);
-  if (ui.matchStartingMoneyValue) ui.matchStartingMoneyValue.textContent = formatMoney(setup.startingMoney);
+  if (ui.matchStartingMoneyValue) ui.matchStartingMoneyValue.textContent = moneyText(setup.startingMoney);
   if (ui.matchStartingMoneyText && document.activeElement !== ui.matchStartingMoneyText) {
     ui.matchStartingMoneyText.value = String(setup.startingMoney);
   }
@@ -4847,7 +4919,7 @@ if (new URLSearchParams(location.search).has('test')) {
   window.__mf = {
     game, S, view,
     handFrom: (ids) => ids.map((id) => ({ id, uid: game.nextUid++ })),
-    setState, resolveDraw, declareKong, commitWin, endDrawGame, startGame,
+    setState, resolveDraw, declareKong, commitWin, commitAiWin, endDrawGame, startGame,
     renderHand, renderTarget, updateHUD, findKongTile, hookPosition, music,
     paceFactor, GAME_SECONDS, MIN_GAME_SECONDS, MAX_GAME_SECONDS, setGameSeconds, formatClock, parseClock,
     HAIDI_SECONDS, winContext, openingWinContext, checkCatch, randomTileKind, analyzeDiscards, selectDiscard,
@@ -4859,7 +4931,8 @@ if (new URLSearchParams(location.search).has('test')) {
     renderSelfWin, clearSelfWin, positionSelfWinBar, setMusicVolume,
     showMenu, startFromMenu, openSoloRoom, startRoomGame, quitToMenu, net, openRoom, joinRoom,
     askRoomCode, setPlayerName, leaveRoom,
-    voteRematch, showMultiEndOverlay, requestRestart, startRestartVote, voteRestart, cancelRestart,
+    voteRematch, showMultiEndOverlay, showHandEndOverlay, readySoloNextHand, handEndMessage,
+    roundInfoText, moneyText, renderStandings, requestRestart, startRestartVote, voteRestart, cancelRestart,
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,
     renderMeldsPanel, handleCatchRequest, applyFishCaught, applySea, applyHook,
     aiTick, createAiState, resetAiRod, publishDiscard, scheduleAiClaims, bestAiClaim,

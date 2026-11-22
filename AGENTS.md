@@ -207,19 +207,23 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   and discards the tile leaving the most waits. AI names render with ` (AI)`. AI states and
   ticks exist only on host/solo; the host relays their hooks and actions.
 - **End of hand/match.** `commitWin`, `commitAiWin` and `finishMultiWin` settle through
-  `recordRoundResult()` and show a terminal overlay; `endDrawGame` / `applyMultiDraw` settle a
-  no-payment draw. Solo offers `再玩一局`; multiplayer requires every human to press `再來一局`
-  (AI auto-agrees). Mid-hand `重來這局` opens a separate `重新開始投票` requiring all humans;
-  anyone can cancel. Requester is stored as a seat so `你` appears only on that device; each
-  seat is marked `（你）` in vote lists.
+  `recordRoundResult()` and show a shared terminal overlay; `endDrawGame` / `applyMultiDraw`
+  settle a no-payment draw. The overlay leads with `X風第 X 局・X 圈`, then the winner line,
+  `formatWinBreakdown()`, `Name：本局 N 番`, cumulative `Name N 番` and the payout line, followed
+  by the ranked 計分 board. `準備下一局` advances solo immediately; multiplayer requires every
+  human to press it (AI auto-agrees), and `回到主選單` quits in both modes. Mid-hand `重來這局`
+  opens a separate `重新開始投票` requiring all humans; anyone can cancel. Requester is stored as
+  a seat so `你` appears only on that device; each seat is marked `（你）` in vote lists.
 - **Scoring integration.** `normalizeMatchSetup()` clamps money `1–100000000` (default 20),
   winds `1–4` (default 1) and the UI-named 金額倍數 `1–100` (default 1×). `resetMatch()` builds
   the four-purse runtime state; `cloneMatch()` /
   `adoptMatch()` snapshot it for the network. `recordRoundResult()` is the only settlement
   funnel: it checks `lastPayout.roundKey`, calls pure `settleRound()`, writes money/dealer/
-  repeat/hand/history/over/winner, and has the host broadcast `{t:'match'}`. `payoutSummary()`,
-  `matchEndMessage()` and `withMatchSummary()` produce the overlay/detail text; `updateScoreUI()`
-  fills the HUD purse and 計分 modal (standings, current wind/連莊, payout history).
+  repeat/hand/history/over/winner, and has the host broadcast `{t:'match'}`. `payoutSummary()`
+  now emits only the payment line; `handEndMessage()` adds the breakdown and fan lines, and
+  `matchEndMessage()` supplies the match-over notice. `moneyText()` prefixes every displayed
+  purse or payout with `$`. `roundInfoText()` supplies `X風第 X 局・X 圈` to the HUD top line,
+  計分 panel and end overlay; `renderStandings()` is shared by the 計分 modal and overlay.
   Solo lobby score settings lock once `match.active`; 聯機 uses host lobby controls only.
 - **Test hook.** `window.__mf` is created only when the URL contains `test` and exposes the
   broad internal surface used by browser probes (`game`, `S`, `view`, `startFromMenu`,
@@ -264,13 +268,14 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 
 ## UI, HUD and layout
 
-- Top HUD order is **設定 → 玩法說明 → 重來這局** on the left, large centered timer, and
-  **計分 + counters** on the right. Counters read 圈風／門風／巡／資金／番數／最佳. The main
-  menu appears before any lobby or game starts. The 設定 panel only contains 鉤速 and 每局時間
-  (default 05:00); money, winds and 金額倍數 are set only in the solo/聯機 room, ordered
-  鉤速 → 每局時間 → 圈子數 → 起始資金 → 金額倍數. Each seat uses a distinct full-body icon from
-  `AVATAR_ICONS`, both beside the rod and in the lobby avatars; 允行 is male, and 一心 and 念慈
-  are female.
+- The HUD opens with a centered `X風第 X 局・X 圈` line. Below it the order is
+  **設定 → 玩法說明 → 重來這局** on the left, large centered timer, and **計分 + counters**
+  on the right. Counters read only 門風 and 資金 (with a `$` prefix); 巡, 番數 and 最佳 are not
+  shown during play. The main menu appears before any lobby or game starts. The 設定 panel only
+  contains 鉤速 and 每局時間 (default 05:00); money, winds and 金額倍數 are set only in the
+  solo/聯機 room, ordered 鉤速 → 每局時間 → 圈子數 → 起始資金 → 金額倍數. Each seat uses a
+  distinct full-body icon from `AVATAR_ICONS`, beside the rod, in the lobby avatars and in
+  `各家副露` as ICON → ID → current 門風; 允行 is male, and 一心 and 念慈 are female.
 - `#hud` has a fixed `--hud-height`, `overflow: hidden` and a grid that distributes spare
   vertical space. Status, toast, claim boxes, meld rows, flowers, hand, score UI and modals must
   never resize the HUD, canvas or sea; only viewport resizes may change geometry. `resizeCanvas()`
