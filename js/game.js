@@ -8,7 +8,7 @@ import {
   createTileElement, tileName,
 } from './tiles.js';
 import { createMusic } from './audio.js?v=1.4.63';
-import { createNet, randomPlayerId } from './net.js?v=1.4.64';
+import { createNet, randomPlayerId } from './net.js?v=1.4.65';
 import { settleRound } from './payout.js';
 import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
@@ -152,6 +152,8 @@ const game = {
   hookPeers: {},            // seat -> latest ghost hook state received over the network
   pendingAiClaims: [],      // host/solo only: delayed AI claims on a discard
   seenWins: new Set(),      // authoritative win ids already handled this session
+  winTimers: new Set(),     // guest retry timers, cancelled once the host acknowledges
+  winAcked: new Set(),      // win ids the host has confirmed receiving
   bots: [], botIndex: -1,
   nextUid: 1,
   roundWind: 'E', seatWind: 'S',
@@ -2219,19 +2221,74 @@ function broadcastOrSend(msg) {
   else net.sendToHost(msg);
 }
 
+/** Send only the fields a settlement screen actually needs. A full evaluator
+ *  result carries engine internals (and used to carry `fanCap: Infinity`), so a
+ *  nested value could make the whole win notice fail to serialise. */
+function compactWinResult(result) {
+  if (!result?.isWin) return null;
+  return {
+    isWin: true,
+    totalFan: Number(result.totalFan) || 0,
+    rawFan: Number(result.rawFan ?? result.totalFan) || 0,
+    patterns: (result.patterns ?? []).map((pattern) => ({
+      id: pattern.id ?? '',
+      name: pattern.name ?? '',
+      fan: Number(pattern.fan) || 0,
+      detail: pattern.detail ?? null,
+      includes: Array.isArray(pattern.includes) ? [...pattern.includes] : [],
+    })),
+    flowers: Array.isArray(result.flowers) ? [...result.flowers] : [],
+    concealed: Array.isArray(result.concealed) ? [...result.concealed] : [],
+    melds: (result.melds ?? []).map((meld) => ({
+      tile: meld.tile ?? null,
+      type: meld.type ?? '',
+      tiles: Array.isArray(meld.tiles) ? [...meld.tiles] : [],
+      open: Boolean(meld.open),
+    })),
+    winningTile: result.winningTile ?? null,
+    specialHand: result.specialHand ?? null,
+    capped: false,
+    fanCap: null,
+  };
+}
+
 /** A win is authoritative: the winner tells the host, the host relays it to
  *  every other seat, and each device settles once. One id dedupes the repeated
- *  sends; no receiver re-qualifies or round-key-rejects the notice. */
+ *  sends; no receiver re-qualifies or round-key-rejects the notice. A guest
+ *  keeps resending until the host acknowledges, so one transient send failure
+ *  cannot leave the other seats still fishing. */
 function announceWin(msg) {
   const winId = msg.winId
     ?? `${game.seat}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
   const notice = {
-    ...msg, winId, roundKey: msg.roundKey ?? currentRoundKey(),
+    ...msg,
+    result: compactWinResult(msg.result),
+    winId,
+    roundKey: msg.roundKey ?? currentRoundKey(),
   };
   game.seenWins.add(winId);
-  broadcastOrSend(notice);
-  setTimeout(() => broadcastOrSend(notice), 250);
-  setTimeout(() => broadcastOrSend(notice), 800);
+  if (net.isHost) {
+    net.broadcast(notice);
+    setTimeout(() => net.broadcast(notice), 250);
+    setTimeout(() => net.broadcast(notice), 800);
+    return;
+  }
+  const send = () => broadcastOrSend(notice);
+  send();
+  for (const delay of [250, 800, 1600, 2600]) {
+    const timer = setTimeout(() => {
+      game.winTimers.delete(timer);
+      if (!game.winAcked.has(winId)) send();
+    }, delay);
+    game.winTimers.add(timer);
+  }
+}
+
+function ackWin(winId) {
+  if (!winId) return;
+  game.winAcked.add(winId);
+  for (const timer of game.winTimers) clearTimeout(timer);
+  game.winTimers.clear();
 }
 
 function roomLink(code) {
@@ -3239,6 +3296,9 @@ function resetMultiState() {
   game.claimBoxes = [];
   game.claimedKeys = new Set();
   game.seenWins = new Set();
+  for (const timer of game.winTimers) clearTimeout(timer);
+  game.winTimers = new Set();
+  game.winAcked = new Set();
   game.seatMelds = {};
   game.seatFlowers = {};
   game.aiStates = {};
@@ -3498,15 +3558,22 @@ function wireNetEvents() {
     if (msg.seat !== game.seat && msg.meld) addSeatMeld(msg.seat, msg.meld);
   });
 
-  net.on('win', (msg) => {
+  net.on('win', (msg, conn) => {
     // One authoritative notice per win. The winner repeats it and the host
     // relays it; duplicates must not settle another hand if a device is slow.
     const winId = msg.winId ?? `${msg.seat}:${msg.roundKey ?? ''}:${Date.now()}`;
     if (game.seenWins.has(winId)) return;
     game.seenWins.add(winId);
-    // The host forwards the exact notice before doing anything local, so a
-    // guest can never be left waiting for a round-key check to pass.
-    if (net.isHost && msg.seat !== game.seat) net.broadcast(msg);
+    if (net.isHost) {
+      // Forward first, and repeat: a guest's win must reach every other seat
+      // even if one WebRTC send is dropped while a tab is in the background.
+      net.broadcast(msg);
+      setTimeout(() => net.broadcast(msg), 250);
+      setTimeout(() => net.broadcast(msg), 800);
+      if (conn?.peer && msg.seat !== game.seat) {
+        net.sendToPeer(conn.peer, { t: 'winAck', winId, seat: msg.seat });
+      }
+    }
     const selfDraw = msg.selfDraw === undefined ? winIsSelfDraw(msg.result) : Boolean(msg.selfDraw);
     finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan, {
       discarder: msg.discarder ?? null,
@@ -3514,6 +3581,10 @@ function wireNetEvents() {
       authoritative: true,
       winId,
     });
+  });
+
+  net.on('winAck', (msg) => {
+    if (!net.isHost && game.mode === 'multi') ackWin(msg.winId);
   });
 
   net.on('match', (msg) => {

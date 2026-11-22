@@ -210,9 +210,10 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `claimFromBox()` also ignores a passed box. A 胡 never enters the wait-for-ruling path: it calls
   `commitWin()` at once, settling locally and broadcasting `{t:'win'}` so every device ends the
   hand even if the claim message or host relay is late. `announceWin()` gives the win a unique
-  `winId` and repeats the notice at 250/800 ms; the host relays every copy, and receivers dedupe by
-  `winId` so repeats cannot settle a later hand. A guest that misses `win` entirely still ends
-  the hand from the host's `{t:'match'}` payout fallback. Its button is never disabled by
+  `winId` and sends a compact result containing only settlement fields. A guest retries at
+  250/800/1600/2600 ms until the host returns `{t:'winAck'}`; the host relays every copy at
+  0/250/800 ms, and receivers dedupe by `winId` so repeats cannot settle a later hand. A guest that
+  misses `win` entirely still ends the hand from the host's `{t:'match'}` payout fallback. Its button is never disabled by
   `canDeclareClaim()`: a rod in flight or a freshly fished tile must not make 胡 a no-op. Network
   sends are guarded in `net.js` so a dead peer cannot throw into the settlement path. Self wins, concealed kongs and 七花 use the
   enlarged inline `selfWinBar` left of the rod with `胡牌`／`開槓` and `過`／`不開槓` — never a
@@ -297,15 +298,17 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   claim arbitration, AI seats, settings, and match snapshots. Guards keep private hands on each
   device: there is no dealing, no hand validation, and no server. A win is an authoritative
   notice: the winner sends `{t:'win', winId, seat, result, ...}` to the host, the host relays the
-  exact notice to every other seat, and each device settles once. Repeats share the same `winId`
-  and are deduped; receivers do not reject a win for a round-key or local 起糊 mismatch. Every
-  outgoing message passes through `networkSafe()` in `js/net.js`, which converts non-finite numbers
-  (notably the `fanCap: Infinity` inside real win results) to `null`; PeerJS's binary packer throws
-  on `Infinity`, so without this a guest's win never left its device. The host's `{t:'match'}`
-  payout snapshot remains a fallback for a device that missed `win` entirely.
+  exact notice to every other seat, and each device settles once. The notice carries a compact
+  settlement-only result instead of the full evaluator object. Repeats share the same `winId`
+  and are deduped; receivers do not reject a win for a round-key or local 起糊 mismatch. A guest
+  retries until the host sends `{t:'winAck', winId}`; the host also repeats its relay at 0/250/800 ms.
+  Every outgoing message passes through `networkSafe()` in `js/net.js`, which converts non-finite
+  numbers to `null`; PeerJS's binary packer throws on `Infinity`, so a raw evaluator result could
+  never leave a guest's device. The host's `{t:'match'}` payout snapshot remains a fallback for a
+  device that missed `win` entirely.
 - **Message types.** `welcome`, `full`, `players`, `name`, `settings`, `start`, `discard`, `sea`,
   `time`, `hook`, `catch`, `catchRejected`, `fishCaught`, `flowers`, `claim`, `claimResult`,
-  `meld`, `win`, `match`, `draw`, `emoji`, `rematch`, `rematchStatus`, `backToRoom`, `restartRequest`,
+  `meld`, `win`, `winAck`, `match`, `draw`, `emoji`, `rematch`, `rematchStatus`, `backToRoom`, `restartRequest`,
   `restartVote`, `restartCancel`, `restartStatus`, `restartNow`, `leave`, `hostGone`, `notice`.
   `backToRoom` carries the host's current `settings` and returns every device to the read-only
   waiting room so the host can pick settings again for a new match. Host re-stamps guest
