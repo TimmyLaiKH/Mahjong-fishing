@@ -486,6 +486,7 @@ body.waiting-room #meldPanel { visibility: hidden; }
 .room-share { display: grid; gap: 4px; font-size: 0.85em; text-align: left; }
 .room-share input { width: 100%; font-size: 0.85em; }
 .room-card #roomCopy { margin: 8px 0; }
+.room-share-block[hidden] { display: none; }
 .room-avatars { display: flex; justify-content: center; gap: 12px; margin: 12px 0 4px; }
 .room-avatar {
   width: 44px; height: 44px; border-radius: 50%; color: #06384a;

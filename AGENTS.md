@@ -5,8 +5,8 @@
 `Mahjong-fishing` is **香港麻雀釣魚**, a static Hong Kong mahjong fishing game published at
 https://timmylaikh.github.io/Mahjong-fishing/. Four seats cast rods into one shared underwater
 sea, hook random tiles from an endless weighted pool, and race to form a legal winning hand.
-Solo play replaces the other three seats with full AI players; casual 4-player multiplayer uses
-PeerJS P2P room codes. There is no backend, account system, matchmaking service, build step,
+Solo play opens a solo lobby with three automatically filled AI seats and no room code; casual
+4-player 聯機 uses PeerJS P2P room codes. There is no backend, account system, matchmaking service, build step,
 framework or bundler. All gameplay state lives in the browser.
 
 The play link must stay at the top of `README.md`. All player-facing text is **Traditional
@@ -99,7 +99,9 @@ cachebusts (`index.html`, `js/game.js`, `js/payout.js`, `css/style.css`).
   `拋竿釣起你需要的牌吧！(點擊屏幕)`. Other fixed strings include `房主已離開`,
   `房主已離開，請重新開房間`, `房間已滿，請換一個房間。`,
   `房間已關閉，請重新開房間。`, and
-  `所有人加入後，請等待房主按下「開始遊戲」。` at the top of the room screen.
+  `所有人加入後，請等待房主按下「開始遊戲」。` at the top of the 聯機 room screen.
+  The solo lobby instead shows `三位 AI 對手已自動補位，按下「開始遊戲」即可開始。` and hides all
+  room-code/share-link UI.
 - **Help and pattern table.** 玩法說明 has exactly six `<li>` items. 牌型一覽 lives inside it and
   is generated from `PATTERN_TABLE` + `FLOWER_PATTERN_TABLE`; every pattern needs a validated
   `example` there.
@@ -166,8 +168,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 ## Game orchestration (`js/game.js`)
 
 - **State machine.** `S` has nine states: `LOADING`, `DEAL`, `AWAIT_CAST`, `CASTING`, `REELING`,
-  `RESOLVE_DRAW`, `AWAIT_DISCARD`, `WIN`, `DRAW_GAME`. The menu and rematch screens are modals,
-  not states. `setState()` clears stale discard highlights, sets the exact status text, selects
+  `RESOLVE_DRAW`, `AWAIT_DISCARD`, `WIN`, `DRAW_GAME`. The menu, solo/聯機 lobby and rematch
+  screens are modals, not states. `setState()` clears stale discard highlights, sets the exact status text, selects
   the just-drawn tile by uid for `AWAIT_DISCARD`, and refreshes the HUD. Exact statuses:
   `派牌中…`, `拋竿釣起你需要的牌吧！(點擊屏幕)`, `鉤子下降中，看準時機！`, `收線中…`,
   `檢查牌型…`, `請選一張牌打出（或直接點擊手牌）`, `胡牌！`, `流局`.
@@ -208,7 +210,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   repeat/hand/history/over/winner, and has the host broadcast `{t:'match'}`. `payoutSummary()`,
   `matchEndMessage()` and `withMatchSummary()` produce the overlay/detail text; `updateScoreUI()`
   fills the HUD purse and 計分 modal (standings, current wind/連莊, payout history).
-  Solo score settings lock once `match.active`; multiplayer uses host lobby controls only.
+  Solo lobby score settings lock once `match.active`; 聯機 uses host lobby controls only.
 - **Test hook.** `window.__mf` is created only when the URL contains `test` and exposes the
   broad internal surface used by browser probes (`game`, `S`, `view`, `startFromMenu`,
   `startGame`, `commitWin`, `endDrawGame`, `updateHUD`, scoring helpers, `renderRoom`, `net`,
@@ -216,16 +218,18 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 
 ## Multiplayer (`js/net.js` and game-side protocol)
 
-- `createNet()` wraps PeerJS with room prefix `mf-`, four-character room codes, host/guest
+- `createNet()` wraps PeerJS with room prefix `mf-`, four-character 聯機 room codes, host/guest
   connections, `on`/`emit`, `sendToHost`, `sendToPeer`, `broadcast`, `close`, `isHost`,
   `available`. `index.html` loads PeerJS from CDN and falls back to `js/vendor/peerjs.min.js`.
+  The solo lobby never calls `createNet()`.
 - **Lobby.** `openRoom()` creates a host plus three empty seats; the host toggles AI per seat.
   Guests fill the first empty seat before replacing AI; four humans means
   `房間已滿，請換一個房間。`. A stale PeerJS id with no responding host is rejected after an
   8-second watchdog with `房間已關閉，請重新開房間。`; that code is added to a session-only
   `deadRooms` set and never reopened. Guests stay on the join screen until `welcome`, then see
   the room screen with the large waiting hint at the top. Clicking the room background must not
-  dismiss it.
+  dismiss it. The solo lobby reuses the same screen with `mode: 'solo'`: four AI icons, editable
+  room settings, a `開始遊戲` button, no code/link, and `返回主選單` instead of `離開房間`.
 - **Names.** Solo/host default `幼羚`; joining guests default by seat `允行`, `一心`, `念慈`.
   Names are editable from menu/lobby/settings, limited to 12 characters, synced via `name`, and
   AI seats always render ` (AI)`.
@@ -252,7 +256,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 
 - Top HUD order is **設定 → 玩法說明 → 重來這局** on the left, large centered timer, and
   **計分 + counters** on the right. Counters read 圈風／門風／巡／資金／番數／最佳. The main
-  menu appears before any game starts.
+  menu appears before any lobby or game starts. Room controls are ordered 鉤速 → 每局時間 →
+  圈子數 → 起始資金 → 底注 B. Each seat uses a distinct icon from `AVATAR_ICONS`, both beside the
+  rod and in the lobby avatars.
 - `#hud` has a fixed `--hud-height`, `overflow: hidden` and a grid that distributes spare
   vertical space. Status, toast, claim boxes, meld rows, flowers, hand, score UI and modals must
   never resize the HUD, canvas or sea; only viewport resizes may change geometry. `resizeCanvas()`
@@ -311,7 +317,7 @@ Beyond syntax/tests:
   count; money/dealer/winds survive mid-match restart; new match resets purses.
 - Scoring: typed and slider inputs stay in sync (`1–100000000`, `1–4`, `1×–100×`); payout values,
   放槍/自摸, 連莊, dealer rotation, match winner and history are exact; settlements happen once.
-- Multiplayer: host controls sync to guests; guests see room info not host controls; room join,
+- 聯機: host controls sync to guests; guests see room info not host controls; room join,
   full/dead room messages, start lock, rematch/restart votes and host disconnect behave as
   specified. Real two-device PeerJS WebRTC smoke tests are still pending; message-level/browser
   simulations are the current practical check.

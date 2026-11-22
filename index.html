@@ -81,8 +81,8 @@
         <input id="menuPlayerName" type="text" maxlength="12" autocomplete="off" aria-label="玩家名稱" value="幼羚" />
       </label>
       <button id="menuStart" class="primary" type="button">單機遊戲</button>
-      <button id="menuHost" class="secondary" type="button">多人遊戲: 開新房間</button>
-      <button id="menuJoin" class="secondary" type="button">多人遊戲: 加入房間</button>
+      <button id="menuHost" class="secondary" type="button">聯機遊戲: 開新房間</button>
+      <button id="menuJoin" class="secondary" type="button">聯機遊戲: 加入房間</button>
       <button id="menuHelp" class="secondary" type="button">玩法說明</button>
       <button id="menuSettings" class="secondary" type="button">設定</button>
       <button id="menuCredits" class="secondary" type="button">資料來源</button>
@@ -105,15 +105,17 @@
   </div>
 </div>
 
-<div id="roomScreen" class="modal room-screen" role="dialog" aria-modal="true" aria-label="多人房間">
+<div id="roomScreen" class="modal room-screen" role="dialog" aria-modal="true" aria-label="聯機房間">
   <div class="modal-card room-card">
-    <h1 class="room-title">多人房間</h1>
-    <p class="room-wait-hint">所有人加入後，請等待房主按下「開始遊戲」。</p>
-    <p id="roomCode" class="room-code">—</p>
-    <label class="room-share">分享連結
-      <input id="roomLink" type="text" readonly aria-label="分享連結" />
-    </label>
-    <button id="roomCopy" class="secondary" type="button">複製連結</button>
+    <h1 id="roomTitle" class="room-title">聯機房間</h1>
+    <p id="roomWaitHint" class="room-wait-hint">所有人加入後，請等待房主按下「開始遊戲」。</p>
+    <div id="roomShareBlock" class="room-share-block">
+      <p id="roomCode" class="room-code">—</p>
+      <label class="room-share">分享連結
+        <input id="roomLink" type="text" readonly aria-label="分享連結" />
+      </label>
+      <button id="roomCopy" class="secondary" type="button">複製連結</button>
+    </div>
     <label class="player-name-input room-player-name">玩家名稱
       <input id="roomPlayerName" type="text" maxlength="12" autocomplete="off" aria-label="玩家名稱" value="幼羚" />
     </label>
@@ -133,13 +135,6 @@
           <input id="roomGameDurationText" class="duration-text" type="text" inputmode="numeric" value="05:00" aria-label="輸入房間每局時間（分:秒）" />
         </span>
       </label>
-      <label class="field">起始資金
-        <span class="duration-controls">
-          <input id="roomStartingMoney" type="range" min="1" max="100000000" step="1" value="10000" aria-label="房間起始資金滑桿" />
-          <b id="roomStartingMoneyValue">10,000</b>
-          <input id="roomStartingMoneyText" class="duration-text" type="text" inputmode="numeric" value="10000" aria-label="輸入房間起始資金" />
-        </span>
-      </label>
       <label class="field">圈子數
         <span class="duration-controls">
           <select id="roomWinds" aria-label="房間圈子數">
@@ -148,6 +143,13 @@
             <option value="3">3 圈</option>
             <option value="4" selected>4 圈</option>
           </select>
+        </span>
+      </label>
+      <label class="field">起始資金
+        <span class="duration-controls">
+          <input id="roomStartingMoney" type="range" min="1" max="100000000" step="1" value="10000" aria-label="房間起始資金滑桿" />
+          <b id="roomStartingMoneyValue">10,000</b>
+          <input id="roomStartingMoneyText" class="duration-text" type="text" inputmode="numeric" value="10000" aria-label="輸入房間起始資金" />
         </span>
       </label>
       <label class="field">底注 B
@@ -178,10 +180,10 @@
     <ol class="help-list">
       <li>開始時有 13 張手牌。點擊畫面或按 <kbd>空白鍵</kbd> 拋竿；鉤子出去或收回時碰到魚都會鉤起牌。約每七張魚有一張會在出現三秒後翻到背面、三秒後再翻回正面考驗記憶；鉤起時一定是正面。</li>
       <li>打牌階段滑鼠移過手牌即可選牌，也可按 <kbd>←</kbd> <kbd>→</kbd> 選擇、按 <kbd>Enter</kbd> 打出，或直接點手牌。</li>
-      <li>允行、一心、念慈三位對手（多人時為其他玩家或 AI）各有自己的手牌與釣竿，和大家在同一片海裡搶魚，也能自己胡牌。他們打出的牌會展示五秒；該牌的圖片、出牌者與門風，以及胡／碰／上／明槓按鈕會顯示在釣竿右側（每位對手各有一欄），桿子仍會繼續擺動，你可照常拋竿與打牌。胡、碰、明槓可向任一對手宣告；上只能向你的上家（前一個門風）宣告；逾時自動放棄。</li>
+      <li>允行、一心、念慈三位對手（聯機時為其他玩家或 AI）各有自己的手牌與釣竿，和大家在同一片海裡搶魚，也能自己胡牌。他們打出的牌會展示五秒；該牌的圖片、出牌者與門風，以及胡／碰／上／明槓按鈕會顯示在釣竿右側（每位對手各有一欄），桿子仍會繼續擺動，你可照常拋竿與打牌。胡、碰、明槓可向任一對手宣告；上只能向你的上家（前一個門風）宣告；逾時自動放棄。</li>
       <li>自己釣牌成胡時，釣竿左側會出現「胡牌／過」提示：選「胡牌」才會結算，選「過」則打出一張牌繼續。集齊七張花牌時也可選「過」拒絕花糊，之後只接受八花胡牌，並於手牌胡牌時加計花糊番。</li>
       <li>所有玩家共用同一片無限魚海：魚的牌種隨機產生，普通牌與花牌維持 4：1 加權；沒有發牌輔助，也沒有四張上限，四家都可能同時搶同一種牌。</li>
-      <li>畫面會顯示胡牌聽牌；打牌階段會顯示目前選中的牌打出後的聽牌。設定的每局時間到仍未胡牌即為「流局」。累計番數與最佳番數會記錄在本機瀏覽器中。點「計分」可看四家資金與每局派彩紀錄；單機在開始前、多人由房主在大廳設定起始資金、圈子數與底注 B。有人破產或打完指定圈數即結束，資金最多者勝；莊家胡牌可連莊。</li>
+      <li>畫面會顯示胡牌聽牌；打牌階段會顯示目前選中的牌打出後的聽牌。設定的每局時間到仍未胡牌即為「流局」。累計番數與最佳番數會記錄在本機瀏覽器中。點「計分」可看四家資金與每局派彩紀錄；單機在開始前、聯機由房主在大廳設定起始資金、圈子數與底注 B。有人破產或打完指定圈數即結束，資金最多者勝；莊家胡牌可連莊。</li>
     </ol>
     <h3>常見香港麻雀牌型一覽</h3>
     <p class="hint-text">範例牌型由規則引擎產生並經測試驗證；番數無上限。</p>

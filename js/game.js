@@ -43,7 +43,8 @@ const ui = {
   menuPlayerName: el('menuPlayerName'),
   join: el('joinScreen'), joinRoomCode: el('joinRoomCode'), joinMessage: el('joinMessage'),
   joinSubmit: el('joinSubmit'), joinBack: el('joinBack'),
-  room: el('roomScreen'), roomCode: el('roomCode'), roomLink: el('roomLink'),
+  room: el('roomScreen'), roomTitle: el('roomTitle'), roomWaitHint: el('roomWaitHint'),
+  roomShareBlock: el('roomShareBlock'), roomCode: el('roomCode'), roomLink: el('roomLink'),
   roomPlayerName: el('roomPlayerName'), settingsPlayerName: el('settingsPlayerName'),
   roomCopy: el('roomCopy'), roomPlayers: el('roomPlayers'), roomAvatars: el('roomAvatars'),
   roomHostControls: el('roomHostControls'), roomGuestInfo: el('roomGuestInfo'),
@@ -71,6 +72,7 @@ const net = createNet();
 const MULTI_CLAIM_SECONDS = 5;
 const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const AVATAR_COLORS = ['#a9e5ff', '#ffd27f', '#c8a9ff', '#ff9b9b'];
+const AVATAR_ICONS = ['🧑', '👩', '👨', '🧒'];
 // Codes that failed to produce a live host this session. PeerJS can leave a
 // stale id registered for a while after the host leaves, so never retry them.
 const deadRooms = new Set();
@@ -1789,6 +1791,19 @@ function defaultRoomPlayers() {
   ];
 }
 
+/** Solo uses the same room screen, but all three opponent seats are AI from the start. */
+function defaultSoloPlayers() {
+  return [
+    defaultRoomPlayers()[0],
+    ...[1, 2, 3].map(makeBotPlayer),
+  ];
+}
+
+/** The room controls are editable in the solo lobby and by the multiplayer host. */
+function canEditRoomSettings() {
+  return game.mode === 'solo' || (net.isHost && game.role === 'host');
+}
+
 function fillEmptySeatsWithBots() {
   if (!net.isHost || game.mode !== 'multi') return false;
   let changed = false;
@@ -1945,9 +1960,40 @@ function rejectJoin(title, message) {
   });
 }
 
+/** Solo now uses a lobby too: four AI-filled seats, no room code or share link. */
+function openSoloRoom() {
+  clearJoinWatchdog();
+  ui.overlay.classList.remove('show');
+  clearNotices();
+  game.pendingResult = null;
+  game.state = S.LOADING;
+  game.timeLeft = game.settings.gameSeconds;
+  game.timeDeadline = 0;
+  game.clockOffset = 0;
+  game.mode = 'solo';
+  game.role = 'none';
+  game.seat = 0;
+  game.roomCode = null;
+  game.players = defaultSoloPlayers();
+  game.roomSettings = {
+    hookSpeed: game.hookSpeed,
+    gameSeconds: game.settings.gameSeconds,
+    ...game.matchSetup,
+  };
+  resetMatch(game.matchSetup);
+  setRoomMessage('');
+  closeModal('menuScreen');
+  closeModal('joinScreen');
+  openModal('roomScreen');
+  setWaitingRoom(true);
+  renderRoom();
+  updateSettingsUI();
+  unlockMusic();
+}
+
 async function openRoom() {
   if (!net.available) {
-    setRoomMessage('多人功能無法使用：請重新整理頁面。');
+    setRoomMessage('聯機功能無法使用：請重新整理頁面。');
     return;
   }
   clearJoinWatchdog();
@@ -2002,7 +2048,7 @@ async function joinRoom() {
     return;
   }
   if (!net.available) {
-    if (ui.joinMessage) ui.joinMessage.textContent = '多人功能無法使用：請重新整理頁面。';
+    if (ui.joinMessage) ui.joinMessage.textContent = '聯機功能無法使用：請重新整理頁面。';
     openModal('joinScreen');
     return;
   }
@@ -2054,9 +2100,20 @@ async function joinRoom() {
 
 function renderRoom() {
   if (!ui.room) return;
-  if (ui.roomCode) ui.roomCode.textContent = game.roomCode ?? '—';
-  if (ui.roomLink) ui.roomLink.value = game.roomCode ? roomLink(game.roomCode) : '';
-  const isHost = net.isHost && game.role === 'host';
+  const isSoloRoom = game.mode === 'solo';
+  const isMultiHost = net.isHost && game.role === 'host';
+  const isHost = isSoloRoom || isMultiHost;
+  if (ui.room) ui.room.setAttribute('aria-label', isSoloRoom ? '單機房間' : '聯機房間');
+  if (ui.roomTitle) ui.roomTitle.textContent = isSoloRoom ? '單機房間' : '聯機房間';
+  if (ui.roomWaitHint) {
+    ui.roomWaitHint.textContent = isSoloRoom
+      ? '三位 AI 對手已自動補位，按下「開始遊戲」即可開始。'
+      : '所有人加入後，請等待房主按下「開始遊戲」。';
+  }
+  if (ui.roomShareBlock) ui.roomShareBlock.hidden = isSoloRoom;
+  if (ui.roomCode) ui.roomCode.textContent = isSoloRoom || !game.roomCode ? '—' : game.roomCode;
+  if (ui.roomLink) ui.roomLink.value = isSoloRoom || !game.roomCode ? '' : roomLink(game.roomCode);
+  if (ui.roomLeave) ui.roomLeave.textContent = isSoloRoom ? '返回主選單' : '離開房間';
   if (ui.roomHostControls) ui.roomHostControls.hidden = !isHost;
   if (ui.roomStart) ui.roomStart.hidden = !isHost;
   if (ui.roomGuestInfo) {
@@ -2103,7 +2160,7 @@ function renderRoom() {
       avatar.className = 'room-avatar';
       avatar.style.background = AVATAR_COLORS[seat];
       if (!player || player.isEmpty) avatar.classList.add('empty');
-      avatar.textContent = '🧍';
+      avatar.textContent = AVATAR_ICONS[seat];
       ui.roomAvatars.appendChild(avatar);
     }
   }
@@ -2119,9 +2176,10 @@ function renderRoom() {
       role.className = 'room-player-role';
       role.textContent = player.isEmpty ? '等待加入'
         : player.seat === game.seat ? '你'
-          : player.isBot ? 'AI 補位' : player.seat === 0 ? '房主' : '好友';
+          : isSoloRoom ? 'AI 對手'
+            : player.isBot ? 'AI 補位' : player.seat === 0 ? '房主' : '好友';
       row.append(label, role);
-      if (isHost && player.seat !== 0 && (player.isEmpty || player.isBot)) {
+      if (isMultiHost && player.seat !== 0 && (player.isEmpty || player.isBot)) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'room-seat-btn';
@@ -2153,7 +2211,7 @@ function currentRoomMatchSetup() {
 }
 
 function updateRoomSettings() {
-  if (!net.isHost || game.mode !== 'multi') return;
+  if (!canEditRoomSettings()) return;
   const setup = currentRoomMatchSetup();
   game.roomSettings = {
     hookSpeed: Number(ui.roomHookSpeed.value),
@@ -2161,13 +2219,14 @@ function updateRoomSettings() {
     ...setup,
   };
   applyMatchSetup(setup);
-  net.broadcast({ t: 'settings', settings: game.roomSettings });
+  if (game.mode === 'multi') net.broadcast({ t: 'settings', settings: game.roomSettings });
   renderRoom();
+  updateSettingsUI();
 }
 
 /** Host can type a clock (5:00, 05:00, 0:30 or 5) instead of dragging. */
 function commitRoomDurationText() {
-  if (!net.isHost || game.mode !== 'multi') return;
+  if (!canEditRoomSettings()) return;
   const parsed = parseClock(ui.roomGameDurationText?.value);
   const seconds = parsed === null ? game.roomSettings.gameSeconds : clampGameSeconds(parsed);
   ui.roomGameDuration.value = String(seconds);
@@ -2176,7 +2235,7 @@ function commitRoomDurationText() {
 
 /** Numeric text inputs mirror the sliders so big values can be typed exactly. */
 function commitRoomMoneyText() {
-  if (!net.isHost || game.mode !== 'multi') return;
+  if (!canEditRoomSettings()) return;
   const setup = normalizeMatchSetup({
     ...currentRoomMatchSetup(),
     startingMoney: clampInt(ui.roomStartingMoneyText?.value, MIN_STARTING_MONEY, MAX_STARTING_MONEY, game.matchSetup.startingMoney),
@@ -2186,13 +2245,38 @@ function commitRoomMoneyText() {
 }
 
 function commitRoomBaseText() {
-  if (!net.isHost || game.mode !== 'multi') return;
+  if (!canEditRoomSettings()) return;
   const setup = normalizeMatchSetup({
     ...currentRoomMatchSetup(),
     base: clampInt(ui.roomBaseText?.value, MIN_BASE, MAX_BASE, game.matchSetup.base),
   });
   if (ui.roomBase) ui.roomBase.value = String(setup.base);
   updateRoomSettings();
+}
+
+/** Start whichever lobby is open: solo begins locally, multiplayer broadcasts. */
+function startRoomGame() {
+  if (game.mode === 'multi') {
+    startMultiGame();
+    return;
+  }
+  if (game.mode !== 'solo') return;
+  const setup = currentRoomMatchSetup();
+  game.roomSettings = {
+    hookSpeed: Number(ui.roomHookSpeed.value),
+    gameSeconds: Number(ui.roomGameDuration.value),
+    ...setup,
+  };
+  game.hookSpeed = game.roomSettings.hookSpeed;
+  game.settings.gameSeconds = game.roomSettings.gameSeconds;
+  resetMatch(setup, game.match?.dealerSeat ?? null);
+  game.players = defaultSoloPlayers();
+  closeModal('roomScreen');
+  closeModal('joinScreen');
+  ui.overlay.classList.remove('show');
+  setWaitingRoom(false);
+  updateSettingsUI();
+  startGame();
 }
 
 function startMultiGame() {
@@ -2764,6 +2848,14 @@ function leaveMultiRoom() {
   });
   resetMultiState();
   showMenu();
+}
+
+function leaveRoom() {
+  if (game.mode === 'multi') {
+    leaveMultiRoom();
+    return;
+  }
+  quitToMenu();
 }
 
 function wireNetEvents() {
@@ -3552,7 +3644,7 @@ function drawPlayerAvatars() {
     ctx.fill();
     ctx.font = '30px sans-serif';
     ctx.fillStyle = '#06384a';
-    ctx.fillText('🧍', x, y + 1);
+    ctx.fillText(AVATAR_ICONS[seat], x, y + 1);
   }
   ctx.restore();
 }
@@ -4287,12 +4379,9 @@ function showMenu() {
   ui.menu?.classList.add('show');
 }
 
-/** Leave the title screen and begin a fresh round. */
+/** Leave the title screen and open the solo lobby (AI seats filled automatically). */
 function startFromMenu() {
-  closeModal('menuScreen');
-  unlockMusic();
-  if (game.mode !== 'multi') resetMatch(game.matchSetup);
-  startGame();
+  openSoloRoom();
 }
 
 /** Quit the current round from settings and return to the title screen. */
@@ -4314,6 +4403,7 @@ function quitToMenu() {
     resetMatch(game.matchSetup);
   }
   ui.overlay.classList.remove('show');
+  setWaitingRoom(false);
   showMenu();
 }
 
@@ -4407,7 +4497,7 @@ function updateSettingsUI() {
   ui.hookSpeedValue.textContent = `${game.hookSpeed.toFixed(1)}×`;
   // The room host picks these before the round starts; nobody may change them
   // mid-game or the four screens would drift apart.
-  const locked = game.mode === 'multi';
+  const locked = game.mode === 'multi' || Boolean(game.match?.active);
   for (const input of [ui.hookSpeed, ui.gameDuration, ui.gameDurationText]) {
     if (!input) continue;
     input.disabled = locked;
@@ -4504,7 +4594,7 @@ function wireInput() {
     event.preventDefault();
     startCast();
   });
-  ui.menuStart.addEventListener('click', startFromMenu);
+  ui.menuStart.addEventListener('click', openSoloRoom);
   ui.menuHost.addEventListener('click', openRoom);
   ui.menuJoin.addEventListener('click', askRoomCode);
   ui.joinSubmit.addEventListener('click', joinRoom);
@@ -4522,8 +4612,8 @@ function wireInput() {
       if (event.key === 'Enter') { event.preventDefault(); input.blur(); }
     });
   }
-  ui.roomStart.addEventListener('click', startMultiGame);
-  ui.roomLeave.addEventListener('click', leaveMultiRoom);
+  ui.roomStart.addEventListener('click', startRoomGame);
+  ui.roomLeave.addEventListener('click', leaveRoom);
   ui.roomCopy.addEventListener('click', copyRoomLink);
   ui.roomHookSpeed.addEventListener('input', updateRoomSettings);
   ui.roomGameDuration.addEventListener('input', updateRoomSettings);
@@ -4675,7 +4765,8 @@ if (new URLSearchParams(location.search).has('test')) {
     previousWind, canChowFrom, botLabel, positionClaimBar,
     chowCombinations, claimWinResult, declareOpenMeld, renderMelds, renderClaim,
     renderSelfWin, clearSelfWin, positionSelfWinBar, setMusicVolume,
-    showMenu, startFromMenu, quitToMenu, net, openRoom, joinRoom, askRoomCode, setPlayerName,
+    showMenu, startFromMenu, openSoloRoom, startRoomGame, quitToMenu, net, openRoom, joinRoom,
+    askRoomCode, setPlayerName, leaveRoom,
     voteRematch, showMultiEndOverlay, requestRestart, startRestartVote, voteRestart, cancelRestart,
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,
     renderMeldsPanel, handleCatchRequest, applyFishCaught, applySea, applyHook,
