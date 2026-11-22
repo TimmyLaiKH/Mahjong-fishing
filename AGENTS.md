@@ -214,7 +214,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   ticks exist only on host/solo; the host relays their hooks and actions.
 - **End of hand/match.** `commitWin`, `commitAiWin` and `finishMultiWin` settle through
   `recordRoundResult()` and show a shared terminal overlay; `endDrawGame` / `applyMultiDraw`
-  settle a no-payment draw. The overlay leads with `X風第 X 局・X 圈`, then `ICON ID 胡牌!` and
+  settle a no-payment draw. Multiplayer settlement switches to `S.WIN` / `S.DRAW_GAME` **before**
+  settling or rendering, so a failure in payout/overlay code can never leave rods, AI and the clock
+  still running without a settlement screen. The overlay leads with `X風第 X 局・X 圈`, then `ICON ID 胡牌!` and
   `formatWinBreakdown()` with its leading `胡牌！` line stripped (the heading already says `胡牌!`);
   `showOverlay({ inlineTiles })` inserts `handEndTiles(result)` between
   the 牌型 bullets and `共 N 番`, so a claimed tile sits at the far right like a self-drawn one.
@@ -226,7 +228,11 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   opens a separate `重新開始投票` requiring all humans; anyone can cancel. Requester is stored as
   a seat so `你` appears only on that device; each seat is marked `（你）` in vote lists.
 - **Scoring integration.** `normalizeMatchSetup()` clamps money `1–100000000` (default 20),
-  winds `1–4` (default 1) and the UI-named 金額倍數 `1–100` (default 1×). `resetMatch()` builds
+  winds `1–4` (default 1), the UI-named 金額倍數 `1–100` (default 1×) and 起糊 `minFan` `0–13`
+  (default 0 = no minimum). `qualifyingWin()` is the only game-side 起糊 gate: every self-draw,
+  claim, flower and AI win decision calls it, so a hand below the chosen minimum is never offered
+  or settled; 0 keeps the original behaviour. `minFan` rides in `roomSettings`, `matchSetup`,
+  `match`, `cloneMatch()` and `adoptMatch()`, so guests use the host's rule. `resetMatch()` builds
   the four-purse runtime state; `cloneMatch()` /
   `adoptMatch()` snapshot it for the network. `recordRoundResult()` is the only settlement
   funnel: it checks `lastPayout.roundKey`, calls pure `settleRound()`, writes money/dealer/
@@ -380,9 +386,10 @@ Beyond syntax/tests:
   count; money/dealer/winds survive mid-match restart; new match resets purses.
 - Scoring: typed and slider inputs stay in sync (`1–100000000`, `1–4`, `1×–100×`); payout values,
   出銃/自摸, 連莊, dealer rotation, match winner and history are exact; settlements happen once.
-- 聯機: host controls sync to guests; guests see room info not host controls; room join,
-  full/dead room messages, start lock, rematch/restart votes and host disconnect behave as
-  specified. Real two-device PeerJS WebRTC smoke tests are still pending; message-level/browser
+- 聯機: host controls sync to guests; guests see the same room layout with all host controls
+  disabled, 開始遊戲 disabled and the `(由房主設定)` note; 起糊 syncs with the host and blocks
+  below-minimum wins; room join, full/dead room messages, start lock, rematch/restart votes,
+  win/draw settlement and host disconnect behave as specified. Real two-device PeerJS WebRTC smoke tests are still pending; message-level/browser
   simulations are the current practical check.
 - Deployment: after push, fetch live assets with distinct cachebusts and confirm the new code is
   served.

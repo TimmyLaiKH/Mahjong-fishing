@@ -53,7 +53,7 @@ const ui = {
   roomStartingMoney: el('roomStartingMoney'), roomStartingMoneyText: el('roomStartingMoneyText'),
   roomStartingMoneyValue: el('roomStartingMoneyValue'),
   roomWinds: el('roomWinds'), roomBase: el('roomBase'), roomBaseText: el('roomBaseText'),
-  roomBaseValue: el('roomBaseValue'),
+  roomBaseValue: el('roomBaseValue'), roomMinFan: el('roomMinFan'),
   roomStart: el('roomStart'), roomLeave: el('roomLeave'), roomMessage: el('roomMessage'),
   settingsSound: el('settingsSound'),
   musicVolume: el('musicVolume'), musicVolumeValue: el('musicVolumeValue'),
@@ -120,6 +120,11 @@ const DEFAULT_WINDS = 1;
 const MIN_BASE = 1;
 const MAX_BASE = 100;
 const DEFAULT_BASE = 1;
+// 起糊 is a room rule: 0 means no minimum, otherwise a hand must reach this
+// many fan. The host picks 0–13 before the first deal.
+const MIN_MIN_FAN = 0;
+const MAX_MIN_FAN = 13;
+const DEFAULT_MIN_FAN = 0;
 /** The host owns the shared sea and sends compact snapshots ten times a second. */
 const SEA_BROADCAST_INTERVAL = 0.1;
 /** Hook poses go out twenty times a second so ghost rods feel immediate. */
@@ -160,6 +165,7 @@ const game = {
   fanTotal: readNumber('mf-fantotal'), bestFan: readNumber('mf-bestfan'),
   matchSetup: {
     startingMoney: DEFAULT_STARTING_MONEY, winds: DEFAULT_WINDS, base: DEFAULT_BASE,
+    minFan: DEFAULT_MIN_FAN,
   },
   match: null,              // created by resetMatch(); authoritative on the host
   settings: {
@@ -194,6 +200,7 @@ const game = {
   roomSettings: {
     hookSpeed: 1, gameSeconds: GAME_SECONDS,
     startingMoney: DEFAULT_STARTING_MONEY, winds: DEFAULT_WINDS, base: DEFAULT_BASE,
+    minFan: DEFAULT_MIN_FAN,
   },
   claimBoxes: [],           // multiplayer claim slots (one per recent discard)
   claimedKeys: new Set(),   // solo: one AI claim per played tile
@@ -283,6 +290,7 @@ function normalizeMatchSetup(source = {}) {
     startingMoney: clampInt(source.startingMoney, MIN_STARTING_MONEY, MAX_STARTING_MONEY, DEFAULT_STARTING_MONEY),
     winds: clampInt(source.winds, MIN_WINDS, MAX_WINDS, DEFAULT_WINDS),
     base: clampInt(source.base, MIN_BASE, MAX_BASE, DEFAULT_BASE),
+    minFan: clampInt(source.minFan, MIN_MIN_FAN, MAX_MIN_FAN, DEFAULT_MIN_FAN),
   };
 }
 
@@ -322,6 +330,7 @@ function cloneMatch(match = game.match) {
   if (!match) return null;
   return {
     startingMoney: match.startingMoney, winds: match.winds, base: match.base,
+    minFan: clampInt(match.minFan, MIN_MIN_FAN, MAX_MIN_FAN, DEFAULT_MIN_FAN),
     money: [...match.money], dealerSeat: match.dealerSeat,
     repeatCount: match.repeatCount, handNumber: match.handNumber,
     history: match.history.map((entry) => ({ ...entry })),
@@ -338,6 +347,7 @@ function adoptMatch(data) {
     ...game.matchSetup,
     money: data.money.map((value) => Math.round(Number(value) || 0)),
     dealerSeat: clampInt(data.dealerSeat, 0, 3, 0),
+    minFan: clampInt(data.minFan, MIN_MIN_FAN, MAX_MIN_FAN, DEFAULT_MIN_FAN),
     repeatCount: clampInt(data.repeatCount, 0, 999, 0),
     handNumber: clampInt(data.handNumber, 0, 999, 0),
     history: Array.isArray(data.history) ? data.history.map((entry) => ({ ...entry })) : [],
@@ -575,7 +585,7 @@ function checkInitialSelfDraw() {
     allFlowers, game.seatWind, game.settings.fanCap, context,
   );
   // A declined 花糊 can only be upgraded to 大花糊, never re-offered here.
-  if (flowerResult && (!game.declinedFlowerWin
+  if (qualifyingWin(flowerResult) && (!game.declinedFlowerWin
     || flowerResult.patterns.some((p) => p.id === '大花糊'))) {
     game.flowers = [...allFlowers];
     syncSeatFlowers(game.seat);
@@ -591,7 +601,7 @@ function checkInitialSelfDraw() {
     winningTile: tile,
     context,
   }), allFlowers, game.seatWind, game.settings.fanCap, context);
-  if (!tiangu.isWin) return false;
+  if (!qualifyingWin(tiangu)) return false;
 
   game.flowers = [...allFlowers];
   const drawn = { id: tile, uid: game.nextUid++, source: 'tiangu' };
@@ -699,7 +709,7 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   hudRoundInfo = roundInfoText();
   updateHUD();
   let awaitingFlowerDecision = false;
-  if (openingFlowerWin) {
+  if (qualifyingWin(openingFlowerWin)) {
     // 八花沒有更大的花糊可等待，直接即時胡牌；七花可選「過」拒絕。
     if (!openingFlowerWin.patterns.some((p) => p.id === '花糊')) {
       commitWin(openingFlowerWin);
@@ -866,7 +876,7 @@ function finishReel() {
     const immediate = flowerWinResult(
       game.flowers, game.seatWind, game.settings.fanCap, winContext(),
     );
-    if (immediate) {
+    if (qualifyingWin(immediate)) {
       // 八花沒有更大的花糊可等待，直接即時胡牌；七花可選「過」拒絕。
       if (immediate.patterns.some((p) => p.id === '大花糊')
         || game.declinedFlowerWin) {
@@ -911,7 +921,7 @@ function resolveDraw() {
   }), game.flowers, game.seatWind, game.settings.fanCap, winContext());
   game.pendingResult = result;
   const kongTile = findKongTile();
-  if (result.isWin) {
+  if (qualifyingWin(result)) {
     // Ask inline beside the rod instead of blocking play with a modal.
     offerSelfWin(result, kongTile);
     return;
@@ -1060,7 +1070,7 @@ function clearSelfWin() {
 /** Show the inline 胡牌／開槓／過 prompt beside the rod instead of a modal. */
 function offerSelfWin(result, kongTile, onDecline) {
   game.pendingSelfWin = { result, kongTile, onDecline };
-  setStatus(result?.isWin
+  setStatus(qualifyingWin(result)
     ? '可以胡牌！選擇胡牌或過。'
     : `手上有四張 ${tileName(kongTile)}，要開暗槓嗎？`);
   renderSelfWin();
@@ -1118,7 +1128,7 @@ function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass 
   const counts = countTiles(hand);
   const actions = [];
   const win = claimWinResult(discardId, tiles);
-  if (win.isWin) {
+  if (qualifyingWin(win)) {
     actions.push({
       label: '胡牌', type: 'win', result: win,
       disabled: !canDeclareClaim(),
@@ -1251,7 +1261,7 @@ function checkAiOpeningWins() {
       const flowerResult = flowerWinResult(
         state.flowers, seatWind, game.settings.fanCap, context,
       );
-      if (flowerResult) {
+      if (qualifyingWin(flowerResult)) {
         commitAiWin(state.seat, flowerResult);
         return true;
       }
@@ -1264,7 +1274,7 @@ function checkAiOpeningWins() {
       winningTile: tile,
       context,
     }), state.flowers, seatWind, game.settings.fanCap, context);
-    if (result.isWin) {
+    if (qualifyingWin(result)) {
       commitAiWin(state.seat, result);
       return true;
     }
@@ -1329,7 +1339,7 @@ function finishAiReel(state) {
     const result = flowerWinResult(
       state.flowers, seatWindOf(seat), game.settings.fanCap, seatWinContext(seat),
     );
-    if (result) commitAiWin(seat, result);
+    if (qualifyingWin(result)) commitAiWin(seat, result);
     else resetAiRod(state);
     return;
   }
@@ -1343,7 +1353,7 @@ function finishAiReel(state) {
     winningTile: tileId,
     context,
   }), state.flowers, seatWindOf(seat), game.settings.fanCap, context);
-  if (result.isWin) {
+  if (qualifyingWin(result)) {
     commitAiWin(seat, result);
     return;
   }
@@ -1436,7 +1446,7 @@ function bestAiClaim(seat, tileId, discarderSeat) {
   if (!state || state.mustDiscard || state.caught || state.lastDraw || state.kongChain > 0) return null;
   if (state.hand.length !== Math.max(0, 13 - state.melds.length * 3)) return null;
   const result = claimWinResultFor(seat, tileId);
-  if (result.isWin) {
+  if (qualifyingWin(result)) {
     return {
       type: 'win',
       result,
@@ -1486,7 +1496,7 @@ function aiClaimStillValid(claim) {
     // Flowers or a freshly fished tile can change the result, so evaluate the
     // still-waiting 13-tile hand against the old discard one more time.
     const fresh = claimWinResultFor(claim.seat, claim.tileId);
-    if (!fresh.isWin) return false;
+    if (!qualifyingWin(fresh)) return false;
     claim.result = fresh;
     claim.fanTotal = state.fanTotal + fresh.totalFan;
     claim.bestFan = Math.max(state.bestFan, fresh.totalFan);
@@ -1553,6 +1563,7 @@ function applyAiMeldClaim(msg) {
 
 function commitAiWin(seat, result, fanTotal = null, bestFan = null, meta = {}) {
   if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
+  if (!qualifyingWin(result)) return;
   game.pendingAiClaims = [];
   const state = game.aiStates[seat];
   const total = fanTotal ?? (state?.fanTotal ?? 0) + result.totalFan;
@@ -1686,6 +1697,14 @@ function winIsSelfDraw(result) {
   return Boolean(result?.patterns?.some((pattern) => pattern.id === '自摸'));
 }
 
+/** 起糊: a structurally complete hand only counts as a win once it reaches the
+ *  room's minimum fan. 0 keeps the original behaviour (no minimum). */
+function qualifyingWin(result) {
+  if (!result?.isWin) return null;
+  const minimum = Number(game.match?.minFan ?? game.matchSetup?.minFan ?? DEFAULT_MIN_FAN);
+  return result.totalFan >= minimum ? result : null;
+}
+
 /** Settle one finished hand and keep the money/dealer state in sync. */
 function recordRoundResult({ winner = null, discarder = null, result = null, selfDraw = false } = {}) {
   const match = game.match;
@@ -1797,6 +1816,7 @@ function handEndTiles(result) {
 }
 
 function commitWin(result, { discarder = null, selfDraw = null } = {}) {
+  if (!qualifyingWin(result)) return;
   const isSelfDraw = selfDraw === null ? winIsSelfDraw(result) : Boolean(selfDraw);
   const meta = { discarder: isSelfDraw ? null : discarder, selfDraw: isSelfDraw };
   game.pendingAiClaims = [];
@@ -2235,15 +2255,19 @@ function renderRoom() {
   if (ui.roomCode) ui.roomCode.textContent = isSoloRoom || !game.roomCode ? '—' : game.roomCode;
   if (ui.roomLink) ui.roomLink.value = isSoloRoom || !game.roomCode ? '' : roomLink(game.roomCode);
   if (ui.roomLeave) ui.roomLeave.textContent = isSoloRoom ? '返回主選單' : '離開房間';
-  if (ui.roomHostControls) ui.roomHostControls.hidden = !isHost;
-  if (ui.roomStart) ui.roomStart.hidden = !isHost;
-  if (ui.roomGuestInfo) {
-    ui.roomGuestInfo.hidden = isHost;
-    if (!isHost) {
-      const setup = normalizeMatchSetup(game.roomSettings);
-      ui.roomGuestInfo.textContent = `房主設定：鉤速 ${Number(game.roomSettings.hookSpeed).toFixed(1)}×・每局 ${formatClock(game.roomSettings.gameSeconds)}・起始資金 ${moneyText(setup.startingMoney)}・${setup.winds} 圈・金額倍數 ${setup.base}×`;
+  // Guests see the same room layout, but every host-only control is read-only.
+  if (ui.roomHostControls) {
+    ui.roomHostControls.hidden = false;
+    ui.roomHostControls.classList.toggle('readonly', !isHost);
+    for (const control of ui.roomHostControls.querySelectorAll('input, select, button')) {
+      control.disabled = !isHost;
     }
   }
+  if (ui.roomStart) {
+    ui.roomStart.hidden = false;
+    ui.roomStart.disabled = !isHost;
+  }
+  if (ui.roomGuestInfo) ui.roomGuestInfo.hidden = isHost;
   if (ui.roomHookSpeed) {
     ui.roomHookSpeed.value = String(game.roomSettings.hookSpeed);
     ui.roomHookSpeedValue.textContent = `${Number(game.roomSettings.hookSpeed).toFixed(1)}×`;
@@ -2272,6 +2296,7 @@ function renderRoom() {
   if (ui.roomBaseText && document.activeElement !== ui.roomBaseText) {
     ui.roomBaseText.value = String(setup.base);
   }
+  if (ui.roomMinFan) ui.roomMinFan.value = String(setup.minFan);
   if (ui.roomAvatars) {
     ui.roomAvatars.innerHTML = '';
     const players = game.players.length ? game.players : defaultRoomPlayers();
@@ -2328,6 +2353,7 @@ function currentRoomMatchSetup() {
     startingMoney: ui.roomStartingMoney?.value ?? game.matchSetup.startingMoney,
     winds: ui.roomWinds?.value ?? game.matchSetup.winds,
     base: ui.roomBase?.value ?? game.matchSetup.base,
+    minFan: ui.roomMinFan?.value ?? game.matchSetup.minFan,
   });
 }
 
@@ -2934,6 +2960,10 @@ function refreshRematchParticipants() {
 
 function finishMultiWin(seat, result, fanTotal, bestFan, meta = {}) {
   if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
+  if (!qualifyingWin(result)) return;
+  // Stop the hand before settling or rendering: if any later step throws, the
+  // round must never silently continue with rods, AI and clock still running.
+  setState(S.WIN);
   const selfDraw = meta.selfDraw === undefined ? winIsSelfDraw(result) : Boolean(meta.selfDraw);
   const log = recordRoundResult({
     winner: seat,
@@ -2951,7 +2981,6 @@ function finishMultiWin(seat, result, fanTotal, bestFan, meta = {}) {
   clearSelfWin();
   game.claimBoxes = [];
   renderClaimBoxes();
-  setState(S.WIN);
   const name = winnerName(seat);
   setStatus(`${name} 胡牌！${result?.totalFan ?? 0} 番`);
   showHandEndOverlay({
@@ -2964,13 +2993,13 @@ function finishMultiWin(seat, result, fanTotal, bestFan, meta = {}) {
 
 function applyMultiDraw() {
   if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
+  setState(S.DRAW_GAME);
   const log = recordRoundResult({ winner: null });
   clearClaim();
   clearSelfWin();
   game.claimBoxes = [];
   renderClaimBoxes();
   game.timeLeft = 0;
-  setState(S.DRAW_GAME);
   setStatus('時間到，流局。');
   updateTimer();
   showHandEndOverlay({ title: '流局', message: handEndMessage({ log }), log });
@@ -4361,7 +4390,7 @@ function renderSelfWin() {
   if (ui.selfWinActions) ui.selfWinActions.innerHTML = '';
   if (!pending) return;
 
-  const isWin = Boolean(pending.result?.isWin);
+  const isWin = Boolean(qualifyingWin(pending.result));
   const kongOnly = !isWin && Boolean(pending.kongTile);
   if (ui.selfWinLabel) ui.selfWinLabel.textContent = kongOnly ? '暗槓機會' : '可以胡牌！';
   const tileId = isWin ? pending.result.winningTile : pending.kongTile;
@@ -4926,6 +4955,7 @@ function wireInput() {
   ui.roomStartingMoney?.addEventListener('input', updateRoomSettings);
   ui.roomWinds?.addEventListener('change', updateRoomSettings);
   ui.roomBase?.addEventListener('input', updateRoomSettings);
+  ui.roomMinFan?.addEventListener('change', updateRoomSettings);
   ui.roomStartingMoneyText?.addEventListener('change', commitRoomMoneyText);
   ui.roomBaseText?.addEventListener('change', commitRoomBaseText);
   for (const [input, commit] of [
@@ -5078,7 +5108,7 @@ if (new URLSearchParams(location.search).has('test')) {
     syncHostSeaPause, updateFish, broadcastSeaSnapshot, paused, simulationPaused, modalOpen, keepsSeaMoving,
     renderGhostRods, HOOK_BROADCAST_INTERVAL,
     resetMatch, cloneMatch, adoptMatch, recordRoundResult, payoutSummary,
-    updateScoreUI, normalizeMatchSetup, windIndexFor, seatZeroWind,
+    updateScoreUI, normalizeMatchSetup, windIndexFor, seatZeroWind, qualifyingWin,
     updateRoomSettings, currentRoomMatchSetup, updateMatchSettings,
   };
 }

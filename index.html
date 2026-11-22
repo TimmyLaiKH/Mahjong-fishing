@@ -120,6 +120,7 @@
     </label>
     <div id="roomAvatars" class="room-avatars" aria-label="玩家頭像"></div>
     <div id="roomPlayers" class="room-players"></div>
+    <p id="roomGuestInfo" class="room-guest-info" hidden>(由房主設定)</p>
     <div id="roomHostControls" class="room-host-controls">
       <label class="field">鉤速
         <span class="duration-controls">
@@ -158,8 +159,27 @@
           <input id="roomBaseText" class="duration-text" type="text" inputmode="numeric" value="1" aria-label="輸入房間金額倍數" />
         </span>
       </label>
+      <label class="field">起糊
+        <span class="duration-controls">
+          <select id="roomMinFan" aria-label="房間起糊番數">
+            <option value="0" selected>0 番</option>
+            <option value="1">1 番</option>
+            <option value="2">2 番</option>
+            <option value="3">3 番</option>
+            <option value="4">4 番</option>
+            <option value="5">5 番</option>
+            <option value="6">6 番</option>
+            <option value="7">7 番</option>
+            <option value="8">8 番</option>
+            <option value="9">9 番</option>
+            <option value="10">10 番</option>
+            <option value="11">11 番</option>
+            <option value="12">12 番</option>
+            <option value="13">13 番</option>
+          </select>
+        </span>
+      </label>
     </div>
-    <p id="roomGuestInfo" class="room-guest-info">房主正在設定鉤速、時間與計分…</p>
     <div class="room-actions">
       <button id="roomStart" class="primary" type="button" hidden>開始遊戲</button>
       <button id="roomLeave" class="secondary" type="button">離開房間</button>
