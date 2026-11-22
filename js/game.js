@@ -122,7 +122,8 @@ const MAX_BASE = 100;
 const DEFAULT_BASE = 1;
 /** The host owns the shared sea and sends compact snapshots ten times a second. */
 const SEA_BROADCAST_INTERVAL = 0.1;
-const HOOK_BROADCAST_INTERVAL = 0.1;
+/** Hook poses go out twenty times a second so ghost rods feel immediate. */
+const HOOK_BROADCAST_INTERVAL = 0.05;
 /** AI claims wait briefly so a nearby human press still wins the tile. */
 const AI_CLAIM_DELAY_MIN = 0.25;
 const AI_CLAIM_DELAY_RANGE = 0.6;
@@ -409,6 +410,14 @@ const paceFactor = () => {
 };
 const modalOpen = () => [...document.querySelectorAll('.modal.show')]
   .some((m) => m !== ui.loading);
+// These in-game panels are informational only: opening 設定, 玩法說明, 計分 or a
+// 重來這局 vote must not freeze the shared sea on any device. They still block
+// direct canvas/keypad input through paused() below.
+const MOVING_MODALS = new Set(['helpPanel', 'settingsPanel', 'scorePanel']);
+const keepsSeaMoving = (modal) => MOVING_MODALS.has(modal.id)
+  || (modal === ui.overlay && modal.querySelector('h2')?.textContent === '重新開始投票');
+const simulationPaused = () => document.hidden || [...document.querySelectorAll('.modal.show')]
+  .some((m) => m !== ui.loading && !keepsSeaMoving(m));
 const paused = () => document.hidden || modalOpen();
 
 function winContext() {
@@ -3813,13 +3822,27 @@ function renderGhostRods() {
   for (const seat of Object.keys(game.hookPeers)) {
     if (now - game.hookPeers[seat].seen > 1500) delete game.hookPeers[seat];
   }
+  // Extrapolate a little past the last network pose so a ghost hook tracks its
+  // live rod instead of stepping between stale samples. The small cap and the
+  // velocity smoothing in applyHook() keep reversals from overshooting.
+  for (const hook of Object.values(game.hookPeers)) {
+    const elapsed = Math.min(0.08, Math.max(0, (now - (hook.targetAt ?? hook.seen ?? now)) / 1000));
+    const desiredX = Math.max(0, Math.min(1, (hook.targetX ?? hook.x) + (hook.vx ?? 0) * elapsed));
+    const desiredY = Math.max(0, Math.min(WORLD_H,
+      (hook.targetY ?? hook.y) + (hook.vy ?? 0) * elapsed));
+    const alpha = Math.min(1, 0.25 + elapsed * 12);
+    const renderX = hook.renderX ?? hook.x;
+    const renderY = hook.renderY ?? hook.y;
+    hook.renderX = renderX + (desiredX - renderX) * alpha;
+    hook.renderY = renderY + (desiredY - renderY) * alpha;
+  }
   for (const state of Object.values(game.aiStates)) {
     drawGhostRod(state.seat, aiHookPosition(state), state.rod.phase, state.caught, seatLabel(state.seat));
   }
   for (const [seat, hook] of Object.entries(game.hookPeers)) {
     const value = Number(seat);
     if (value === game.seat || game.aiStates[value]) continue;
-    drawGhostRod(value, { hookX: hook.x * view.width, hookY: hook.y }, hook.phase,
+    drawGhostRod(value, { hookX: hook.renderX * view.width, hookY: hook.renderY }, hook.phase,
       hook.caught, seatLabel(value));
   }
 }
@@ -3890,7 +3913,7 @@ function draw(dt) {
   drawRod();
   positionClaimBar();
   positionClaimBoxes();
-  if (!paused() && fishAuthority()) {
+  if (!simulationPaused() && fishAuthority()) {
     game.spawnTimer += dt;
     if (game.spawnTimer >= SPAWN_INTERVAL) {
       game.spawnTimer = 0;
@@ -3904,16 +3927,16 @@ function draw(dt) {
  * ------------------------------------------------------------------ */
 
 let lastFrame = 0;
-// Whenever the host pauses (hidden tab OR an open modal) the shared sea freezes
-// while guests keep extrapolating. On resume we advance the host by the real
-// elapsed time and publish a fresh snapshot so nobody sees a backwards snap.
+// A hidden host tab or a blocking modal freezes the shared sea while guests keep
+// extrapolating. 設定／玩法說明／計分／重來這局投票 are not blocking here, so no
+// catch-up snap is needed after them. On a real pause we advance by elapsed time.
 let hostSeaPausedAt = 0;
 
 function syncHostSeaPause() {
   const live = game.mode === 'multi' && net.isHost
     && ![S.LOADING, S.WIN, S.DRAW_GAME].includes(game.state);
   if (!live) { hostSeaPausedAt = 0; return; }
-  if (paused()) {
+  if (simulationPaused()) {
     if (!hostSeaPausedAt) hostSeaPausedAt = Date.now();
   } else if (hostSeaPausedAt) {
     const elapsed = Math.min(30, Math.max(0, (Date.now() - hostSeaPausedAt) / 1000));
@@ -3941,7 +3964,7 @@ function gameLoop(timestamp) {
         net.broadcast({ t: 'draw' });
         applyMultiDraw();
       }
-    } else if (!paused()) {
+    } else if (!simulationPaused()) {
       game.timeLeft = Math.max(0, game.timeLeft - dt);
       updateTimer();
       if (game.timeLeft <= 0) endDrawGame();
@@ -3950,7 +3973,7 @@ function gameLoop(timestamp) {
   // Claim deadlines are wall-clock based and must stay identical on every
   // screen, so they tick even while a tab's animation loop is throttled.
   tickClaimBoxes();
-  if (!paused()) {
+  if (!simulationPaused()) {
     if (game.state !== S.WIN && game.state !== S.DRAW_GAME) {
       if (game.mode !== 'multi') updateClaimTimer(dt);
       aiTick(dt);
@@ -4093,13 +4116,30 @@ function broadcastHookState(dt) {
 
 function applyHook(msg) {
   if (msg.seat === game.seat) return;
+  const x = Number(msg.x);
+  const y = Number(msg.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  const now = performance.now();
+  const old = game.hookPeers[msg.seat];
+  const phaseChanged = !old || old.phase !== msg.phase;
+  const prevX = old?.targetX ?? old?.x ?? x;
+  const prevY = old?.targetY ?? old?.y ?? y;
+  const prevAt = old?.targetAt ?? old?.seen ?? now;
+  const elapsed = Math.max(0.016, Math.min(0.5, (now - prevAt) / 1000));
+  const measuredVx = phaseChanged ? 0 : (x - prevX) / elapsed;
+  const measuredVy = phaseChanged ? 0 : (y - prevY) / elapsed;
+  // Smooth the velocity so a swing reversal never makes a ghost rod jump.
+  const vx = old && !phaseChanged ? (old.vx ?? 0) * 0.5 + measuredVx * 0.5 : 0;
+  const vy = old && !phaseChanged ? (old.vy ?? 0) * 0.5 + measuredVy * 0.5 : 0;
   game.hookPeers[msg.seat] = {
-    x: msg.x, y: msg.y, phase: msg.phase, caught: msg.caught ?? null, seen: performance.now(),
+    x, y, phase: msg.phase, caught: msg.caught ?? null, seen: now,
+    targetX: x, targetY: y, targetAt: now, vx, vy,
+    renderX: old?.renderX ?? x, renderY: old?.renderY ?? y,
   };
 }
 
 function spawnFish(count) {
-  if (!fishAuthority() || paused() || game.state === S.LOADING
+  if (!fishAuthority() || simulationPaused() || game.state === S.LOADING
     || game.state === S.WIN || game.state === S.DRAW_GAME) return;
   for (let i = 0; i < count && game.fish.length < MAX_FISH; i += 1) {
     const direction = Math.random() < 0.5 ? 1 : -1;
@@ -4801,10 +4841,10 @@ function wireInput() {
   document.addEventListener('pointerdown', unlockMusic);
   document.addEventListener('keydown', unlockMusic);
   document.addEventListener('visibilitychange', () => {
-    // Sea catch-up is unified in syncHostSeaPause() so a hidden tab and an
-    // open modal behave identically (both call paused()). rAF is throttled
-    // while hidden, so call it here too — otherwise the gameLoop never gets a
-    // chance to record when the pause started.
+    // Sea catch-up is unified in syncHostSeaPause() so a hidden tab and a
+    // blocking modal behave identically (both use simulationPaused()). The
+    // four informational modals never pause, so they need no catch-up. rAF is
+    // throttled while hidden, so call it here too.
     if (document.hidden) {
       music.suspend();
       syncHostSeaPause();
@@ -4992,7 +5032,8 @@ if (new URLSearchParams(location.search).has('test')) {
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
     renderClaimBoxes, leaveMultiRoom, deadRooms, commitRoomDurationText, renderRoom,
-    syncHostSeaPause, updateFish, broadcastSeaSnapshot,
+    syncHostSeaPause, updateFish, broadcastSeaSnapshot, paused, simulationPaused, modalOpen, keepsSeaMoving,
+    renderGhostRods, HOOK_BROADCAST_INTERVAL,
     resetMatch, cloneMatch, adoptMatch, recordRoundResult, payoutSummary,
     updateScoreUI, normalizeMatchSetup, windIndexFor, seatZeroWind,
     updateRoomSettings, currentRoomMatchSetup, updateMatchSettings,

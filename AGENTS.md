@@ -270,9 +270,19 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   and the round timer keeps counting when the host changes tabs.
 - **Sea sync.** Fish x is a 0..1 sea fraction and vx a fraction of fixed `REFERENCE_W = 1920`
   per second. Snapshots every 0.1 s; guests ease toward targets and extrapolate briefly (capped
-  at 30 s). Host pauses fish on hidden tab **or** any open modal and advances by real elapsed
-  time on resume before rebroadcasting, so guests never snap backwards. `startGame()` clears
-  stale pause time. Guest hooks are relayed through the host so all four rods are visible.
+  at 30 s). The host pauses fish on a hidden tab or a blocking modal and advances by real elapsed
+  time on resume before rebroadcasting, so guests never snap backwards. 設定, 玩法說明, 計分 and
+  the 重來這局 vote are informational: `simulationPaused()` ignores them on every device, so the
+  shared sea, timer, rod and AI keep moving whether the host or any guest opened them. `paused()`
+  still blocks direct canvas/keypad input while any modal is open. `startGame()` clears stale pause
+  time. Guest hooks are relayed through the host so all four rods are visible.
+- **Hook sync.** Hook poses broadcast every 0.05 s (`HOOK_BROADCAST_INTERVAL`), including host-simulated
+  AI hooks and guest hooks relayed through the host. `applyHook()` keeps the latest target plus a
+  smoothed vx/vy (fractions of sea width per second for x, world pixels per second for y); phase
+  changes zero the velocity. `renderGhostRods()` extrapolates up to 80 ms past the last target and
+  eases `renderX/renderY` toward it, clamping x to 0..1 and y to the canvas, so ghost rods track
+  live rods without visible stepping or reversal overshoot. Draw it every frame even when input is
+  paused.
 - **Disconnect.** `hostClose` shows exactly `房主已離開` / `房主已離開，請重新開房間` and
   returns to menu. There is no host migration. Guest departures show a notice and leave the seat
   to AI; a deliberate leaver does not see the host-left message.
@@ -313,9 +323,11 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   stay visible but disabled while the rod is out; the grey `過` dismissal stays enabled and hides
   only its own box.
 - Modals: ordinary modals close on backdrop click, but `overlay`, `loading`, `menuScreen`,
-  `joinScreen` and `roomScreen` never do. In-game `回到主選單` quits the round, clears pending
-  prompts, sets `LOADING`, and shows the menu. Settings must not mention AI or 番數上限; host
-  hook speed and duration lock after start; music volume saves as `mf-volume`.
+  `joinScreen` and `roomScreen` never do. The in-game 設定／玩法說明／計分 panels and the
+  `重新開始投票` overlay are informational — they block input but not simulation. In-game
+  `回到主選單` quits the round, clears pending prompts, sets `LOADING`, and shows the menu.
+  Settings must not mention AI or 番數上限; host hook speed and duration lock after start; music
+  volume saves as `mf-volume`.
 - Exact waiting status, help count, pattern table source and no-bottom-button rules are listed
   under **Core game invariants**; keep them in sync with `index.html`.
 
