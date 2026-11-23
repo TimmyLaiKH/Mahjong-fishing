@@ -2,6 +2,12 @@
 
 本專案由單檔 `index.html` 重構為純靜態多檔結構；所有原本列出的問題 B1–B25 都已修復或改由新的規則引擎保證，並以 `tests/rules.test.mjs`（64 項，含 T1–T13 與 1000 場隨機模擬）驗證。
 
+## 1.4.87 — 背景音樂改用 Web Audio
+
+- 將背景音樂由 `HTMLAudioElement` 改為 Web Audio `BufferSourceNode`，仍走語音合成之外的音訊會話。在瀏覽器測試中，語音合成開始時背景音樂持續播放，iPhone／iPad 不再暫停；音樂音量可由 `audio.js` 直接用 gain 控制。
+- 加上 `music.debug()` 診斷欄位，方便驗證 WebAudio 狀態與解碼。
+- 語音仍走裝置 `speechSynthesis`，因此同仁上的語音辨識／對賽兩端的語音都未改變，也不會新增 storage key。
+
 ## 1.4.86 — 延遲語音後的背景音樂恢復
 
 - 語音結束時不再立刻呼叫 `music.resume()`，改為等待 250ms，讓 iOS 的音訊工作階段切換完成後再恢復背景音樂，減少 iPhone／iPad 上的卡頓聲。若期間又有新語音，計時器會取消，避免音樂在語音中途重新播放。
