@@ -2036,6 +2036,10 @@ function fanInCantonese(value) {
 /** Only an explicit Hong Kong / Cantonese voice may speak. zh-TW, zh-CN,
  *  zh-Hans-HK, en-HK and generic zh voices are never used as a fallback. */
 let preferredVoice = null;
+let lastSpeechText = '';
+let lastSpeechAt = 0;
+let lastSpeechError = '';
+let speechUnlocked = false;
 
 function cantoneseVoiceRank(voice) {
   const lang = String(voice?.lang ?? '').replace(/_/g, '-').toLowerCase();
@@ -2072,6 +2076,20 @@ function primeDeviceVoice() {
   return cantoneseVoice();
 }
 
+/** iOS only allows speech after a user gesture. A silent utterance unlocks the
+ *  engine without adding any audible announcement. */
+function unlockSpeechEngine() {
+  if (speechUnlocked || typeof speechSynthesis === 'undefined'
+    || typeof SpeechSynthesisUtterance === 'undefined') return;
+  try {
+    const unlock = new SpeechSynthesisUtterance(' ');
+    unlock.volume = 0;
+    unlock.lang = 'yue-HK';
+    speechSynthesis.speak(unlock);
+    speechUnlocked = true;
+  } catch { /* voice is optional */ }
+}
+
 function voiceStatus() {
   if (typeof speechSynthesis === 'undefined') {
     return { supported: false, voice: null, voices: [] };
@@ -2081,12 +2099,19 @@ function voiceStatus() {
   const voice = cantoneseVoice();
   return {
     supported: true,
+    sound: game.settings.sound,
+    mainVolume: game.settings.mainVolume,
+    musicVolume: game.settings.musicVolume,
+    unlocked: speechUnlocked,
     voice: voice ? { name: voice.name, lang: voice.lang } : null,
     voices: voices.map((item) => ({
       name: item.name, lang: item.lang, cantonese: isCantoneseVoice(item),
     })),
     speaking: Boolean(speechSynthesis.speaking),
     pending: Boolean(speechSynthesis.pending),
+    lastText: lastSpeechText,
+    lastAt: lastSpeechAt,
+    lastError: lastSpeechError,
   };
 }
 
@@ -2094,18 +2119,37 @@ function voiceStatus() {
 function showVoiceDebug() {
   const params = new URLSearchParams(location.search);
   if (!params.has('test') || !params.has('voice')) return;
-  const box = document.createElement('pre');
+  const box = document.createElement('div');
   box.id = 'voiceDebug';
   box.className = 'voice-debug';
+  const text = document.createElement('pre');
+  text.className = 'voice-debug-text';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = '測試粵語語音';
+  box.append(text, button);
   document.body.appendChild(box);
-  const refresh = () => { box.textContent = JSON.stringify(voiceStatus(), null, 2); };
+  const refresh = () => { text.textContent = JSON.stringify(voiceStatus(), null, 2); };
+  button.addEventListener('click', () => {
+    unlockSpeechEngine();
+    game.settings.sound = true;
+    game.settings.mainVolume = Math.max(game.settings.mainVolume, 0.5);
+    const voice = primeDeviceVoice();
+    if (voice) speakVoiceNow(voice, '流局 時間到，沒有胡牌。', game.settings.mainVolume);
+    refresh();
+    setTimeout(refresh, 300);
+  });
   refresh();
   if (typeof speechSynthesis !== 'undefined'
     && typeof speechSynthesis.addEventListener === 'function') {
     speechSynthesis.addEventListener('voiceschanged', refresh);
   }
   // Mobile browsers often populate voices only after the first tap.
-  document.addEventListener('pointerdown', () => { primeDeviceVoice(); refresh(); });
+  document.addEventListener('pointerdown', () => {
+    unlockSpeechEngine();
+    primeDeviceVoice();
+    refresh();
+  });
   setTimeout(refresh, 1500);
 }
 
@@ -2140,6 +2184,8 @@ function waitForCantoneseVoice(timeout = 2000) {
 }
 
 function speakVoiceNow(voice, text, volume) {
+  lastSpeechText = text;
+  lastSpeechAt = Date.now();
   try {
     if (speechSynthesis.paused) speechSynthesis.resume();
     speechSynthesis.cancel();
@@ -2149,7 +2195,10 @@ function speakVoiceNow(voice, text, volume) {
     utterance.rate = 0.95;
     utterance.volume = clampVolume(volume, 0);
     speechSynthesis.speak(utterance);
-  } catch { /* voice is optional */ }
+    lastSpeechError = '';
+  } catch (error) {
+    lastSpeechError = String(error);
+  }
 }
 
 /** Announcements use the device's own Hong Kong / Cantonese voice. Speech is
@@ -5545,6 +5594,7 @@ function setSoundEnabled(value) {
   music.setEnabled(game.settings.sound);
   if (game.settings.sound) {
     music.start();
+    unlockSpeechEngine();
     primeDeviceVoice();
   }
   save('mf-sound', game.settings.sound);
@@ -5554,6 +5604,7 @@ function setSoundEnabled(value) {
 function unlockMusic() {
   if (!game.settings.sound) return;
   music.start();
+  unlockSpeechEngine();
   primeDeviceVoice();
 }
 

@@ -307,7 +307,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `startGame`, `commitWin`, `endDrawGame`, `updateHUD`, scoring helpers, `renderRoom`, `net`,
   votes, etc.). With both `test` and `voice` query flags, `showVoiceDebug()` also renders
   `voiceStatus()` as an on-screen panel for phones without a browser console. Do not depend on
-  either path in production.
+  either path in production. The panel also has a 測試粵語語音 button that speaks the draw line
+  inside a user gesture.
 
 ## Multiplayer (`js/net.js` and game-side protocol)
 
