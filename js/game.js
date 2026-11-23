@@ -8,6 +8,7 @@ import {
   createTileElement, tileName,
 } from './tiles.js';
 import { createMusic } from './audio.js?v=1.4.63';
+import { primeVoice, speakWithESpeak, synthesizeVoice, voiceStatus } from './voice.js?v=1.4.74';
 import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
 import {
@@ -2007,9 +2008,9 @@ function fanInCantonese(value) {
   return parts.join('').replace(/^一十/, '十').replace(/零+$/, '');
 }
 
-/** Shared zh-HK speech helper. Speech is a bonus: an unsupported browser or a
- *  blocked voice never affects gameplay or settlement. */
-function speakCantonese(text) {
+/** Last-resort device voice when the bundled eSpeak NG worker cannot start.
+ *  Speech is a bonus: a blocked voice never affects gameplay or settlement. */
+function speakWithBrowser(text, volume = 1) {
   if (typeof SpeechSynthesisUtterance === 'undefined'
     || typeof speechSynthesis === 'undefined' || !text) return;
   try {
@@ -2017,6 +2018,7 @@ function speakCantonese(text) {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'zh-HK';
     utterance.rate = 0.95;
+    utterance.volume = Math.max(0, Math.min(1, Number(volume) || 0));
     // A voice from another engine can reject assignment; keep the zh-HK lang
     // and still speak rather than losing the announcement entirely.
     try {
@@ -2028,6 +2030,23 @@ function speakCantonese(text) {
     } catch { /* lang is enough */ }
     speechSynthesis.speak(utterance);
   } catch { /* voice is optional */ }
+}
+
+/** Every announcement uses the same bundled `yue` voice on every device. The
+ *  worker is loaded on the first gesture; if it is unavailable, fall back to
+ *  the device voice instead of leaving the announcement silent. */
+function speakCantonese(text) {
+  if (!text || !game.settings.sound) return;
+  const volume = game.settings.musicVolume;
+  let fellBack = false;
+  const fallback = () => {
+    if (fellBack) return;
+    fellBack = true;
+    speakWithBrowser(text, volume);
+  };
+  speakWithESpeak(text, { enabled: true, volume })
+    .then((spoken) => { if (!spoken) fallback(); })
+    .catch(fallback);
 }
 
 /** Read the hand heading at the start of every deal. */
@@ -2056,6 +2075,13 @@ function speakWin(result, seat = game.seat, extra = '') {
   const name = scoreSeatName(seat).replace(/\s*\(AI\)\s*$/, '');
   const text = `胡牌，${name}，${names.join('、') || '雞糊'}，共 ${fanInCantonese(result.totalFan)} 番。`;
   speakCantonese(extra ? `${text} ${extra}` : text);
+}
+
+/** Read the timeout result aloud on every device. A finished match keeps the
+ *  same single utterance so the draw line is never cancelled by a second one. */
+function speakDraw() {
+  const text = '流局 時間到，沒有胡牌。';
+  speakCantonese(game.match?.over ? `${text} ${matchEndMessage()}.` : text);
 }
 
 /** Every winning seat uses one terminal screen; a broken result or speech
@@ -2116,7 +2142,7 @@ function endDrawGame() {
   setStatus('時間到，流局。');
   updateTimer();
   showHandEndOverlay({ title: '流局', message: handEndMessage({ log }), log });
-  if (game.match?.over) speakCantonese(`${matchEndMessage()}.`);
+  speakDraw();
 }
 
 function winningTiles(result) {
@@ -3370,7 +3396,7 @@ function applyMultiDraw() {
   setStatus('時間到，流局。');
   updateTimer();
   showHandEndOverlay({ title: '流局', message: handEndMessage({ log }), log });
-  if (game.match?.over) speakCantonese(`${matchEndMessage()}.`);
+  speakDraw();
 }
 
 function resetMultiState() {
@@ -5403,13 +5429,20 @@ function updateSettingsUI() {
 function setSoundEnabled(value) {
   game.settings.sound = Boolean(value);
   music.setEnabled(game.settings.sound);
-  if (game.settings.sound) music.start();
+  if (game.settings.sound) {
+    music.start();
+    primeVoice();
+  }
   save('mf-sound', game.settings.sound);
   updateSettingsUI();
 }
 
 function unlockMusic() {
-  if (game.settings.sound) music.start();
+  if (!game.settings.sound) return;
+  music.start();
+  // Load the shared voice now, while a user gesture is active. The promise is
+  // deliberately ignored; speech itself still waits until it is needed.
+  primeVoice();
 }
 
 function setMusicVolume(value) {
@@ -5645,7 +5678,8 @@ if (new URLSearchParams(location.search).has('test')) {
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
     EMOJIS, sendEmoji, showEmojiBubble, toggleEmojiPanel, closeEmojiPanel,
-    fanInCantonese, speakCantonese, speakRoundStart, speakAction, speakWin, showWinEnd,
+    fanInCantonese, speakCantonese, speakRoundStart, speakAction, speakWin, speakDraw, showWinEnd,
+    voiceStatus, primeVoice, speakWithESpeak, synthesizeVoice,
     currentRoundKey, announceWin,
     hintRawFan, hintSelfDrawResult, hintKongGroups, hintTips, hintWaitInfo,
     renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,
