@@ -2,6 +2,12 @@
 
 本專案由單檔 `index.html` 重構為純靜態多檔結構；所有原本列出的問題 B1–B25 都已修復或改由新的規則引擎保證，並以 `tests/rules.test.mjs`（64 項，含 T1–T13 與 1000 場隨機模擬）驗證。
 
+## 1.4.77 — 完全移除最佳番數
+
+- 移除 `bestFan` 狀態、AI 與聯機訊息中的 `bestFan` 欄位，以及所有最佳番數計算與寫入。
+- 不再讀寫 `mf-bestfan`；storage key 只剩 `mf-sound`、`mf-volume`、`mf-fantotal`、`mf-hookspeed`、`mf-gameseconds`。
+- 玩法說明與文件同步移除最佳番數描述；胡牌、番數、派彩與聯機結算完全不變。
+
 ## 1.4.76 — 移除首頁最佳紀錄
 
 - 主選單不再顯示「最佳紀錄：X 番」，也不再為它保留版面。

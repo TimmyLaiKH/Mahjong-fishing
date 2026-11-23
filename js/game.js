@@ -166,9 +166,9 @@ const game = {
   joinOutcome: null,        // pending | joined | full | closed
   joinTimer: null,
   toastTimer: null,
-  // Fan records stay local; match money is a per-game setting chosen by the
+  // Cumulative fan stays local; match money is a per-game setting chosen by the
   // host (no new localStorage keys are introduced).
-  fanTotal: readNumber('mf-fantotal'), bestFan: readNumber('mf-bestfan'),
+  fanTotal: readNumber('mf-fantotal'),
   matchSetup: {
     startingMoney: DEFAULT_STARTING_MONEY, winds: DEFAULT_WINDS, base: DEFAULT_BASE,
     minFan: DEFAULT_MIN_FAN,
@@ -1344,7 +1344,6 @@ function createAiState(seat) {
     discardTimer: 0,
     caught: null,
     fanTotal: 0,
-    bestFan: 0,
     rod: {
       angle: 0,
       targetAngle: 0,
@@ -1604,7 +1603,6 @@ function bestAiClaim(seat, tileId, discarderSeat) {
       type: 'win',
       result,
       fanTotal: state.fanTotal + result.totalFan,
-      bestFan: Math.max(state.bestFan, result.totalFan),
     };
   }
   if (state.melds.length >= 4) return null;
@@ -1652,7 +1650,6 @@ function aiClaimStillValid(claim) {
     if (!qualifyingWin(fresh)) return false;
     claim.result = fresh;
     claim.fanTotal = state.fanTotal + fresh.totalFan;
-    claim.bestFan = Math.max(state.bestFan, fresh.totalFan);
     return true;
   }
   if (state.melds.length >= 4) return false;
@@ -1683,7 +1680,6 @@ function aiClaimTick(dt) {
       kinds: claim.kinds ?? null,
       result: claim.result ?? null,
       fanTotal: claim.fanTotal ?? null,
-      bestFan: claim.bestFan ?? null,
       discarderSeat: claim.discarderSeat,
     });
   }
@@ -1714,20 +1710,19 @@ function applyAiMeldClaim(msg) {
   state.discardTimer = 0.8 + Math.random() * 1.2;
 }
 
-function commitAiWin(seat, result, fanTotal = null, bestFan = null, meta = {}) {
+function commitAiWin(seat, result, fanTotal = null, meta = {}) {
   if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
   if (!qualifyingWin(result)) return;
   game.pendingAiClaims = [];
   const state = game.aiStates[seat];
   const total = fanTotal ?? (state?.fanTotal ?? 0) + result.totalFan;
-  const best = bestFan ?? Math.max(state?.bestFan ?? 0, result.totalFan);
   const selfDraw = meta.selfDraw === undefined ? winIsSelfDraw(result) : Boolean(meta.selfDraw);
   const winMeta = { discarder: selfDraw ? null : (meta.discarder ?? null), selfDraw };
   if (game.mode === 'multi') {
     if (net.isHost) {
-      announceWin({ t: 'win', seat, result, fanTotal: total, bestFan: best, isBot: true, ...winMeta });
+      announceWin({ t: 'win', seat, result, fanTotal: total, isBot: true, ...winMeta });
     }
-    finishMultiWin(seat, result, total, best, winMeta);
+    finishMultiWin(seat, result, total, winMeta);
     return;
   }
   const log = recordRoundResult({ winner: seat, result, ...winMeta });
@@ -2145,23 +2140,16 @@ function commitWin(result, { discarder = null, selfDraw = null } = {}) {
   game.pendingAiClaims = [];
   if (game.mode === 'multi') {
     const fanTotal = game.fanTotal + result.totalFan;
-    const bestFan = Math.max(game.bestFan, result.totalFan);
     game.fanTotal = fanTotal;
-    game.bestFan = bestFan;
     save('mf-fantotal', fanTotal);
-    save('mf-bestfan', bestFan);
     clearClaim();
     clearSelfWin();
-    announceWin({ t: 'win', seat: game.seat, result, fanTotal, bestFan, ...meta });
-    finishMultiWin(game.seat, result, fanTotal, bestFan, meta);
+    announceWin({ t: 'win', seat: game.seat, result, fanTotal, ...meta });
+    finishMultiWin(game.seat, result, fanTotal, meta);
     return;
   }
   const log = recordRoundResult({ winner: game.seat, result, ...meta });
   game.fanTotal += result.totalFan;
-  if (result.totalFan > game.bestFan) {
-    game.bestFan = result.totalFan;
-    save('mf-bestfan', game.bestFan);
-  }
   save('mf-fantotal', game.fanTotal);
   clearClaim();
   clearSelfWin();
@@ -3042,7 +3030,6 @@ function handleClaim(msg) {
     kinds: msg.kinds ?? null,
     result: msg.result ?? null,
     fanTotal: msg.fanTotal ?? null,
-    bestFan: msg.bestFan ?? null,
     discarderSeat: msg.discarderSeat ?? box?.seat ?? null,
   };
   if (game.mode === 'multi') net.broadcast(result);
@@ -3059,9 +3046,9 @@ function applyClaimResult(msg) {
     if (msg.seat === game.seat && game.mode !== 'multi') {
       commitWin(msg.result, winMeta);
     } else if (game.aiStates[msg.seat] && (net.isHost || game.mode !== 'multi')) {
-      commitAiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan, winMeta);
+      commitAiWin(msg.seat, msg.result, msg.fanTotal, winMeta);
     } else {
-      finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan, winMeta);
+      finishMultiWin(msg.seat, msg.result, msg.fanTotal, winMeta);
     }
     return;
   }
@@ -3391,7 +3378,7 @@ function refreshRematchParticipants() {
   checkRematchReady();
 }
 
-function finishMultiWin(seat, result, fanTotal, bestFan, meta = {}) {
+function finishMultiWin(seat, result, fanTotal, meta = {}) {
   if (game.state === S.WIN || game.state === S.DRAW_GAME) return;
   // A relayed win was already qualified on the winner's device. Re-checking it
   // against this device's local settings is another way to drop the notice.
@@ -3408,9 +3395,7 @@ function finishMultiWin(seat, result, fanTotal, bestFan, meta = {}) {
   });
   if (seat === game.seat) {
     game.fanTotal = fanTotal ?? game.fanTotal + (result?.totalFan ?? 0);
-    game.bestFan = bestFan ?? Math.max(game.bestFan, result?.totalFan ?? 0);
     save('mf-fantotal', game.fanTotal);
-    save('mf-bestfan', game.bestFan);
   }
   clearClaim();
   clearSelfWin();
@@ -3736,7 +3721,7 @@ function wireNetEvents() {
       }
     }
     const selfDraw = msg.selfDraw === undefined ? winIsSelfDraw(msg.result) : Boolean(msg.selfDraw);
-    finishMultiWin(msg.seat, msg.result, msg.fanTotal, msg.bestFan, {
+    finishMultiWin(msg.seat, msg.result, msg.fanTotal, {
       discarder: msg.discarder ?? null,
       selfDraw,
       authoritative: true,
@@ -3765,7 +3750,7 @@ function wireNetEvents() {
       isWin: true, totalFan: log.fan ?? 0, patterns: [],
       concealed: [], melds: [], flowers: [], winningTile: null,
     };
-    finishMultiWin(log.winner, result, undefined, undefined, {
+    finishMultiWin(log.winner, result, undefined, {
       discarder: log.discarder ?? null,
       selfDraw: Boolean(log.selfDraw),
     });
