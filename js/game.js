@@ -8,13 +8,13 @@ import {
   createTileElement, tileName,
 } from './tiles.js';
 import { createMusic } from './audio.js?v=1.4.63';
-import { createNet, randomPlayerId } from './net.js?v=1.4.68';
+import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
 import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown,
   withFlowers, flowerWin, flowerWinResult,
-} from './rules.js';
+} from './rules.js?v=1.4.69';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');

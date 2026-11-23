@@ -4,7 +4,7 @@ import {
   ABSORBS, FAN_CAP, FAN_VALUES, FLOWER_PATTERN_TABLE, ORPHANS, PATTERN_TABLE, TERMINALS,
   countTiles, createWall, decompose, evaluateHand, evaluateFlowers,
   findWaits, flowerWin, flowerWinResult, formatWinBreakdown, getAssistTiles,
-  getUsefulTiles, isThirteenOrphans, normalizeMelds, randomTileKind, shanten, withFlowers,
+  getUsefulTiles, isNineGates, isThirteenOrphans, normalizeMelds, randomTileKind, shanten, withFlowers,
 } from '../js/rules.js';
 import { FLOWER_IDS, isFlower, TILE_IDS, tileName } from '../js/tiles.js';
 
@@ -230,6 +230,13 @@ test('B6：大小三元、大小四喜不疊加，番數不設上限', () => {
   const bigWind = evalTiles('E E E S S S W W W N N N C C');
   assert.ok(names(bigWind).includes('大四喜'));
   assert.ok(!names(bigWind).includes('小四喜'));
+  // Duplicate triplets cannot substitute for the three different dragons/winds.
+  const dupDragons = evalTiles('B B B B B B F F m1 m2 m3 p4 p5 p6');
+  assert.ok(!names(dupDragons).includes('小三元'));
+  assert.ok(!names(dupDragons).includes('大三元'));
+  const dupWinds = evalTiles('E E E E E E S S W W W m1 m2 m3');
+  assert.ok(!names(dupWinds).includes('小四喜'));
+  assert.ok(!names(dupWinds).includes('大四喜'));
 });
 
 test('B7：槓上開花只在開槓補摸的那一張生效', () => {
@@ -308,6 +315,9 @@ test('B11：九子連環／十三幺必須門前清', () => {
   assert.equal(evaluateHand({ concealed: nine, melds: [kong('m1')] }).isWin, false);
   assert.equal(evaluateHand({ concealed: thirteen }).isWin, true);
   assert.equal(evaluateHand({ concealed: thirteen, melds: [kong('m1')] }).isWin, false);
+  const dupOrphans = tiles('m1 m1 m1 m9 p1 p9 s1 s9 E S W N C B');
+  assert.equal(isThirteenOrphans(dupOrphans), false);
+  assert.equal(isNineGates(tiles('m1 m1 m1 m2 m2 m2 m4 m5 m6 m7 m8 m9 m9 m9')), false);
 });
 
 test('十三幺的 13 種對子都能胡', () => {
@@ -464,6 +474,10 @@ test('花糊（七花）與大花糊（八仙過海）即時胡牌', () => {
   assert.equal(flowerWin(seven).id, '花糊');
   assert.equal(flowerWin(FLOWER_IDS).id, '大花糊');
   assert.equal(flowerWin([]), null);
+  // Only distinct flower IDs count; duplicates cannot complete a set.
+  assert.equal(flowerWin([...seven.slice(0, 6), 'H1']), null);
+  assert.equal(flowerWin([...FLOWER_IDS.slice(0, 7), 'H1']).id, '花糊');
+  assert.ok(!evaluateFlowers(['H5', 'H6', 'H7', 'H5'], 'E').patterns.some((p) => p.id === '一檯花'));
   const sevenResult = flowerWinResult(seven, 'E');
   assert.equal(sevenResult.isWin, true);
   assert.deepEqual(names(sevenResult), ['花糊']);

@@ -51,8 +51,9 @@ python3 scripts/process_assets.py
 Deployment is GitHub Pages from `main`. Commit, push, then verify the live site with distinct
 cachebusts (`index.html`, `js/game.js`, `js/payout.js`, `css/style.css`). `index.html` also pins a
 `?v=` version on `css/style.css` and `js/game.js`; bump it whenever those files change so players do
-not keep a stale cached 胡 handler. `js/game.js` also pins `./audio.js?v=...`; bump that import when
-the audio helper changes so UI sounds are not cached separately.
+not keep a stale cached 胡 handler. `js/game.js` also pins `./audio.js?v=...` and
+`./rules.js?v=...`; bump those imports when the audio helper or rules engine changes so players do
+not keep stale sounds or scoring.
 
 ## Repository map
 
@@ -90,7 +91,14 @@ the audio helper changes so UI sounds are not cached separately.
   tile. Seat mapping is 東＝春/梅, 南＝夏/蘭, 西＝秋/菊, 北＝冬/竹. A full season or plant
   series gives 一檯花 (2) and suppresses that series' own 正花. 七花＝花糊 (3, includes 自摸),
   八花＝大花糊 (8); 七花 can be declined, after which only 八花 wins immediately and a later
-  hand win adds 花糊. 七對子 is never called 花糊.
+  hand win adds 花糊. 七對子 is never called 花糊. All flower patterns count distinct IDs only:
+  一檯花 needs all four seasons or all four plants, 花糊 needs seven distinct flowers and 大花糊
+  needs all eight; duplicates never complete a set.
+- **Combination patterns need distinct tiles.** 大／小三元 require all three dragon kinds (the
+  small form's pair must be the missing dragon), and 大／小四喜 require the four wind kinds the
+  same way. 十三幺 needs all 13 distinct orphans plus a duplicate of one of them; 九子連環 needs
+  one suit's `1112345678999` plus one extra tile of that suit. Repeated triplets or pairs cannot
+  substitute. 七對子 is the intentional exception: four identical tiles may supply two pairs.
 - **Every fished tile is a self-draw.** `evaluateHand` defaults `context.selfDraw` to `true`;
   claim wins pass `selfDraw: false`. 自摸 is scored from the flag, not from meld state.
 - **Opening wins.** After the 13 ordinary tiles and any supplemental flowers, check once for

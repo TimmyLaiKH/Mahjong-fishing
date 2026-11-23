@@ -120,7 +120,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['C', 'C', 'C', 'F', 'F', 'F', 'B', 'B', 'm1', 'm2', 'm3', 'p4', 'p5', 'p6'], melds: [], context: {} },
   },
   {
-    id: '小四喜', fan: 6, desc: '三組風牌刻子加一組風牌將。',
+    id: '小四喜', fan: 6, desc: '三種不同風牌刻子加剩下一種風牌將。',
     example: { concealed: ['E', 'E', 'E', 'S', 'S', 'S', 'W', 'W', 'W', 'N', 'N', 'm1', 'm2', 'm3'], melds: [], context: {} },
   },
   {
@@ -492,10 +492,16 @@ function evaluateDecomposition(concealed, groups, melds, context) {
 
   const windPungs = sets.filter((s) => isPung(s) && WINDS.includes(s.tiles[0]));
   const dragonPungs = sets.filter((s) => isPung(s) && DRAGONS.includes(s.tiles[0]));
-  if (windPungs.length === 4) add('大四喜');
-  else if (windPungs.length === 3 && pair && WINDS.includes(pair[0])) add('小四喜');
-  if (dragonPungs.length === 3) add('大三元');
-  else if (dragonPungs.length === 2 && pair && DRAGONS.includes(pair[0])) add('小三元');
+  // These limit hands need distinct tile kinds: two white pungs and a middle
+  // pair are not 小三元, just as repeated East pungs are not 大四喜.
+  const windPungTiles = new Set(windPungs.map((set) => set.tiles[0]));
+  const dragonPungTiles = new Set(dragonPungs.map((set) => set.tiles[0]));
+  if (windPungTiles.size === 4) add('大四喜');
+  else if (windPungTiles.size === 3 && pair && WINDS.includes(pair[0])
+    && !windPungTiles.has(pair[0])) add('小四喜');
+  if (dragonPungTiles.size === 3) add('大三元');
+  else if (dragonPungTiles.size === 2 && pair && DRAGONS.includes(pair[0])
+    && !dragonPungTiles.has(pair[0])) add('小三元');
   if (melds.length === 0 && isSevenPairs(concealed)) add('七對子');
   if (sets.length === 4 && allTiles.every((t) => TILE_INFO[t].isHonor)) add('字一色');
   if (sets.length === 4 && allTiles.every((t) => TERMINALS.includes(t))) add('清幺九');
@@ -553,7 +559,7 @@ function evaluateDecomposition(concealed, groups, melds, context) {
 
   let patterns = resolveOverlaps(found, {
     ...context,
-    dragonPungTiles: dragonPungs.map((set) => set.tiles[0]),
+    dragonPungTiles: [...dragonPungTiles],
   });
   if (!patterns.some((p) => !BONUS_IDS.has(p.id) && p.id !== '重疊扣減')) {
     patterns = [{ id: '雞糊', name: '雞糊', fan: 0 }, ...patterns];
