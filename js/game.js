@@ -8,7 +8,7 @@ import {
   createTileElement, tileName,
 } from './tiles.js';
 import { createMusic } from './audio.js?v=1.4.63';
-import { createNet, randomPlayerId } from './net.js?v=1.4.67';
+import { createNet, randomPlayerId } from './net.js?v=1.4.68';
 import { settleRound } from './payout.js';
 import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
@@ -714,9 +714,9 @@ function checkInitialSelfDraw() {
 }
 
 function startGame({ keepTurn = false, preset = null } = {}) {
-  // A fresh hand spawns a fresh sea. Any in-flight host pause belongs to the
-  // old round — never apply its elapsed time to brand-new fish.
-  hostSeaPausedAt = 0;
+  // A fresh hand spawns a fresh sea. Reset the wall-clock sea step so the new
+  // fish do not inherit time spent in the lobby or a finished round.
+  lastSeaStepAt = Date.now();
   const nextTurn = keepTurn ? game.turn : 1;
   if (!game.match) resetMatch();
   // Uids must be allocated before dealing so AI hands and discards never reuse
@@ -4413,13 +4413,6 @@ function draw(dt) {
   drawRod();
   positionClaimBar();
   positionClaimBoxes();
-  if (!simulationPaused() && fishAuthority()) {
-    game.spawnTimer += dt;
-    if (game.spawnTimer >= SPAWN_INTERVAL) {
-      game.spawnTimer = 0;
-      spawnFish(2);
-    }
-  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -4427,31 +4420,49 @@ function draw(dt) {
  * ------------------------------------------------------------------ */
 
 let lastFrame = 0;
-// A hidden host tab or a blocking modal freezes the shared sea while guests keep
-// extrapolating. 設定／玩法說明／計分／重來這局投票 are not blocking here, so no
-// catch-up snap is needed after them. On a real pause we advance by elapsed time.
-let hostSeaPausedAt = 0;
+// The authoritative sea advances by wall-clock time from both rAF and a
+// background interval. Either caller consumes the elapsed time once, so a
+// hidden host still moves and replenishes fish while guests keep fishing.
+let lastSeaStepAt = 0;
 
-function syncHostSeaPause() {
-  const live = game.mode === 'multi' && net.isHost
-    && ![S.LOADING, S.WIN, S.DRAW_GAME].includes(game.state);
-  if (!live) { hostSeaPausedAt = 0; return; }
-  if (simulationPaused()) {
-    if (!hostSeaPausedAt) hostSeaPausedAt = Date.now();
-  } else if (hostSeaPausedAt) {
-    const elapsed = Math.min(30, Math.max(0, (Date.now() - hostSeaPausedAt) / 1000));
-    hostSeaPausedAt = 0;
-    if (elapsed > 0.05) {
-      updateFish(elapsed);
+function stepHostSea() {
+  if (!fishAuthority() || [S.LOADING, S.WIN, S.DRAW_GAME].includes(game.state)) {
+    lastSeaStepAt = Date.now();
+    return;
+  }
+  const now = Date.now();
+  if (!lastSeaStepAt) { lastSeaStepAt = now; return; }
+  const dt = Math.min(30, Math.max(0, (now - lastSeaStepAt) / 1000));
+  lastSeaStepAt = now;
+  if (dt <= 0) return;
+  updateFish(dt);
+  game.spawnTimer += dt;
+  const due = Math.floor(game.spawnTimer / SPAWN_INTERVAL);
+  if (due > 0) {
+    game.spawnTimer -= due * SPAWN_INTERVAL;
+    spawnFish(due * 2);
+  }
+  if (game.mode === 'multi' && net.isHost) {
+    game.seaClock += dt;
+    if (game.seaClock >= SEA_BROADCAST_INTERVAL) {
+      game.seaClock = 0;
       broadcastSeaSnapshot();
     }
   }
 }
 
+// Background tabs throttle rAF, so keep the host sea alive from a timer too.
+setInterval(stepHostSea, 250);
+
+/** One explicit sea step after a visibility change (kept for the test hook). */
+function syncHostSeaPause() {
+  stepHostSea();
+}
+
 function gameLoop(timestamp) {
   const dt = lastFrame ? Math.min((timestamp - lastFrame) / 1000, 0.05) : 0;
   lastFrame = timestamp;
-  syncHostSeaPause();
+  stepHostSea();
   // Multiplayer time is wall-clock based: a host changing tabs cannot pause it,
   // and every guest counts down from the last host sync on its own clock.
   // LOADING is excluded too: a room lobby must never inherit a previous
@@ -4505,15 +4516,7 @@ function gameLoop(timestamp) {
         }
       }
     }
-    updateFish(dt);
     updateRemoteFish(dt);
-    if (game.mode === 'multi' && net.isHost) {
-      game.seaClock += dt;
-      if (game.seaClock >= SEA_BROADCAST_INTERVAL) {
-        game.seaClock = 0;
-        broadcastSeaSnapshot();
-      }
-    }
   }
   draw(dt);
   requestAnimationFrame(gameLoop);
@@ -4639,7 +4642,7 @@ function applyHook(msg) {
 }
 
 function spawnFish(count) {
-  if (!fishAuthority() || simulationPaused() || game.state === S.LOADING
+  if (!fishAuthority() || game.state === S.LOADING
     || game.state === S.WIN || game.state === S.DRAW_GAME) return;
   for (let i = 0; i < count && game.fish.length < MAX_FISH; i += 1) {
     const direction = Math.random() < 0.5 ? 1 : -1;
@@ -5353,10 +5356,9 @@ function wireInput() {
   document.addEventListener('pointerdown', unlockMusic);
   document.addEventListener('keydown', unlockMusic);
   document.addEventListener('visibilitychange', () => {
-    // Sea catch-up is unified in syncHostSeaPause() so a hidden tab and a
-    // blocking modal behave identically (both use simulationPaused()). The
-    // four informational modals never pause, so they need no catch-up. rAF is
-    // throttled while hidden, so call it here too.
+    // The host sea is stepped from wall-clock time by both rAF and a background
+    // interval, so it keeps replenishing while this tab is hidden. Step once
+    // here too so the return to the foreground shows the current fish at once.
     if (document.hidden) {
       music.suspend();
       syncHostSeaPause();
@@ -5565,7 +5567,7 @@ if (new URLSearchParams(location.search).has('test')) {
     currentRoundKey, announceWin,
     renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,
     commitRoomDurationText, renderRoom,
-    syncHostSeaPause, updateFish, broadcastSeaSnapshot, paused, simulationPaused, modalOpen, keepsSeaMoving,
+    syncHostSeaPause, stepHostSea, updateFish, broadcastSeaSnapshot, paused, simulationPaused, modalOpen, keepsSeaMoving,
     renderGhostRods, HOOK_BROADCAST_INTERVAL,
     resetMatch, cloneMatch, adoptMatch, recordRoundResult, payoutSummary,
     updateScoreUI, normalizeMatchSetup, windIndexFor, seatZeroWind, qualifyingWin,

@@ -324,12 +324,14 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   and the round timer keeps counting when the host changes tabs.
 - **Sea sync.** Fish x is a 0..1 sea fraction and vx a fraction of fixed `REFERENCE_W = 1920`
   per second. Snapshots every 0.1 s; guests ease toward targets and extrapolate briefly (capped
-  at 30 s). The host pauses fish on a hidden tab or a blocking modal and advances by real elapsed
-  time on resume before rebroadcasting, so guests never snap backwards. 設定, 玩法說明, 計分 and
-  the 重來這局 vote are informational: `simulationPaused()` ignores them on every device, so the
-  shared sea, timer, rod and AI keep moving whether the host or any guest opened them. `paused()`
-  still blocks direct canvas/keypad input while any modal is open. `startGame()` clears stale pause
-  time. Guest hooks are relayed through the host so all four rods are visible.
+  at 30 s). `stepHostSea()` advances the authoritative sea from wall-clock time and is called by
+  both rAF and a 250 ms background interval, so a hidden host keeps fish moving and replenishing
+  instead of letting guests empty the sea; each call consumes the elapsed time once, and catch-up
+  is capped at 30 s. 設定, 玩法說明, 計分 and the 重來這局 vote are informational:
+  `simulationPaused()` ignores them on every device, so the timer, rod and AI keep moving whether
+  the host or any guest opened them. `paused()` still blocks direct canvas/keypad input while any
+  modal is open. `startGame()` resets the sea step clock. Guest hooks are relayed through the host
+  so all four rods are visible.
 - **Hook sync.** Hook poses broadcast every 0.05 s (`HOOK_BROADCAST_INTERVAL`), including host-simulated
   AI hooks and guest hooks relayed through the host. `applyHook()` keeps the latest target plus a
   smoothed vx/vy (fractions of sea width per second for x, world pixels per second for y); phase
