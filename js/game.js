@@ -7,7 +7,7 @@ import {
   TILE_IDS, TILE_INFO, FLOWER_IDS, isFlower, loadImages, drawTile,
   createTileElement, tileName,
 } from './tiles.js';
-import { createMusic } from './audio.js?v=1.4.83';
+import { createMusic } from './audio.js?v=1.4.85';
 import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
 import {
@@ -57,7 +57,7 @@ const ui = {
   roomWinds: el('roomWinds'), roomBase: el('roomBase'), roomBaseText: el('roomBaseText'),
   roomBaseValue: el('roomBaseValue'), roomMinFan: el('roomMinFan'),
   roomStart: el('roomStart'), roomLeave: el('roomLeave'), roomMessage: el('roomMessage'),
-  settingsSound: el('settingsSound'),
+  settingsMusic: el('settingsMusic'), settingsSound: el('settingsSound'),
   mainVolume: el('mainVolume'), mainVolumeValue: el('mainVolumeValue'),
   musicVolume: el('musicVolume'), musicVolumeValue: el('musicVolumeValue'),
   matchStartingMoney: el('matchStartingMoney'), matchStartingMoneyText: el('matchStartingMoneyText'),
@@ -179,7 +179,7 @@ const game = {
   },
   match: null,              // created by resetMatch(); authoritative on the host
   settings: {
-    sound: readSetting('mf-sound', true),
+    ...readSoundSettings(),
     ...readVolumeSettings(),
     fanCap: Infinity,
     gameSeconds: readGameSeconds(),
@@ -248,6 +248,19 @@ function readNumber(key) {
 function readNumberWithDefault(key, fallback) {
   try { return Number(localStorage.getItem(key) ?? fallback) || fallback; } catch { return fallback; }
 }
+/** One storage key holds both switches: "music,effects" as 1/0. Older
+ *  true/false values are applied to both switches. */
+function readSoundSettings() {
+  let raw = null;
+  try { raw = localStorage.getItem('mf-sound'); } catch { /* private mode */ }
+  if (raw === null) return { musicEnabled: true, soundEnabled: true };
+  const parts = String(raw).split(',');
+  if (parts.length === 2) {
+    return { musicEnabled: parts[0] !== '0', soundEnabled: parts[1] !== '0' };
+  }
+  const enabled = raw === 'true';
+  return { musicEnabled: enabled, soundEnabled: enabled };
+}
 function clampVolume(value, fallback) {
   const text = String(value ?? '').trim();
   if (!text) return fallback;
@@ -271,12 +284,6 @@ function readVolumeSettings() {
   // Older releases stored one number used for both music and effects. Treat it
   // as the master volume and let the music-only slider default to full.
   return { mainVolume: clampVolume(raw, DEFAULT_MAIN_VOLUME), musicVolume: DEFAULT_MUSIC_VOLUME };
-}
-function readSetting(key, fallback) {
-  try {
-    const value = localStorage.getItem(key);
-    return value === null ? fallback : value === 'true';
-  } catch { return fallback; }
 }
 function clampGameSeconds(value) {
   const seconds = Number(value);
@@ -310,6 +317,9 @@ function save(key, value) {
 }
 function saveVolumeSettings() {
   save('mf-volume', `${game.settings.mainVolume},${game.settings.musicVolume}`);
+}
+function saveSoundSettings() {
+  save('mf-sound', `${game.settings.musicEnabled ? '1' : '0'},${game.settings.soundEnabled ? '1' : '0'}`);
 }
 
 /* ------------------------------------------------------------------ *
@@ -2099,7 +2109,8 @@ function voiceStatus() {
   const voice = cantoneseVoice();
   return {
     supported: true,
-    sound: game.settings.sound,
+    musicEnabled: game.settings.musicEnabled,
+    soundEnabled: game.settings.soundEnabled,
     mainVolume: game.settings.mainVolume,
     musicVolume: game.settings.musicVolume,
     unlocked: speechUnlocked,
@@ -2132,7 +2143,7 @@ function showVoiceDebug() {
   const refresh = () => { text.textContent = JSON.stringify(voiceStatus(), null, 2); };
   button.addEventListener('click', () => {
     unlockSpeechEngine();
-    game.settings.sound = true;
+    game.settings.soundEnabled = true;
     game.settings.mainVolume = Math.max(game.settings.mainVolume, 0.5);
     const voice = primeDeviceVoice();
     if (voice) speakVoiceNow(voice, '流局 時間到，沒有胡牌。', game.settings.mainVolume);
@@ -2183,11 +2194,11 @@ function waitForCantoneseVoice(timeout = 2000) {
   });
 }
 
-/** iOS may pause other page audio while an utterance is active. Bring the
- *  background track back once speech finishes, and try once just after it
- *  starts for browsers that can mix both. */
+/** iOS briefly pauses other page audio while an utterance is active. Resume
+ *  only after speech finishes: calling play() during the utterance makes the
+ *  track stutter on iPhone and iPad. */
 function resumeMusicAfterVoice() {
-  if (!document.hidden && game.settings.sound) music.resume();
+  if (!document.hidden && game.settings.musicEnabled) music.resume();
 }
 
 function speakVoiceNow(voice, text, volume) {
@@ -2195,7 +2206,7 @@ function speakVoiceNow(voice, text, volume) {
   lastSpeechAt = Date.now();
   try {
     if (speechSynthesis.paused) speechSynthesis.resume();
-    speechSynthesis.cancel();
+    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.voice = voice;
     utterance.lang = voice.lang || 'zh-HK';
@@ -2204,7 +2215,6 @@ function speakVoiceNow(voice, text, volume) {
     utterance.onend = resumeMusicAfterVoice;
     utterance.onerror = resumeMusicAfterVoice;
     speechSynthesis.speak(utterance);
-    setTimeout(resumeMusicAfterVoice, 100);
     lastSpeechError = '';
   } catch (error) {
     lastSpeechError = String(error);
@@ -2215,7 +2225,7 @@ function speakVoiceNow(voice, text, volume) {
  *  optional: without an explicit Cantonese voice the line is simply skipped,
  *  never read by a Mandarin voice. */
 function speakCantonese(text) {
-  if (!text || !game.settings.sound
+  if (!text || !game.settings.soundEnabled
     || typeof SpeechSynthesisUtterance === 'undefined'
     || typeof speechSynthesis === 'undefined') return;
   const volume = game.settings.mainVolume;
@@ -5579,7 +5589,8 @@ function commitMatchBaseText() {
 function updateSettingsUI() {
   renderMatchSettingsUI();
   if (ui.settingsPlayerName) ui.settingsPlayerName.value = game.playerName;
-  ui.settingsSound.checked = game.settings.sound;
+  ui.settingsMusic.checked = game.settings.musicEnabled;
+  ui.settingsSound.checked = game.settings.soundEnabled;
   ui.mainVolume.value = String(Math.round(game.settings.mainVolume * 100));
   ui.mainVolumeValue.textContent = `${Math.round(game.settings.mainVolume * 100)}%`;
   ui.musicVolume.value = String(Math.round(game.settings.musicVolume * 100));
@@ -5599,23 +5610,29 @@ function updateSettingsUI() {
   ui.matchStartingMoney?.closest('.match-setup')?.classList.toggle('disabled', scoringLocked);
 }
 
-function setSoundEnabled(value) {
-  game.settings.sound = Boolean(value);
-  music.setEnabled(game.settings.sound);
-  if (game.settings.sound) {
-    music.start();
+function setMusicEnabled(value) {
+  game.settings.musicEnabled = Boolean(value);
+  music.setMusicEnabled(game.settings.musicEnabled);
+  if (game.settings.musicEnabled) music.start();
+  saveSoundSettings();
+}
+
+function setEffectsEnabled(value) {
+  game.settings.soundEnabled = Boolean(value);
+  music.setEffectsEnabled(game.settings.soundEnabled);
+  if (game.settings.soundEnabled) {
     unlockSpeechEngine();
     primeDeviceVoice();
   }
-  save('mf-sound', game.settings.sound);
-  updateSettingsUI();
+  saveSoundSettings();
 }
 
 function unlockMusic() {
-  if (!game.settings.sound) return;
-  music.start();
-  unlockSpeechEngine();
-  primeDeviceVoice();
+  if (game.settings.musicEnabled) music.start();
+  if (game.settings.soundEnabled) {
+    unlockSpeechEngine();
+    primeDeviceVoice();
+  }
 }
 
 function setMainVolume(value) {
@@ -5641,7 +5658,9 @@ function setMusicVolume(value) {
 function applySettings() {
   setMainVolume(Number(ui.mainVolume.value) / 100);
   setMusicVolume(Number(ui.musicVolume.value) / 100);
-  setSoundEnabled(el('settingsSound').checked);
+  setMusicEnabled(ui.settingsMusic.checked);
+  setEffectsEnabled(ui.settingsSound.checked);
+  updateSettingsUI();
   updateHUD();
 }
 
@@ -5662,7 +5681,7 @@ function wireInput() {
       music.suspend();
       syncHostSeaPause();
     } else {
-      if (game.settings.sound) music.resume();
+      if (game.settings.musicEnabled) music.resume();
       syncHostSeaPause();
       // A background tab's rAF timestamp is stale; restart the frame clock.
       lastFrame = performance.now();
@@ -5770,7 +5789,8 @@ function wireInput() {
   }
   ui.mainVolume.addEventListener('input', (event) => setMainVolume(Number(event.target.value) / 100));
   ui.musicVolume.addEventListener('input', (event) => setMusicVolume(Number(event.target.value) / 100));
-  el('settingsSound').addEventListener('change', applySettings);
+  ui.settingsMusic.addEventListener('change', applySettings);
+  ui.settingsSound.addEventListener('change', applySettings);
   document.addEventListener('keydown', (event) => {
     if (event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar') {
       event.preventDefault();
@@ -5808,7 +5828,8 @@ async function boot() {
   resetMatch(game.matchSetup);
   music.setVolume(game.settings.mainVolume);
   music.setMusicVolume(game.settings.musicVolume);
-  music.setEnabled(game.settings.sound);
+  music.setMusicEnabled(game.settings.musicEnabled);
+  music.setEffectsEnabled(game.settings.soundEnabled);
   // Try audible autoplay immediately; where browsers block it, the first
   // pointerdown/keydown below starts the music instead.
   music.start();
@@ -5874,7 +5895,7 @@ if (new URLSearchParams(location.search).has('test')) {
     EMOJIS, sendEmoji, showEmojiBubble, toggleEmojiPanel, closeEmojiPanel,
     fanInCantonese, speakCantonese, speakRoundStart, speakAction, speakWin, speakDraw, showWinEnd,
     isCantoneseVoice, cantoneseVoice, waitForCantoneseVoice, voiceStatus, showVoiceDebug,
-    primeDeviceVoice, setMainVolume, setMusicVolume,
+    primeDeviceVoice, setMainVolume, setMusicVolume, setMusicEnabled, setEffectsEnabled,
     currentRoundKey, announceWin,
     hintRawFan, hintSelfDrawResult, hintKongGroups, hintTips, hintWaitInfo,
     renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,

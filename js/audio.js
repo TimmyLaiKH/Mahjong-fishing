@@ -35,7 +35,8 @@ export const TRACKS = Object.freeze([
 
 export function createMusic() {
   let audio = null;
-  let enabled = true;
+  let musicEnabled = true;
+  let effectsEnabled = true;
   // masterVolume scales every sound (music, clicks, tile strike, voice).
   // musicVolume scales only the background track.
   let masterVolume = 0.32;
@@ -63,7 +64,7 @@ export function createMusic() {
   }
 
   function play() {
-    if (!enabled || !active || !audio || !audio.src) return;
+    if (!musicEnabled || !active || !audio || !audio.src) return;
     const result = audio.play();
     if (result?.catch) result.catch(() => {}); // autoplay still blocked
   }
@@ -74,20 +75,20 @@ export function createMusic() {
     audio.preload = 'auto';
     audio.volume = musicGain();
     audio.addEventListener('ended', () => {
-      if (!enabled || !active) return;
+      if (!musicEnabled || !active) return;
       load(randomTrack(current));
       play();
     });
     audio.addEventListener('error', () => {
       errors += 1;
-      if (!enabled || !active || errors > TRACKS.length) return;
+      if (!musicEnabled || !active || errors > TRACKS.length) return;
       load(randomTrack(current));
       play();
     });
   }
 
   function start() {
-    if (!enabled) return;
+    if (!musicEnabled) return;
     active = true;
     ensureAudio();
     if (current < 0) load(randomTrack(-1));
@@ -99,7 +100,7 @@ export function createMusic() {
   }
 
   function resume() {
-    if (enabled && active) play();
+    if (musicEnabled && active) play();
   }
 
   function setVolume(value) {
@@ -116,9 +117,9 @@ export function createMusic() {
     if (audio) audio.volume = musicGain();
   }
 
-  function setEnabled(value) {
-    enabled = Boolean(value);
-    if (!enabled) {
+  function setMusicEnabled(value) {
+    musicEnabled = Boolean(value);
+    if (!musicEnabled) {
       active = false;
       suspend();
     } else {
@@ -127,8 +128,12 @@ export function createMusic() {
     }
   }
 
+  function setEffectsEnabled(value) {
+    effectsEnabled = Boolean(value);
+  }
+
   // The click is synthesised; the tile strike is a short CC0 Freesound
-  // recording. Both share the on/off switch and the master volume.
+  // recording. Both follow the effects switch and the master volume.
   let context = null;
   const TILE_SOUND = 'assets/audio/mahjong-tile-strike.mp3?v=1.4.61';
 
@@ -141,7 +146,7 @@ export function createMusic() {
   }
 
   function blip(frequency, duration, wave = 'sine', level = 0.12) {
-    if (!enabled) return;
+    if (!effectsEnabled) return;
     const ctx = ensureContext();
     if (!ctx) return;
     try {
@@ -166,7 +171,7 @@ export function createMusic() {
   }
 
   function tile() {
-    if (!enabled || masterVolume <= 0) return;
+    if (!effectsEnabled || masterVolume <= 0) return;
     try {
       const effect = new Audio(TILE_SOUND);
       effect.volume = Math.min(1, masterVolume * 1.1);
@@ -179,12 +184,15 @@ export function createMusic() {
     start,
     suspend,
     resume,
-    setEnabled,
+    setMusicEnabled,
+    setEffectsEnabled,
     setVolume,
     setMusicVolume,
     click,
     tile,
-    isEnabled: () => enabled,
+    isMusicEnabled: () => musicEnabled,
+    isEffectsEnabled: () => effectsEnabled,
+    isEnabled: () => musicEnabled,
     isPlaying: () => Boolean(audio && !audio.paused),
     trackName: () => (current >= 0 ? TRACKS[current].name : TRACKS[0].name),
   };

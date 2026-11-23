@@ -381,7 +381,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   counters that read only 門風 and 資金 (with a `$` prefix); 巡, 番數 and 最佳 are not shown
   during play. The main menu appears before any lobby or game starts and shows a legal 十三幺
   winning hand (all 13 orphans plus one duplicate), but no fan record line. The 設定 panel keeps only
-  player name, sound on/off, 主音量, 音樂音量, 重來這局 and 回到主選單 — 鉤速 (default 1.0×) and
+  player name, two switches (背景音樂, 音效與語音), 主音量, 音樂音量, 重來這局 and 回到主選單 —
+  鉤速 (default 1.0×) and
   每局時間 (default 05:00) live in
   the solo/聯機 room alongside money, winds and 金額倍數, ordered 鉤速 → 每局時間 → 圈子數 →
   起始資金 → 金額倍數. Each seat uses a distinct full-body icon from `AVATAR_ICONS`, beside the
@@ -423,14 +424,15 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   themselves on `animationend`. The picker closes on outside click, Escape, resize or selection.
 - A document-level click listener plays a short WebAudio click for every enabled `<button>`, while
   `discard()` plays `assets/audio/mahjong-tile-strike.mp3` via `music.tile()`. Both live in
-  `js/audio.js`. Both share `mf-sound`, but clicks and the tile strike use only the master volume
-  while the music track uses master × music volume; no storage keys are added.
+  `js/audio.js`. They follow the 音效與語音 switch and the master volume, while the music track
+  follows the 背景音樂 switch and master × music volume; both switches share one `mf-sound` value
+  (`music,effects` as `1`/`0`) and no storage keys are added.
 - Modals: ordinary modals close on backdrop click, but `overlay`, `loading`, `menuScreen`,
   `joinScreen` and `roomScreen` never do. The in-game 設定／玩法說明／計分 panels and the
   `重新開始投票` overlay are informational — they block input but not simulation. In-game
   `回到主選單` quits the round, clears pending prompts, sets `LOADING`, and shows the menu.
   Settings must not mention AI or 番數上限; host hook speed and duration lock after start; both
-  volume sliders save into `mf-volume`.
+  volume sliders save into `mf-volume`, and both switches save into `mf-sound`.
 - Exact waiting status, help count, pattern table source and no-bottom-button rules are listed
   under **Core game invariants**; keep them in sync with `index.html`.
 
@@ -443,17 +445,17 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   no extra scenery images are needed.
 - `js/audio.js` plays five CC0 Freesound tracks, switches to a different track after each one,
   attempts audible autoplay on load and falls back to the first user gesture where blocked, and
-  supports enable plus master/music volumes. Both volumes
-  live in `mf-volume` as `main,music`; a legacy single number is read as the master volume with
-  music at 100%.
-- Announcements follow `mf-sound` and the master half of `mf-volume`, and use only an explicit
-  `zh-HK`/Cantonese `SpeechSynthesis` voice cached on the first user gesture. A device without one
-  stays silent instead of falling back to Mandarin; the iPhone silent switch still mutes
-  `speechSynthesis`, so the switch must be off (or Chrome on iOS used). Do not set
+  supports separate music/effects enables plus master/music volumes. Both volumes live in
+  `mf-volume` as `main,music`; a legacy single number is read as the master volume with music at
+  100%. The two enables live in `mf-sound` as `music,effects`.
+- Announcements follow the 音效與語音 half of `mf-sound` and the master half of `mf-volume`, and
+  use only an explicit `zh-HK`/Cantonese `SpeechSynthesis` voice cached on the first user gesture.
+  A device without one stays silent instead of falling back to Mandarin; the iPhone silent switch
+  still mutes `speechSynthesis`, so the switch must be off (or Chrome on iOS used). Do not set
   `navigator.audioSession.type = 'playback'`: on iPhone it made speech and music share an
   exclusive session and stopped the background track whenever speech began. `speakVoiceNow()`
-  instead calls `music.resume()` on `onend`/`onerror` and shortly after starting so the music
-  returns after an iOS interruption.
+  calls `music.resume()` only on `onend`/`onerror`; calling it during the utterance makes iOS
+  stutter, and the unavoidable pause cannot be prevented from a web page.
 - `CREDITS.md` is the licence source of truth. The in-game 資料來源 panel must show the required
   attribution strings and links. Do not add assets with unclear licences.
 
@@ -465,8 +467,8 @@ Only these keys may be read or written:
 mf-sound  mf-volume  mf-fantotal  mf-hookspeed  mf-gameseconds
 ```
 
-They cover sound on/off, master and music volumes (in one `mf-volume` value), accumulated fan,
-hook speed and round length.
+They cover the two sound switches (in one `mf-sound` value), master and music volumes (in one
+`mf-volume` value), accumulated fan, hook speed and round length.
 Match setup, money, dealer continuity and payout history live in runtime state only — never add
 a localStorage key for them. Do not reintroduce `mf-strength`, `mf-fancap`, `mf-assist`,
 `mf-hints` or any point-related key.
