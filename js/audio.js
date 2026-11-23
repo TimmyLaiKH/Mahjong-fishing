@@ -35,7 +35,10 @@ export const TRACKS = Object.freeze([
 export function createMusic() {
   let audio = null;
   let enabled = true;
-  let volume = 0.32;
+  // masterVolume scales every sound (music, clicks, tile strike, voice).
+  // musicVolume scales only the background track.
+  let masterVolume = 0.32;
+  let musicVolume = 1;
   let active = false;
   let current = -1;
   let errors = 0;
@@ -45,6 +48,10 @@ export function createMusic() {
     let index = previous;
     while (index === previous) index = Math.floor(Math.random() * TRACKS.length);
     return index;
+  }
+
+  function musicGain() {
+    return Math.min(1, masterVolume * musicVolume);
   }
 
   function load(index) {
@@ -64,7 +71,7 @@ export function createMusic() {
     if (audio) return;
     audio = new Audio();
     audio.preload = 'auto';
-    audio.volume = volume;
+    audio.volume = musicGain();
     audio.addEventListener('ended', () => {
       if (!enabled || !active) return;
       load(randomTrack(current));
@@ -97,8 +104,15 @@ export function createMusic() {
   function setVolume(value) {
     const next = Number(value);
     if (!Number.isFinite(next)) return;
-    volume = Math.min(1, Math.max(0, next));
-    if (audio) audio.volume = volume;
+    masterVolume = Math.min(1, Math.max(0, next));
+    if (audio) audio.volume = musicGain();
+  }
+
+  function setMusicVolume(value) {
+    const next = Number(value);
+    if (!Number.isFinite(next)) return;
+    musicVolume = Math.min(1, Math.max(0, next));
+    if (audio) audio.volume = musicGain();
   }
 
   function setEnabled(value) {
@@ -113,7 +127,7 @@ export function createMusic() {
   }
 
   // The click is synthesised; the tile strike is a short CC0 Freesound
-  // recording. Both share the music on/off switch and volume.
+  // recording. Both share the on/off switch and the master volume.
   let context = null;
   const TILE_SOUND = 'assets/audio/mahjong-tile-strike.mp3?v=1.4.61';
 
@@ -134,7 +148,7 @@ export function createMusic() {
       const oscillator = ctx.createOscillator();
       const gain = ctx.createGain();
       const now = ctx.currentTime;
-      const peak = Math.max(0.001, volume * level);
+      const peak = Math.max(0.001, masterVolume * level);
       oscillator.type = wave;
       oscillator.frequency.setValueAtTime(frequency, now);
       gain.gain.setValueAtTime(0.0001, now);
@@ -151,10 +165,10 @@ export function createMusic() {
   }
 
   function tile() {
-    if (!enabled || volume <= 0) return;
+    if (!enabled || masterVolume <= 0) return;
     try {
       const effect = new Audio(TILE_SOUND);
-      effect.volume = Math.min(1, volume * 1.1);
+      effect.volume = Math.min(1, masterVolume * 1.1);
       const result = effect.play();
       if (result?.catch) result.catch(() => {}); // sound is optional
     } catch { /* sound is optional */ }
@@ -166,6 +180,7 @@ export function createMusic() {
     resume,
     setEnabled,
     setVolume,
+    setMusicVolume,
     click,
     tile,
     isEnabled: () => enabled,

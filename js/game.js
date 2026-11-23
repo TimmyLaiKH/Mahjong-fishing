@@ -7,7 +7,7 @@ import {
   TILE_IDS, TILE_INFO, FLOWER_IDS, isFlower, loadImages, drawTile,
   createTileElement, tileName,
 } from './tiles.js';
-import { createMusic } from './audio.js?v=1.4.63';
+import { createMusic } from './audio.js?v=1.4.78';
 import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
 import {
@@ -58,6 +58,7 @@ const ui = {
   roomBaseValue: el('roomBaseValue'), roomMinFan: el('roomMinFan'),
   roomStart: el('roomStart'), roomLeave: el('roomLeave'), roomMessage: el('roomMessage'),
   settingsSound: el('settingsSound'),
+  mainVolume: el('mainVolume'), mainVolumeValue: el('mainVolumeValue'),
   musicVolume: el('musicVolume'), musicVolumeValue: el('musicVolumeValue'),
   matchStartingMoney: el('matchStartingMoney'), matchStartingMoneyText: el('matchStartingMoneyText'),
   matchStartingMoneyValue: el('matchStartingMoneyValue'),
@@ -128,6 +129,9 @@ const DEFAULT_BASE = 1;
 const MIN_MIN_FAN = 0;
 const MAX_MIN_FAN = 13;
 const DEFAULT_MIN_FAN = 0;
+/** One storage key holds both volumes: master first, music-only second. */
+const DEFAULT_MAIN_VOLUME = 0.32;
+const DEFAULT_MUSIC_VOLUME = 1;
 /** The host owns the shared sea and sends compact snapshots ten times a second. */
 const SEA_BROADCAST_INTERVAL = 0.1;
 /** Hook poses go out twenty times a second so ghost rods feel immediate. */
@@ -176,7 +180,7 @@ const game = {
   match: null,              // created by resetMatch(); authoritative on the host
   settings: {
     sound: readSetting('mf-sound', true),
-    musicVolume: Math.min(1, Math.max(0, readNumberWithDefault('mf-volume', 0.32))),
+    ...readVolumeSettings(),
     fanCap: Infinity,
     gameSeconds: readGameSeconds(),
   },
@@ -244,6 +248,30 @@ function readNumber(key) {
 function readNumberWithDefault(key, fallback) {
   try { return Number(localStorage.getItem(key) ?? fallback) || fallback; } catch { return fallback; }
 }
+function clampVolume(value, fallback) {
+  const text = String(value ?? '').trim();
+  if (!text) return fallback;
+  const number = Number(text);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(1, Math.max(0, Math.round(number * 100) / 100));
+}
+function readVolumeSettings() {
+  let raw = null;
+  try { raw = localStorage.getItem('mf-volume'); } catch { /* private mode */ }
+  if (raw === null) {
+    return { mainVolume: DEFAULT_MAIN_VOLUME, musicVolume: DEFAULT_MUSIC_VOLUME };
+  }
+  const parts = String(raw).split(',');
+  if (parts.length === 2) {
+    return {
+      mainVolume: clampVolume(parts[0], DEFAULT_MAIN_VOLUME),
+      musicVolume: clampVolume(parts[1], DEFAULT_MUSIC_VOLUME),
+    };
+  }
+  // Older releases stored one number used for both music and effects. Treat it
+  // as the master volume and let the music-only slider default to full.
+  return { mainVolume: clampVolume(raw, DEFAULT_MAIN_VOLUME), musicVolume: DEFAULT_MUSIC_VOLUME };
+}
 function readSetting(key, fallback) {
   try {
     const value = localStorage.getItem(key);
@@ -279,6 +307,9 @@ function parseClock(text) {
 }
 function save(key, value) {
   try { localStorage.setItem(key, String(value)); } catch { /* private mode */ }
+}
+function saveVolumeSettings() {
+  save('mf-volume', `${game.settings.mainVolume},${game.settings.musicVolume}`);
 }
 
 /* ------------------------------------------------------------------ *
@@ -2004,6 +2035,8 @@ function fanInCantonese(value) {
 
 /** Only an explicit Hong Kong / Cantonese voice may speak. zh-TW, zh-CN,
  *  zh-Hans-HK, en-HK and generic zh voices are never used as a fallback. */
+let preferredVoice = null;
+
 function cantoneseVoiceRank(voice) {
   const lang = String(voice?.lang ?? '').replace(/_/g, '-').toLowerCase();
   const name = String(voice?.name ?? '').toLowerCase();
@@ -2020,13 +2053,39 @@ function isCantoneseVoice(voice) {
   return Number.isFinite(cantoneseVoiceRank(voice));
 }
 
+/** Cache the chosen voice on a user gesture. Mobile browsers often report an
+ *  empty voice list until then, and want speak() called in the same gesture. */
 function cantoneseVoice() {
   if (typeof speechSynthesis === 'undefined') return null;
   try {
-    return (speechSynthesis.getVoices() ?? [])
+    const found = (speechSynthesis.getVoices() ?? [])
       .filter(isCantoneseVoice)
       .sort((a, b) => cantoneseVoiceRank(a) - cantoneseVoiceRank(b))[0] ?? null;
-  } catch { return null; }
+    if (found) preferredVoice = found;
+  } catch { /* keep the last known voice */ }
+  return preferredVoice;
+}
+
+function primeDeviceVoice() {
+  return cantoneseVoice();
+}
+
+function voiceStatus() {
+  if (typeof speechSynthesis === 'undefined') {
+    return { supported: false, voice: null, voices: [] };
+  }
+  let voices = [];
+  try { voices = [...(speechSynthesis.getVoices() ?? [])]; } catch { /* ignore */ }
+  const voice = cantoneseVoice();
+  return {
+    supported: true,
+    voice: voice ? { name: voice.name, lang: voice.lang } : null,
+    voices: voices.map((item) => ({
+      name: item.name, lang: item.lang, cantonese: isCantoneseVoice(item),
+    })),
+    speaking: Boolean(speechSynthesis.speaking),
+    pending: Boolean(speechSynthesis.pending),
+  };
 }
 
 /** getVoices() can be empty until voiceschanged fires on the first load. */
@@ -2059,6 +2118,19 @@ function waitForCantoneseVoice(timeout = 2000) {
   });
 }
 
+function speakVoiceNow(voice, text, volume) {
+  try {
+    if (speechSynthesis.paused) speechSynthesis.resume();
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.voice = voice;
+    utterance.lang = voice.lang || 'zh-HK';
+    utterance.rate = 0.95;
+    utterance.volume = clampVolume(volume, 0);
+    speechSynthesis.speak(utterance);
+  } catch { /* voice is optional */ }
+}
+
 /** Announcements use the device's own Hong Kong / Cantonese voice. Speech is
  *  optional: without an explicit Cantonese voice the line is simply skipped,
  *  never read by a Mandarin voice. */
@@ -2066,18 +2138,16 @@ function speakCantonese(text) {
   if (!text || !game.settings.sound
     || typeof SpeechSynthesisUtterance === 'undefined'
     || typeof speechSynthesis === 'undefined') return;
-  const volume = game.settings.musicVolume;
-  waitForCantoneseVoice().then((voice) => {
-    if (!voice) return;
-    try {
-      speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.voice = voice;
-      utterance.lang = voice.lang || 'zh-HK';
-      utterance.rate = 0.95;
-      utterance.volume = Math.max(0, Math.min(1, Number(volume) || 0));
-      speechSynthesis.speak(utterance);
-    } catch { /* voice is optional */ }
+  const volume = game.settings.mainVolume;
+  const voice = cantoneseVoice();
+  // On iOS the speak() call must stay inside the user gesture that triggered
+  // the action, so use a cached voice synchronously whenever one exists.
+  if (voice) {
+    speakVoiceNow(voice, text, volume);
+    return;
+  }
+  waitForCantoneseVoice().then((found) => {
+    if (found) speakVoiceNow(found, text, volume);
   });
 }
 
@@ -5430,6 +5500,8 @@ function updateSettingsUI() {
   renderMatchSettingsUI();
   if (ui.settingsPlayerName) ui.settingsPlayerName.value = game.playerName;
   ui.settingsSound.checked = game.settings.sound;
+  ui.mainVolume.value = String(Math.round(game.settings.mainVolume * 100));
+  ui.mainVolumeValue.textContent = `${Math.round(game.settings.mainVolume * 100)}%`;
   ui.musicVolume.value = String(Math.round(game.settings.musicVolume * 100));
   ui.musicVolumeValue.textContent = `${Math.round(game.settings.musicVolume * 100)}%`;
   // 鉤速與每局時間只在開始前的房間設定，設定面板不再提供。
@@ -5450,26 +5522,42 @@ function updateSettingsUI() {
 function setSoundEnabled(value) {
   game.settings.sound = Boolean(value);
   music.setEnabled(game.settings.sound);
-  if (game.settings.sound) music.start();
+  if (game.settings.sound) {
+    music.start();
+    primeDeviceVoice();
+  }
   save('mf-sound', game.settings.sound);
   updateSettingsUI();
 }
 
 function unlockMusic() {
-  if (game.settings.sound) music.start();
+  if (!game.settings.sound) return;
+  music.start();
+  primeDeviceVoice();
+}
+
+function setMainVolume(value) {
+  const volume = Number(value);
+  if (!Number.isFinite(volume)) return;
+  game.settings.mainVolume = clampVolume(volume, DEFAULT_MAIN_VOLUME);
+  music.setVolume(game.settings.mainVolume);
+  ui.mainVolume.value = String(Math.round(game.settings.mainVolume * 100));
+  ui.mainVolumeValue.textContent = `${Math.round(game.settings.mainVolume * 100)}%`;
+  saveVolumeSettings();
 }
 
 function setMusicVolume(value) {
   const volume = Number(value);
   if (!Number.isFinite(volume)) return;
-  game.settings.musicVolume = Math.min(1, Math.max(0, Math.round(volume * 100) / 100));
-  music.setVolume(game.settings.musicVolume);
+  game.settings.musicVolume = clampVolume(volume, DEFAULT_MUSIC_VOLUME);
+  music.setMusicVolume(game.settings.musicVolume);
   ui.musicVolume.value = String(Math.round(game.settings.musicVolume * 100));
   ui.musicVolumeValue.textContent = `${Math.round(game.settings.musicVolume * 100)}%`;
-  save('mf-volume', game.settings.musicVolume);
+  saveVolumeSettings();
 }
 
 function applySettings() {
+  setMainVolume(Number(ui.mainVolume.value) / 100);
   setMusicVolume(Number(ui.musicVolume.value) / 100);
   setSoundEnabled(el('settingsSound').checked);
   updateHUD();
@@ -5598,6 +5686,7 @@ function wireInput() {
       }
     });
   }
+  ui.mainVolume.addEventListener('input', (event) => setMainVolume(Number(event.target.value) / 100));
   ui.musicVolume.addEventListener('input', (event) => setMusicVolume(Number(event.target.value) / 100));
   el('settingsSound').addEventListener('change', applySettings);
   document.addEventListener('keydown', (event) => {
@@ -5635,8 +5724,13 @@ function loadBackground() {
 
 async function boot() {
   resetMatch(game.matchSetup);
-  music.setVolume(game.settings.musicVolume);
+  music.setVolume(game.settings.mainVolume);
+  music.setMusicVolume(game.settings.musicVolume);
   music.setEnabled(game.settings.sound);
+  if (typeof speechSynthesis !== 'undefined'
+    && typeof speechSynthesis.addEventListener === 'function') {
+    speechSynthesis.addEventListener('voiceschanged', primeDeviceVoice);
+  }
   setInterval(broadcastHostTime, 500);
   wireInput();
   updateSettingsUI();
@@ -5693,7 +5787,8 @@ if (new URLSearchParams(location.search).has('test')) {
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
     EMOJIS, sendEmoji, showEmojiBubble, toggleEmojiPanel, closeEmojiPanel,
     fanInCantonese, speakCantonese, speakRoundStart, speakAction, speakWin, speakDraw, showWinEnd,
-    isCantoneseVoice, cantoneseVoice, waitForCantoneseVoice,
+    isCantoneseVoice, cantoneseVoice, waitForCantoneseVoice, voiceStatus,
+    primeDeviceVoice, setMainVolume, setMusicVolume,
     currentRoundKey, announceWin,
     hintRawFan, hintSelfDrawResult, hintKongGroups, hintTips, hintWaitInfo,
     renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,

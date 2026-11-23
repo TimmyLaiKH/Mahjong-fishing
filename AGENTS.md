@@ -378,7 +378,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   counters that read only 門風 and 資金 (with a `$` prefix); 巡, 番數 and 最佳 are not shown
   during play. The main menu appears before any lobby or game starts and shows a legal 十三幺
   winning hand (all 13 orphans plus one duplicate), but no fan record line. The 設定 panel keeps only
-  player name, music, 重來這局 and 回到主選單 — 鉤速 (default 1.0×) and 每局時間 (default 05:00) live in
+  player name, sound on/off, 主音量, 音樂音量, 重來這局 and 回到主選單 — 鉤速 (default 1.0×) and
+  每局時間 (default 05:00) live in
   the solo/聯機 room alongside money, winds and 金額倍數, ordered 鉤速 → 每局時間 → 圈子數 →
   起始資金 → 金額倍數. Each seat uses a distinct full-body icon from `AVATAR_ICONS`, beside the
   rod, in the lobby avatars and in `各家副露` as ICON → ID → live `$` purse → current 門風; 允行 is male, and
@@ -419,13 +420,14 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   themselves on `animationend`. The picker closes on outside click, Escape, resize or selection.
 - A document-level click listener plays a short WebAudio click for every enabled `<button>`, while
   `discard()` plays `assets/audio/mahjong-tile-strike.mp3` via `music.tile()`. Both live in
-  `js/audio.js` and share the `mf-sound` / `mf-volume` settings; no storage keys are added.
+  `js/audio.js`. Both share `mf-sound`, but clicks and the tile strike use only the master volume
+  while the music track uses master × music volume; no storage keys are added.
 - Modals: ordinary modals close on backdrop click, but `overlay`, `loading`, `menuScreen`,
   `joinScreen` and `roomScreen` never do. The in-game 設定／玩法說明／計分 panels and the
   `重新開始投票` overlay are informational — they block input but not simulation. In-game
   `回到主選單` quits the round, clears pending prompts, sets `LOADING`, and shows the menu.
-  Settings must not mention AI or 番數上限; host hook speed and duration lock after start; music
-  volume saves as `mf-volume`.
+  Settings must not mention AI or 番數上限; host hook speed and duration lock after start; both
+  volume sliders save into `mf-volume`.
 - Exact waiting status, help count, pattern table source and no-bottom-button rules are listed
   under **Core game invariants**; keep them in sync with `index.html`.
 
@@ -437,9 +439,12 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   Olivier Dugornay / Ifremer; the game draws mountains, houses, bamboo and grass in canvas, so
   no extra scenery images are needed.
 - `js/audio.js` plays five CC0 Freesound tracks, switches to a different track after each one,
-  starts only after a user gesture, and supports enable/volume. Music volume is `mf-volume`.
-- Announcements follow `mf-sound` and `mf-volume` and use only an explicit `zh-HK`/Cantonese
-  `SpeechSynthesis` voice. A device without one stays silent instead of falling back to Mandarin.
+  starts only after a user gesture, and supports enable plus master/music volumes. Both volumes
+  live in `mf-volume` as `main,music`; a legacy single number is read as the master volume with
+  music at 100%.
+- Announcements follow `mf-sound` and the master half of `mf-volume`, and use only an explicit
+  `zh-HK`/Cantonese `SpeechSynthesis` voice cached on the first user gesture. A device without one
+  stays silent instead of falling back to Mandarin.
 - `CREDITS.md` is the licence source of truth. The in-game 資料來源 panel must show the required
   attribution strings and links. Do not add assets with unclear licences.
 
@@ -451,7 +456,8 @@ Only these keys may be read or written:
 mf-sound  mf-volume  mf-fantotal  mf-hookspeed  mf-gameseconds
 ```
 
-They cover music on/off, volume, accumulated fan, best fan, hook speed and round length.
+They cover sound on/off, master and music volumes (in one `mf-volume` value), accumulated fan,
+hook speed and round length.
 Match setup, money, dealer continuity and payout history live in runtime state only — never add
 a localStorage key for them. Do not reintroduce `mf-strength`, `mf-fancap`, `mf-assist`,
 `mf-hints` or any point-related key.
