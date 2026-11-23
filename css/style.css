@@ -267,6 +267,23 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
   border-radius: 8px;
 }
 .emoji-panel button:hover, .emoji-panel button:focus-visible { background: rgba(255, 255, 255, 0.16); }
+/* Test-only voice inspector, enabled by ?test=1&voice=1. */
+.voice-debug {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 9999;
+  max-height: 40vh;
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.88);
+  color: #fff;
+  font: 12px/1.4 monospace;
+  white-space: pre-wrap;
+}
 .emoji-layer {
   position: fixed;
   inset: 0;

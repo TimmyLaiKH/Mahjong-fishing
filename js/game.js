@@ -2090,6 +2090,25 @@ function voiceStatus() {
   };
 }
 
+/** Test-only on-screen voice inspector for phones without a dev console. */
+function showVoiceDebug() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('test') || !params.has('voice')) return;
+  const box = document.createElement('pre');
+  box.id = 'voiceDebug';
+  box.className = 'voice-debug';
+  document.body.appendChild(box);
+  const refresh = () => { box.textContent = JSON.stringify(voiceStatus(), null, 2); };
+  refresh();
+  if (typeof speechSynthesis !== 'undefined'
+    && typeof speechSynthesis.addEventListener === 'function') {
+    speechSynthesis.addEventListener('voiceschanged', refresh);
+  }
+  // Mobile browsers often populate voices only after the first tap.
+  document.addEventListener('pointerdown', () => { primeDeviceVoice(); refresh(); });
+  setTimeout(refresh, 1500);
+}
+
 /** getVoices() can be empty until voiceschanged fires on the first load. */
 function waitForCantoneseVoice(timeout = 2000) {
   const immediate = cantoneseVoice();
@@ -5736,6 +5755,7 @@ async function boot() {
   setInterval(broadcastHostTime, 500);
   wireInput();
   updateSettingsUI();
+  showVoiceDebug();
   const [loaded, bg] = await Promise.all([
     loadImages([...TILE_IDS, ...FLOWER_IDS], (done, total) => {
       ui.loadingProgress.textContent = `${done}/${total}`;
@@ -5789,7 +5809,7 @@ if (new URLSearchParams(location.search).has('test')) {
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
     EMOJIS, sendEmoji, showEmojiBubble, toggleEmojiPanel, closeEmojiPanel,
     fanInCantonese, speakCantonese, speakRoundStart, speakAction, speakWin, speakDraw, showWinEnd,
-    isCantoneseVoice, cantoneseVoice, waitForCantoneseVoice, voiceStatus,
+    isCantoneseVoice, cantoneseVoice, waitForCantoneseVoice, voiceStatus, showVoiceDebug,
     primeDeviceVoice, setMainVolume, setMusicVolume,
     currentRoundKey, announceWin,
     hintRawFan, hintSelfDrawResult, hintKongGroups, hintTips, hintWaitInfo,

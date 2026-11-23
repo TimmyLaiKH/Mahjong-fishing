@@ -305,7 +305,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 - **Test hook.** `window.__mf` is created only when the URL contains `test` and exposes the
   broad internal surface used by browser probes (`game`, `S`, `view`, `startFromMenu`,
   `startGame`, `commitWin`, `endDrawGame`, `updateHUD`, scoring helpers, `renderRoom`, `net`,
-  votes, etc.). Do not depend on it in production paths.
+  votes, etc.). With both `test` and `voice` query flags, `showVoiceDebug()` also renders
+  `voiceStatus()` as an on-screen panel for phones without a browser console. Do not depend on
+  either path in production.
 
 ## Multiplayer (`js/net.js` and game-side protocol)
 
