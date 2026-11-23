@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, FAN_VALUES, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown,
   withFlowers, flowerWin, flowerWinResult,
-} from './rules.js?v=1.4.71';
+} from './rules.js?v=1.4.72';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');

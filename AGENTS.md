@@ -158,7 +158,8 @@ Scoring notes:
   sub-pattern with fan `-base × (sharers - 1)`. Attach `includes` only for absorbed patterns that
   were actually scored, so a claim win never shows 門前清 in the breakdown. `海底撈月` never absorbs
   `自摸`; `天胡`/`地胡` absorb 自摸+門前清; 暗槓 stays concealed; open melds and claim wins suppress
-  門前清. A 番子-only hand is not 雞糊.
+  門前清. `字一色` absorbs 花幺九, 對對糊 and the seat/round 番子 pseudo-keys; `大四喜` still absorbs
+  對對糊. A 番子-only hand is not 雞糊.
 - `formatWinBreakdown()` is the shared zh-Hant text used by win dialogs; it reports **fan only**
   and must never print money or 分. The game adds payout text separately.
 - Adding a pattern requires entries in both `FAN_VALUES` and `PATTERN_TABLE` (or the flower

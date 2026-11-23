@@ -159,7 +159,7 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
-    id: '字一色', fan: 10, desc: '全部由字牌組成。',
+    id: '字一色', fan: 10, desc: '全部由字牌組成（已含花幺九、對對糊與場風／門風番子）。',
     example: { concealed: ['E', 'E', 'E', 'S', 'S', 'S', 'W', 'W', 'W', 'C', 'C', 'C', 'B', 'B'], melds: [], context: {} },
   },
   {
@@ -187,7 +187,7 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
-    id: '大四喜', fan: 13, desc: '東南西北四組風牌刻子（已含小四喜及場風、門風番子）。',
+    id: '大四喜', fan: 13, desc: '東南西北四組風牌刻子（已含小四喜、對對糊及場風、門風番子）。',
     example: { concealed: ['E', 'E', 'E', 'S', 'S', 'S', 'W', 'W', 'W', 'N', 'N', 'N', 'C', 'C'], melds: [], context: {} },
   },
   {
@@ -271,7 +271,7 @@ export const ABSORBS = Object.freeze({
   '十八羅漢': ['對對糊'],
   '花幺九': ['對對糊'],
   '清幺九': ['花幺九', '對對糊'],
-  '字一色': ['花幺九', '對對糊'],
+  '字一色': ['花幺九', '對對糊', '番子:SEAT', '番子:ROUND'],
   '大四喜': ['對對糊', '小四喜', '番子:SEAT', '番子:ROUND'],
   '大三元': ['小三元', '番子:C', '番子:F', '番子:B'],
   '小三元': ['番子:PUNG_DRAGON'],

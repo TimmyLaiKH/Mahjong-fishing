@@ -868,11 +868,24 @@ test('T6：小三元吸收兩組三元番子，但風牌番子仍可疊加，共
   assert.equal(result.totalFan, 11);
 });
 
-test('T7：大四喜與坎坎胡疊加，對對糊只扣一次，風牌番子被吸收', () => {
+test('T7：大四喜與坎坎胡疊加，對對糊只扣一次；字一色吸收場風／門風番子', () => {
   const result = evalTiles('E E E S S S W W W N N N m5 m5');
   assert.deepEqual(names(result).sort(), ['大四喜', '坎坎胡', '重疊扣減', '混一色', '自摸'].sort());
   assert.ok(!names(result).includes('番子'));
   assert.equal(result.totalFan, 22);
+  const bigWind = result.patterns.find((p) => p.id === '大四喜');
+  assert.ok(bigWind.includes.includes('對對糊'), bigWind.includes?.join(','));
+
+  const allHonors = evaluateHand({
+    concealed: tiles('E E E S S S W W W W W W C C'),
+    melds: [],
+    context: { roundWind: 'E', seatWind: 'S' },
+  });
+  const honor = allHonors.patterns.find((p) => p.id === '字一色');
+  assert.ok(honor, names(allHonors).join(','));
+  assert.deepEqual([...(honor.includes ?? [])].sort(), ['對對糊', '番子', '花幺九'].sort());
+  assert.ok(!names(allHonors).includes('番子'));
+  assert.equal(allHonors.totalFan, 16);
 });
 
 test('T8：清幺九傳遞吸收花幺九與對對糊，共 16 番', () => {
