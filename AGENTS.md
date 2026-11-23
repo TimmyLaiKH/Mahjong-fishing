@@ -448,10 +448,12 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   music at 100%.
 - Announcements follow `mf-sound` and the master half of `mf-volume`, and use only an explicit
   `zh-HK`/Cantonese `SpeechSynthesis` voice cached on the first user gesture. A device without one
-  stays silent instead of falling back to Mandarin. `useMediaAudioSession()` sets
-  `navigator.audioSession.type = 'playback'` where available, which helps WebAudio effects but
-  does NOT override the iPhone silent switch for `speechSynthesis`; voice still needs the switch
-  off (or Chrome on iOS). This is best-effort and never affects settlement.
+  stays silent instead of falling back to Mandarin; the iPhone silent switch still mutes
+  `speechSynthesis`, so the switch must be off (or Chrome on iOS used). Do not set
+  `navigator.audioSession.type = 'playback'`: on iPhone it made speech and music share an
+  exclusive session and stopped the background track whenever speech began. `speakVoiceNow()`
+  instead calls `music.resume()` on `onend`/`onerror` and shortly after starting so the music
+  returns after an iOS interruption.
 - `CREDITS.md` is the licence source of truth. The in-game 資料來源 panel must show the required
   attribution strings and links. Do not add assets with unclear licences.
 

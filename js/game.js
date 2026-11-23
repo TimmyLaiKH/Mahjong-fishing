@@ -2040,7 +2040,6 @@ let lastSpeechText = '';
 let lastSpeechAt = 0;
 let lastSpeechError = '';
 let speechUnlocked = false;
-let mediaAudioSessionSet = false;
 
 function cantoneseVoiceRank(voice) {
   const lang = String(voice?.lang ?? '').replace(/_/g, '-').toLowerCase();
@@ -2077,29 +2076,9 @@ function primeDeviceVoice() {
   return cantoneseVoice();
 }
 
-/** iOS treats Web Speech API audio as ambient and mutes it with the ring/silent
- *  switch, while HTML music is media and still plays. On iOS 17+ the Audio
- *  Session API can mark this page as media playback. Best effort only: older
- *  browsers simply keep the previous behaviour. */
-function useMediaAudioSession() {
-  if (mediaAudioSessionSet) return;
-  try {
-    const session = navigator.audioSession;
-    if (session && 'type' in session) {
-      session.type = 'playback';
-      mediaAudioSessionSet = session.type === 'playback';
-    }
-  } catch { /* ignore: speech is optional and must never block play */ }
-}
-
-function audioSessionType() {
-  try { return navigator.audioSession?.type ?? null; } catch { return null; }
-}
-
 /** iOS only allows speech after a user gesture. A silent utterance unlocks the
  *  engine without adding any audible announcement. */
 function unlockSpeechEngine() {
-  useMediaAudioSession();
   if (speechUnlocked || typeof speechSynthesis === 'undefined'
     || typeof SpeechSynthesisUtterance === 'undefined') return;
   try {
@@ -2124,7 +2103,6 @@ function voiceStatus() {
     mainVolume: game.settings.mainVolume,
     musicVolume: game.settings.musicVolume,
     unlocked: speechUnlocked,
-    audioSession: audioSessionType(),
     voice: voice ? { name: voice.name, lang: voice.lang } : null,
     voices: voices.map((item) => ({
       name: item.name, lang: item.lang, cantonese: isCantoneseVoice(item),
@@ -2153,7 +2131,6 @@ function showVoiceDebug() {
   document.body.appendChild(box);
   const refresh = () => { text.textContent = JSON.stringify(voiceStatus(), null, 2); };
   button.addEventListener('click', () => {
-    useMediaAudioSession();
     unlockSpeechEngine();
     game.settings.sound = true;
     game.settings.mainVolume = Math.max(game.settings.mainVolume, 0.5);
@@ -2169,7 +2146,6 @@ function showVoiceDebug() {
   }
   // Mobile browsers often populate voices only after the first tap.
   document.addEventListener('pointerdown', () => {
-    useMediaAudioSession();
     unlockSpeechEngine();
     primeDeviceVoice();
     refresh();
@@ -2207,6 +2183,13 @@ function waitForCantoneseVoice(timeout = 2000) {
   });
 }
 
+/** iOS may pause other page audio while an utterance is active. Bring the
+ *  background track back once speech finishes, and try once just after it
+ *  starts for browsers that can mix both. */
+function resumeMusicAfterVoice() {
+  if (!document.hidden && game.settings.sound) music.resume();
+}
+
 function speakVoiceNow(voice, text, volume) {
   lastSpeechText = text;
   lastSpeechAt = Date.now();
@@ -2218,7 +2201,10 @@ function speakVoiceNow(voice, text, volume) {
     utterance.lang = voice.lang || 'zh-HK';
     utterance.rate = 0.95;
     utterance.volume = clampVolume(volume, 0);
+    utterance.onend = resumeMusicAfterVoice;
+    utterance.onerror = resumeMusicAfterVoice;
     speechSynthesis.speak(utterance);
+    setTimeout(resumeMusicAfterVoice, 100);
     lastSpeechError = '';
   } catch (error) {
     lastSpeechError = String(error);
@@ -5617,7 +5603,6 @@ function setSoundEnabled(value) {
   game.settings.sound = Boolean(value);
   music.setEnabled(game.settings.sound);
   if (game.settings.sound) {
-    useMediaAudioSession();
     music.start();
     unlockSpeechEngine();
     primeDeviceVoice();
@@ -5628,7 +5613,6 @@ function setSoundEnabled(value) {
 
 function unlockMusic() {
   if (!game.settings.sound) return;
-  useMediaAudioSession();
   music.start();
   unlockSpeechEngine();
   primeDeviceVoice();
@@ -5822,7 +5806,6 @@ function loadBackground() {
 
 async function boot() {
   resetMatch(game.matchSetup);
-  useMediaAudioSession();
   music.setVolume(game.settings.mainVolume);
   music.setMusicVolume(game.settings.musicVolume);
   music.setEnabled(game.settings.sound);
@@ -5891,7 +5874,7 @@ if (new URLSearchParams(location.search).has('test')) {
     EMOJIS, sendEmoji, showEmojiBubble, toggleEmojiPanel, closeEmojiPanel,
     fanInCantonese, speakCantonese, speakRoundStart, speakAction, speakWin, speakDraw, showWinEnd,
     isCantoneseVoice, cantoneseVoice, waitForCantoneseVoice, voiceStatus, showVoiceDebug,
-    primeDeviceVoice, setMainVolume, setMusicVolume, useMediaAudioSession, audioSessionType,
+    primeDeviceVoice, setMainVolume, setMusicVolume,
     currentRoundKey, announceWin,
     hintRawFan, hintSelfDrawResult, hintKongGroups, hintTips, hintWaitInfo,
     renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,
