@@ -100,7 +100,8 @@ not keep stale sounds or scoring.
   one suit's `1112345678999` plus one extra tile of that suit. Repeated triplets or pairs cannot
   substitute. 七對子 is the intentional exception: four identical tiles may supply two pairs.
 - **Every fished tile is a self-draw.** `evaluateHand` defaults `context.selfDraw` to `true`;
-  claim wins pass `selfDraw: false`. 自摸 is scored from the flag, not from meld state.
+  claim wins pass `selfDraw: false`. 自摸 and 門前清 both need that flag, plus no open meld for
+  門前清; a fully concealed hand won off a discard is still not 門前清.
 - **Opening wins.** After the 13 ordinary tiles and any supplemental flowers, check once for
   天胡 (dealer) / 地胡 (other seats), both 13 fan including 自摸 and 門前清. A failed check
   consumes nothing. All four seats, including AI, get the check.
@@ -119,15 +120,16 @@ not keep stale sounds or scoring.
   explains the payout using 金額倍數 `B`: `V = 2^番 × B` for 番 ≤ 4, then every two 番 doubles with
   a 1.5× factor for odd 番; 出銃 pays `V`, 自摸 pays `V／2` each, 流局 pays nothing. 牌型一覽 lives
   inside it and is generated from `PATTERN_TABLE` + `FLOWER_PATTERN_TABLE`; every pattern needs a
-  validated `example` there. The closing footnote says `碰、上、明槓不計門前清。` without adding
-  the old 自摸-source clause.
+  validated `example` there. The closing footnote says `碰、上、明槓或胡對手打出牌都不計門前清。`
+  without adding the old 自摸-source clause.
 - **No bottom `釣魚` button.** Click/tap the canvas or press Space to cast. Hints are always on;
   terminology is 聽牌, not a hint toggle. Wait hints are advisory and never gate settlement: for
   each wait they show a hint-only `rawFan` that keeps current flowers but excludes 自摸, 門前清,
   海底撈月, 槓上開花, 連槓開花 and 無花; 坎坎胡 falls back to the plain 對對糊 3-fan baseline. If a
-  self-draw of that tile reaches 起糊, the note is only `差 X 番，自摸才夠番`; otherwise it lists
-  the possible bonuses. 門前清 is omitted once there is an open meld; one triplet/quad suggests
-  槓上開花 and two or more suggest 連槓開花.
+  self-draw of that tile reaches 起糊, the note is only `差 X 番，自摸才夠番`; otherwise the note
+  is `差 X 番；可用…補番`, listing 花牌, 門前清, 自摸, 海底撈月 and kong bonuses. 門前清 is omitted
+  for a claim win or once there is an open meld. One triplet/quad suggests 槓上開花 and two or
+  more suggest 連槓開花.
 
 ## Rules engine (`js/rules.js`)
 
@@ -153,9 +155,10 @@ Scoring notes:
 - `evaluateDecomposition()` scores special/limit hands first, then suit/honour families, then
   timing and seat patterns. `betterResult()` picks by `totalFan → rawFan → pattern count`.
 - `resolveOverlaps()` drops transitively absorbed patterns and emits `重疊扣減` once per shared
-  sub-pattern with fan `-base × (sharers - 1)`. Attach `includes` for the breakdown text.
-  `海底撈月` never absorbs `自摸`; `天胡`/`地胡` absorb 自摸+門前清; 暗槓 stays concealed;
-  open melds suppress only 門前清. A 番子-only hand is not 雞糊.
+  sub-pattern with fan `-base × (sharers - 1)`. Attach `includes` only for absorbed patterns that
+  were actually scored, so a claim win never shows 門前清 in the breakdown. `海底撈月` never absorbs
+  `自摸`; `天胡`/`地胡` absorb 自摸+門前清; 暗槓 stays concealed; open melds and claim wins suppress
+  門前清. A 番子-only hand is not 雞糊.
 - `formatWinBreakdown()` is the shared zh-Hant text used by win dialogs; it reports **fan only**
   and must never print money or 分. The game adds payout text separately.
 - Adding a pattern requires entries in both `FAN_VALUES` and `PATTERN_TABLE` (or the flower

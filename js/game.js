@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, FAN_VALUES, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown,
   withFlowers, flowerWin, flowerWinResult,
-} from './rules.js?v=1.4.69';
+} from './rules.js?v=1.4.71';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -1135,7 +1135,7 @@ function claimReadyTiles() {
   return tiles;
 }
 
-/** Winning off a discard is never 自摸; open calls additionally remove 門前清. */
+/** Winning off a discard is never 自摸 or 門前清; open calls remove it too. */
 function claimWinResultFor(seat, discardId, tiles = null) {
   const context = seatWinContext(seat, { selfDraw: false });
   const concealed = tiles ? tiles.map((tile) => tile.id) : handIdsForSeat(seat);
@@ -5050,8 +5050,8 @@ function hintRawFan(concealed, waitId) {
   for (const pattern of result.patterns) {
     if (HINT_TIMING_FAN_IDS.has(pattern.id)) rawFan -= pattern.fan;
   }
-  // 坎坎胡 already absorbs 對對糊 and 門前清. Hints use the plain all-pung
-  // baseline so a closed four-triplet hand reports 對對糊's 3 fan, not 8.
+  // 坎坎胡 absorbs 對對糊 (and 門前清 on a self-draw). Hints use the plain
+  // all-pung baseline so a closed four-triplet hand reports 對對糊's 3 fan, not 8.
   if (result.patterns.some((pattern) => pattern.id === '坎坎胡')) {
     rawFan -= (FAN_VALUES['坎坎胡'] ?? 0) - (FAN_VALUES['對對糊'] ?? 0);
   }
@@ -5076,7 +5076,7 @@ function hintKongGroups(concealed) {
 }
 
 function hintTips(concealed) {
-  const tips = ['補花'];
+  const tips = ['花牌'];
   if (!game.melds.some((meld) => meld.open)) tips.push('門前清');
   tips.push('自摸');
   tips.push(game.timeLeft <= HAIDI_SECONDS ? '海底撈月（已計入）' : '海底撈月');
@@ -5095,7 +5095,7 @@ function hintWaitInfo(concealed, waitId) {
   if (short > 0) {
     note = selfDrawOk
       ? `（差 ${short} 番，自摸才夠番）`
-      : `（差 ${short} 番；${hintTips(concealed).join('、')}）`;
+      : `（差 ${short} 番；可用${hintTips(concealed).join('、')}補番）`;
   }
   return { id: waitId, rawFan, short, selfDrawOk, note };
 }

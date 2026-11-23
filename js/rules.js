@@ -84,7 +84,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'p2', 'p3', 'p4', 's7', 's8', 's9', 'p9', 'p9'], melds: [], context: {} },
   },
   {
-    id: '門前清', fan: 1, desc: '沒有開槓，所有牌都是自己摸回來的。',
+    id: '門前清', fan: 1, desc: '沒有碰、上、明槓，而且胡牌是自己摸到的。',
     example: { concealed: ['m1', 'm2', 'm3', 'p2', 'p3', 'p4', 's2', 's3', 's4', 's7', 's8', 's9', 'p9', 'p9'], melds: [], context: {} },
   },
   {
@@ -441,11 +441,15 @@ function matchesAbsorbKey(pattern, key, ctx) {
 function resolveOverlaps(found, ctx = {}) {
   const kept = found.filter((pattern) => !found.some((other) => other !== pattern
     && expandAbsorbed(other.id).some((key) => matchesAbsorbKey(pattern, key, ctx))));
+  // Only describe absorbed patterns that were actually scored. A claim win, for
+  // example, never scores 門前清, so it must not appear in the breakdown either.
+  const presentAbsorbed = (pattern) => expandAbsorbed(pattern.id)
+    .filter((key) => found.some((p) => matchesAbsorbKey(p, key, ctx)));
 
-  const subPatterns = [...new Set(kept.flatMap((p) => expandAbsorbed(p.id)))];
+  const subPatterns = [...new Set(kept.flatMap(presentAbsorbed))];
   const adjustments = [];
   for (const key of subPatterns) {
-    const sharers = kept.filter((p) => expandAbsorbed(p.id).includes(key));
+    const sharers = kept.filter((p) => presentAbsorbed(p).includes(key));
     if (sharers.length < 2) continue;
     const base = key.startsWith('番子:') ? '番子' : key;
     adjustments.push({
@@ -456,7 +460,7 @@ function resolveOverlaps(found, ctx = {}) {
     });
   }
   for (const pattern of kept) {
-    const absorbed = expandAbsorbed(pattern.id)
+    const absorbed = presentAbsorbed(pattern)
       .map((key) => (key.startsWith('番子:') ? '番子' : key))
       .filter((id) => id !== pattern.id);
     if (absorbed.length) pattern.includes = [...new Set(absorbed)];
@@ -553,8 +557,9 @@ function evaluateDecomposition(concealed, groups, melds, context) {
   // 海底撈月 applies to both self-draws and claim wins; 自摸 below is scored
   // separately whenever context.selfDraw is true.
   if (!isTiangu && context.haidi) add('海底撈月');
-  // 暗槓 (open: false) leaves the hand concealed; 碰／上／明槓 do not.
-  if (!melds.some((m) => m.open)) add('門前清');
+  // 門前清 needs both a closed hand and a self-draw. Winning on someone else's
+  // discard is never 門前清 even when no 碰／上／明槓 was made.
+  if (context.selfDraw && !melds.some((m) => m.open)) add('門前清');
   if (context.selfDraw) add('自摸');
 
   let patterns = resolveOverlaps(found, {
@@ -706,8 +711,9 @@ export function flowerWinResult(flowers = [], seatWind = 'E', fanCap = FAN_CAP, 
  * The single entry point used by the game, the hints and all tests.
  * context: { selfDraw, kongReplacementChain, haidi, tiangu, dihu, roundWind, seatWind }
  * melds: { tile, type: 'kong'|'pung'|'chow', tiles, open } — open means 碰／上／明槓,
- * which suppresses 門前清; 自摸 depends only on context.selfDraw, and 暗槓
- * (open: false) still counts as a concealed set.
+ * which suppresses 門前清; a claim win (selfDraw: false) suppresses it too.
+ * 自摸 depends only on context.selfDraw, and 暗槓 (open: false) still counts as
+ * a concealed set.
  * fanCap 仍可選擇性傳入以配合自訂屋規，但遊戲預設為無上限。
  */
 export function evaluateHand({ concealed = [], melds = [], winningTile = null, context = {} } = {}) {

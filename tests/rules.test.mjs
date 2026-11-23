@@ -160,15 +160,25 @@ test('上視為順子，可與其他順子組成平糊', () => {
   assert.ok(!names(result).includes('門前清'));
 });
 
-test('胡對手打出牌不算自摸，但門前清仍可計', () => {
+test('胡對手打出牌不算自摸或門前清，連暗刻胡牌也不顯示門前清', () => {
   const result = evaluateHand({
     concealed: tiles('m1 m2 m3 p2 p3 p4 s2 s3 s4 s7 s8 s9 p9 p9'),
     winningTile: 'p9',
     context: { selfDraw: false },
   });
   assert.equal(result.isWin, true);
-  assert.ok(names(result).includes('門前清'));
+  assert.ok(!names(result).includes('門前清'));
   assert.ok(!names(result).includes('自摸'));
+  assert.equal(result.totalFan, 1);
+
+  const fourPungs = evaluateHand({
+    concealed: tiles('m1 m1 m1 p2 p2 p2 s3 s3 s3 E E m4 m4 m4'),
+    winningTile: 'm4',
+    context: { selfDraw: false },
+  });
+  assert.ok(names(fourPungs).includes('坎坎胡'), names(fourPungs).join(','));
+  assert.ok(!names(fourPungs).includes('門前清'));
+  assert.doesNotMatch(formatWinBreakdown(fourPungs), /門前清/);
 });
 
 test('B3：111222333萬 + 789筒 + 將牌 取最高番的分解（平糊）', () => {
@@ -262,9 +272,9 @@ test('海底撈月：最後 5 秒自摸或胡他人打出牌都計，自摸另�
   assert.equal(selfDraw.totalFan, 4); // 門前清 1 + 平糊 1 + 海底撈月 1 + 自摸 1
 
   const claim = evaluateHand({ concealed: hand, context: { haidi: true, selfDraw: false } });
-  assert.deepEqual(names(claim).sort(), ['海底撈月', '門前清', '平糊'].sort());
+  assert.deepEqual(names(claim).sort(), ['海底撈月', '平糊'].sort());
   assert.equal(claim.patterns.find((p) => p.id === '海底撈月').fan, 1);
-  assert.equal(claim.totalFan, 3); // 門前清 1 + 平糊 1 + 海底撈月 1
+  assert.equal(claim.totalFan, 2); // 平糊 1 + 海底撈月 1，胡他人打出牌沒有門前清
 
   assert.equal(FAN_VALUES['海底撈月'], 1);
   assert.equal(PATTERN_TABLE.find((p) => p.id === '海底撈月').desc, '倒數剩餘 5 秒內胡牌。');
@@ -391,6 +401,7 @@ test('番子細項標明中、發、白與場風／門風', () => {
 
 test('牌型說明與番數依據新定義', () => {
   const byId = Object.fromEntries(PATTERN_TABLE.map((p) => [p.id, p]));
+  assert.equal(byId['門前清'].desc, '沒有碰、上、明槓，而且胡牌是自己摸到的。');
   assert.equal(byId['坎坎胡'].desc,
     '沒有碰、明槓過的對對胡（又稱四暗刻；已含對對糊、門前清；暗槓視作暗刻）。');
   assert.equal(byId['對對糊'].desc, '只有刻子的牌型。');
