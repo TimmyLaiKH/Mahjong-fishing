@@ -11,10 +11,10 @@ import { createMusic } from './audio.js?v=1.4.86';
 import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
 import {
-  WINDS, ORPHANS, FAN_VALUES, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
+  WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown,
   withFlowers, flowerWin, flowerWinResult,
-} from './rules.js?v=1.4.72';
+} from './rules.js?v=1.4.88';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -155,6 +155,8 @@ const game = {
   aiStates: {},             // host/solo only: seat -> full simulated player state
   hookPeers: {},            // seat -> latest ghost hook state received over the network
   pendingAiClaims: [],      // host/solo only: delayed AI claims on a discard
+  firstFished: new Set(),   // seats whose first ordinary fish has been resolved
+  dealerDiscarded: false,   // whether the dealer has made its opening discard (地胡)
   seenWins: new Set(),      // authoritative win ids already handled this session
   winTimers: new Set(),     // guest retry timers, cancelled once the host acknowledges
   winAcked: new Set(),      // win ids the host has confirmed receiving
@@ -498,7 +500,7 @@ function winContext() {
   };
 }
 
-/** The opening self-draw is 天胡 for the dealer and 地胡 for every other seat. */
+/** Only the dealer has an opening self-draw (天胡); other seats start at 13 and fish. */
 function openingWinContext() {
   return seatWinContext(game.seat, { opening: true });
 }
@@ -679,8 +681,9 @@ function seatWinContext(seat, { opening = false, ...extra } = {}) {
   };
   if (opening) {
     context.haidi = false;
-    context.tiangu = dealer;
-    context.dihu = !dealer;
+    // Non-dealers are dealt 13 tiles and must fish; 人胡 is scored on their
+    // first fished tile instead of a virtual opening draw.
+    if (dealer) context.tiangu = true;
   }
   return { ...context, ...extra };
 }
@@ -700,53 +703,19 @@ function broadcastFlowers(seat) {
   else if (seat === game.seat) net.sendToHost(msg);
 }
 
-/** Return true when the opening self-draw ended the round (天胡／地胡 or 花糊). */
+/** Dealer-only 天胡 check on the 14 dealt tiles; other seats start at 13 and fish. */
 function checkInitialSelfDraw() {
-  const dealer = game.seat === game.match?.dealerSeat;
-  const flowers = [];
-  let tile = null;
-  // The dealer already holds 14 tiles, so there is no extra opening draw.
-  if (!dealer) {
-    tile = randomTileKind();
-    while (isFlower(tile)) {
-      flowers.push(tile);
-      tile = randomTileKind();
-    }
-  }
-  const allFlowers = [...game.flowers, ...flowers];
+  if (game.seat !== game.match?.dealerSeat) return false;
+  const drawn = game.hand[game.hand.length - 1] ?? null;
   const context = seatWinContext(game.seat, { opening: true });
-  const flowerResult = flowerWinResult(
-    allFlowers, game.seatWind, game.settings.fanCap, context,
-  );
-  // A declined 花糊 can only be upgraded to 大花糊, never re-offered here.
-  if (qualifyingWin(flowerResult) && (!game.declinedFlowerWin
-    || flowerResult.patterns.some((p) => p.id === '大花糊'))) {
-    game.flowers = [...allFlowers];
-    syncSeatFlowers(game.seat);
-    sortHand();
-    updateHUD();
-    commitWin(flowerResult);
-    return true;
-  }
-
-  const drawn = dealer ? game.hand[game.hand.length - 1] : null;
-  const winningTile = dealer ? drawn?.id ?? null : tile;
   const tiangu = withFlowers(evaluateHand({
-    concealed: dealer ? concealedIds() : [...concealedIds(), winningTile],
+    concealed: concealedIds(),
     melds: game.melds,
-    winningTile,
+    winningTile: drawn?.id ?? null,
     context,
-  }), allFlowers, game.seatWind, game.settings.fanCap, context);
+  }), game.flowers, game.seatWind, game.settings.fanCap, context);
   if (!qualifyingWin(tiangu)) return false;
-
-  game.flowers = [...allFlowers];
-  if (dealer) {
-    game.lastDraw = drawn;
-  } else {
-    const extra = { id: tile, uid: game.nextUid++, source: 'tiangu' };
-    game.hand.push(extra);
-    game.lastDraw = extra;
-  }
+  game.lastDraw = drawn;
   sortHand();
   syncSeatFlowers(game.seat);
   updateHUD();
@@ -778,6 +747,8 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   game.pendingCatch = null;
   game.hookPeers = {};
   game.pendingAiClaims = [];
+  game.firstFished = new Set();
+  game.dealerDiscarded = false;
   game.turn = nextTurn;
   game.timeLeft = game.settings.gameSeconds;
   game.timeDeadline = Date.now() + game.settings.gameSeconds * 1000;
@@ -872,7 +843,7 @@ function startGame({ keepTurn = false, preset = null } = {}) {
 
 /** Resume the normal opening flow after a declined seven-flower win. */
 function continueAfterOpeningFlowerDecline() {
-  // 天胡／地胡：補花後的第一張自摸若已胡牌，直接以 13 番例牌結局。
+  // 天胡：莊家補花後的 14 張起手牌若已胡牌，直接以 13 番例牌結局。
   if (checkInitialSelfDraw()) return;
   prepareAiDealerOpening();
 
@@ -1060,12 +1031,17 @@ function finishReel() {
 }
 
 function resolveDraw() {
+  const firstFish = !game.firstFished.has(game.seat) && game.kongChain === 0
+    && game.seat !== game.match?.dealerSeat;
+  game.firstFished.add(game.seat);
+  const context = winContext();
+  if (firstFish) context.renhu = true;
   const result = withFlowers(evaluateHand({
     concealed: concealedIds(),
     melds: game.melds,
     winningTile: game.lastDraw?.id ?? null,
-    context: winContext(),
-  }), game.flowers, game.seatWind, game.settings.fanCap, winContext());
+    context,
+  }), game.flowers, game.seatWind, game.settings.fanCap, context);
   game.pendingResult = result;
   const kongTile = findKongTile();
   if (qualifyingWin(result)) {
@@ -1176,9 +1152,13 @@ function claimReadyTiles() {
   return tiles;
 }
 
-/** Winning off a discard is never 自摸 or 門前清; open calls remove it too. */
-function claimWinResultFor(seat, discardId, tiles = null) {
-  const context = seatWinContext(seat, { selfDraw: false });
+/** Winning off a discard is never 自摸 or 門前清; open calls remove it too.
+ *  地胡 is only added when a non-dealer claims the dealer's first discard. */
+function claimWinResultFor(seat, discardId, tiles = null, { firstDiscard = false, discarderSeat = null } = {}) {
+  const dihuClaim = Boolean(firstDiscard)
+    && discarderSeat === game.match?.dealerSeat
+    && seat !== game.match?.dealerSeat;
+  const context = seatWinContext(seat, { selfDraw: false, dihuClaim });
   const concealed = tiles ? tiles.map((tile) => tile.id) : handIdsForSeat(seat);
   return withFlowers(evaluateHand({
     concealed: [...concealed, discardId],
@@ -1188,8 +1168,8 @@ function claimWinResultFor(seat, discardId, tiles = null) {
   }), flowersForSeat(seat), seatWindOf(seat), game.settings.fanCap, context);
 }
 
-function claimWinResult(discardId, tiles = null) {
-  return claimWinResultFor(game.seat, discardId, tiles);
+function claimWinResult(discardId, tiles = null, options = {}) {
+  return claimWinResultFor(game.seat, discardId, tiles, options);
 }
 
 function clearClaim() {
@@ -1271,12 +1251,13 @@ function canDeclareMeld() {
  *  produced even while the rod is out; they are marked disabled so the box stays
  *  visible and only becomes clickable once the hook is home and the hand is
  *  ready again. */
-function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass = false, { potential = false } = {}) {
+function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass = false,
+  { potential = false, firstDiscard = false, discarderSeat = null } = {}) {
   const tiles = potential ? claimReadyTiles() : game.hand;
   const hand = tiles.map((tile) => tile.id);
   const counts = countTiles(hand);
   const actions = [];
-  const win = claimWinResult(discardId, tiles);
+  const win = claimWinResult(discardId, tiles, { firstDiscard, discarderSeat });
   if (qualifyingWin(win)) {
     actions.push({
       label: '胡牌', type: 'win', result: win,
@@ -1380,6 +1361,7 @@ function createAiState(seat) {
     river: [],
     lastDraw: null,
     kongChain: 0,
+    firstFished: false,
     mustDiscard: false,
     openingReady: false,
     discardTimer: 0,
@@ -1403,7 +1385,7 @@ function isAiSeat(seat) {
     || Boolean(game.players.find((player) => player?.seat === seat && player.isBot && !player.isEmpty));
 }
 
-/** AI seats get the same opening flower / 天胡 / 地胡 check as the human seat. */
+/** AI seats get dealt-flower wins and the dealer-only 天胡 check. */
 function checkAiOpeningWins() {
   for (const state of Object.values(game.aiStates)) {
     const seatWind = seatWindOf(state.seat);
@@ -1417,17 +1399,12 @@ function checkAiOpeningWins() {
         return true;
       }
     }
-    const dealer = state.seat === game.match?.dealerSeat;
-    const tile = dealer ? state.hand[state.hand.length - 1]?.id ?? null : null;
-    let extra = tile;
-    if (!dealer) {
-      extra = randomTileKind();
-      while (isFlower(extra)) extra = randomTileKind();
-    }
+    if (state.seat !== game.match?.dealerSeat) continue;
+    const tile = state.hand[state.hand.length - 1]?.id ?? null;
     const result = withFlowers(evaluateHand({
-      concealed: dealer ? state.hand.map((item) => item.id) : [...state.hand.map((item) => item.id), extra],
+      concealed: state.hand.map((item) => item.id),
       melds: state.melds,
-      winningTile: extra,
+      winningTile: tile,
       context,
     }), state.flowers, seatWind, game.settings.fanCap, context);
     if (qualifyingWin(result)) {
@@ -1539,7 +1516,12 @@ function finishAiReel(state) {
   state.hand.push(newTile(tileId));
   state.hand.sort((a, b) => TILE_IDS.indexOf(a.id) - TILE_IDS.indexOf(b.id));
   const kongReplacement = state.kongChain > 0;
-  const context = seatWinContext(seat, { kongReplacementChain: state.kongChain });
+  const firstFish = !state.firstFished && !kongReplacement && seat !== game.match?.dealerSeat;
+  state.firstFished = true;
+  const context = seatWinContext(seat, {
+    kongReplacementChain: state.kongChain,
+    renhu: firstFish,
+  });
   const result = withFlowers(evaluateHand({
     concealed: state.hand.map((tile) => tile.id),
     melds: state.melds,
@@ -1606,9 +1588,12 @@ function aiChooseAndDiscard(state) {
 function publishDiscard(seat, tile, isBot) {
   const player = game.players.find((item) => item?.seat === seat);
   const wind = player?.wind ?? seatWindOf(seat);
+  const firstDiscard = seat === game.match?.dealerSeat && !game.dealerDiscarded;
+  if (firstDiscard) game.dealerDiscarded = true;
   const sourceKey = `${seat}:${tile.uid ?? tile.id}:${game.nextUid++}`;
   const entry = {
     t: 'discard',
+    firstDiscard,
     // Host wall-clock deadline; every device converts it to its own clock so
     // the five-second claim boxes expire at the same moment everywhere.
     deadline: Date.now() + MULTI_CLAIM_SECONDS * 1000,
@@ -1631,18 +1616,19 @@ function publishDiscard(seat, tile, isBot) {
       net.sendToHost(entry);
     }
   }
-  scheduleAiClaims(tile, seat, sourceKey);
+  scheduleAiClaims(tile, seat, sourceKey, firstDiscard);
 }
 
-function bestAiClaim(seat, tileId, discarderSeat) {
+function bestAiClaim(seat, tileId, discarderSeat, firstDiscard = false) {
   const state = game.aiStates[seat];
   if (!state || state.mustDiscard || state.caught || state.lastDraw || state.kongChain > 0) return null;
   if (state.hand.length !== Math.max(0, 13 - state.melds.length * 3)) return null;
-  const result = claimWinResultFor(seat, tileId);
+  const result = claimWinResultFor(seat, tileId, null, { firstDiscard, discarderSeat });
   if (qualifyingWin(result)) {
     return {
       type: 'win',
       result,
+      firstDiscard,
       fanTotal: state.fanTotal + result.totalFan,
     };
   }
@@ -1657,13 +1643,13 @@ function bestAiClaim(seat, tileId, discarderSeat) {
   return null;
 }
 
-function scheduleAiClaims(tile, discarderSeat, sharedSourceKey = null) {
+function scheduleAiClaims(tile, discarderSeat, sharedSourceKey = null, firstDiscard = false) {
   if (!Object.keys(game.aiStates).length || game.state === S.WIN || game.state === S.DRAW_GAME) return;
   const tileId = typeof tile === 'string' ? tile : tile.id;
   const sourceKey = sharedSourceKey ?? `${discarderSeat}:${tile.uid ?? tileId}:${game.nextUid++}`;
   for (const seat of Object.keys(game.aiStates).map(Number)) {
     if (seat === discarderSeat) continue;
-    const claim = bestAiClaim(seat, tileId, discarderSeat);
+    const claim = bestAiClaim(seat, tileId, discarderSeat, firstDiscard);
     if (!claim) continue;
     game.pendingAiClaims.push({
       ...claim,
@@ -1672,6 +1658,7 @@ function scheduleAiClaims(tile, discarderSeat, sharedSourceKey = null) {
       sourceKey,
       claimId: `ai:${seat}:${sourceKey}`,
       discarderSeat,
+      firstDiscard,
       time: AI_CLAIM_DELAY_MIN + Math.random() * AI_CLAIM_DELAY_RANGE,
     });
   }
@@ -1687,7 +1674,9 @@ function aiClaimStillValid(claim) {
   if (claim.type === 'win') {
     // Flowers or a freshly fished tile can change the result, so evaluate the
     // still-waiting 13-tile hand against the old discard one more time.
-    const fresh = claimWinResultFor(claim.seat, claim.tileId);
+    const fresh = claimWinResultFor(claim.seat, claim.tileId, null, {
+      firstDiscard: claim.firstDiscard, discarderSeat: claim.discarderSeat,
+    });
     if (!qualifyingWin(fresh)) return false;
     claim.result = fresh;
     claim.fanTotal = state.fanTotal + fresh.totalFan;
@@ -1722,6 +1711,7 @@ function aiClaimTick(dt) {
       result: claim.result ?? null,
       fanTotal: claim.fanTotal ?? null,
       discarderSeat: claim.discarderSeat,
+      firstDiscard: claim.firstDiscard ?? false,
     });
   }
 }
@@ -3102,7 +3092,9 @@ function claimFromBox(box, action) {
   // The hand can change while a discard is still inside its five-second
   // window. Rebuild the actions on press so a stale 上／碰／明槓 button can
   // never spend tiles we no longer hold, and a newly completed 胡 is offered.
-  const fresh = buildClaimActions(box.tileId, bot, false, { potential: true }).find((item) => item.type === action.type
+  const fresh = buildClaimActions(box.tileId, bot, false, {
+    potential: true, firstDiscard: box.firstDiscard, discarderSeat: box.seat,
+  }).find((item) => item.type === action.type
     && (item.kinds ?? []).join(',') === (action.kinds ?? []).join(','));
   // 胡 is always actionable: a rod in flight or a just-fished tile must never
   // turn the button into a no-op. 碰／上／明槓 keep the normal live checks.
@@ -3199,6 +3191,7 @@ function handleClaim(msg) {
     result: msg.result ?? null,
     fanTotal: msg.fanTotal ?? null,
     discarderSeat: msg.discarderSeat ?? box?.seat ?? null,
+    firstDiscard: msg.firstDiscard ?? box?.firstDiscard ?? false,
   };
   if (game.mode === 'multi') net.broadcast(result);
   applyClaimResult(result);
@@ -3811,12 +3804,16 @@ function wireNetEvents() {
       // A guest's message reaches us after its own deadline was stamped; use
       // the host's clock from this point on so arbitration stays consistent.
       msg.deadline = Date.now() + MULTI_CLAIM_SECONDS * 1000;
+      // Only the host decides whether this is the dealer's opening discard, so
+      // every device sees the same 地胡 window even if another seat discarded first.
+      msg.firstDiscard = msg.seat === game.match?.dealerSeat && !game.dealerDiscarded;
+      if (msg.firstDiscard) game.dealerDiscarded = true;
       net.broadcast(msg);
       addClaimBox(msg);
       // Guests' discards are public; the host's AI seats may contest them.
       // Reuse the same sourceKey as the public claim box so a human and an AI
       // can never both win the same discard.
-      scheduleAiClaims({ id: msg.tileId, uid: msg.uid }, msg.seat, msg.sourceKey);
+      scheduleAiClaims({ id: msg.tileId, uid: msg.uid }, msg.seat, msg.sourceKey, msg.firstDiscard);
       return;
     }
     addClaimBox(msg);
@@ -4059,7 +4056,8 @@ function renderClaimBoxes() {
   // Keep a box for every claimable discard even while the rod is out; only its
   // buttons are disabled. An empty box for an unclaimable tile is still noise.
   const actionsFor = (box) => buildClaimActions(
-    box.tileId, { name: box.name, wind: box.wind }, false, { potential: true },
+    box.tileId, { name: box.name, wind: box.wind }, false,
+    { potential: true, firstDiscard: box.firstDiscard, discarderSeat: box.seat },
   );
   const boxes = game.claimBoxes
     .filter((box) => box.seat !== game.seat && !box.resolved && !box.passed)
@@ -5252,10 +5250,8 @@ function renderMelds() {
   }
 }
 
-// Hint-only fan calculation. The real win path always keeps every pattern;
-// these helpers exist only to tell the player whether a wait needs a bonus.
-const HINT_TIMING_FAN_IDS = new Set(['自摸', '門前清', '海底撈月', '槓上開花', '連槓開花', '無花']);
-
+// Hint-only fan calculation: what a discard claim would score right now —
+// no 自摸／門前清／海底／kong bonus, but 無花 stays in the raw value.
 function hintRawFan(concealed, waitId) {
   const context = seatWinContext(game.seat, {
     selfDraw: false,
@@ -5268,17 +5264,7 @@ function hintRawFan(concealed, waitId) {
     winningTile: waitId,
     context,
   }), game.flowers, game.seatWind, game.settings.fanCap, context);
-  if (!result?.isWin) return 0;
-  let rawFan = result.totalFan;
-  for (const pattern of result.patterns) {
-    if (HINT_TIMING_FAN_IDS.has(pattern.id)) rawFan -= pattern.fan;
-  }
-  // 坎坎胡 absorbs 對對糊 (and 門前清 on a self-draw). Hints use the plain
-  // all-pung baseline so a closed four-triplet hand reports 對對糊's 3 fan, not 8.
-  if (result.patterns.some((pattern) => pattern.id === '坎坎胡')) {
-    rawFan -= (FAN_VALUES['坎坎胡'] ?? 0) - (FAN_VALUES['對對糊'] ?? 0);
-  }
-  return Math.max(0, rawFan);
+  return result?.isWin ? result.totalFan : 0;
 }
 
 function hintSelfDrawResult(concealed, waitId) {
@@ -5294,13 +5280,13 @@ function hintSelfDrawResult(concealed, waitId) {
 function hintKongGroups(concealed) {
   const counts = countTiles(concealed);
   const tripletKinds = Object.values(counts).filter((count) => count >= 3).length;
-  const declaredKongs = game.melds.filter((meld) => meld.type === 'kong' && !meld.open).length;
+  const declaredKongs = game.melds.filter((meld) => meld.type === 'kong').length;
   return tripletKinds + declaredKongs;
 }
 
 function hintTips(concealed) {
   const tips = ['花牌'];
-  if (!game.melds.some((meld) => meld.open)) tips.push('門前清');
+  if (game.melds.length === 0) tips.push('門前清');
   tips.push('自摸');
   tips.push(game.timeLeft <= HAIDI_SECONDS ? '海底撈月（已計入）' : '海底撈月');
   const groups = hintKongGroups(concealed);
@@ -5886,7 +5872,7 @@ if (new URLSearchParams(location.search).has('test')) {
     MEMORY_FLIP_CHANCE, MEMORY_FLIP_DELAY, MEMORY_FLIP_DURATION, CLAIM_SECONDS, fishFaceDown,
     discard, nextBotDiscard, passClaim, buildClaimActions, chooseOpponentDiscardKind,
     previousWind, canChowFrom, botLabel, positionClaimBar,
-    chowCombinations, claimWinResult, declareOpenMeld, renderMelds, renderClaim,
+    chowCombinations, claimWinResult, claimWinResultFor, declareOpenMeld, renderMelds, renderClaim,
     renderSelfWin, clearSelfWin, positionSelfWinBar, setMusicVolume,
     showMenu, startFromMenu, openSoloRoom, startRoomGame, quitToMenu, net, openRoom, joinRoom,
     askRoomCode, setPlayerName, leaveRoom,

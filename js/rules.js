@@ -47,7 +47,7 @@ export const FAN_VALUES = Object.freeze({
   '清一色': 7,
   '七對子': 3,        // 香港稱「嚦咕嚦咕」，不要再叫「花糊」
   '大三元': 8,
-  '坎坎胡': 8,
+  '坎坎胡': 13,
   '對對糊': 3,         // 只有刻子的牌型；坎坎胡不另計此項
   '連槓開花': 8,
   '大花糊': 8,        // 八仙過海，已含自摸
@@ -60,7 +60,8 @@ export const FAN_VALUES = Object.freeze({
   '綠一色': 13,
   '藍一色': 13,
   '天胡': 13,        // 開局補花後立即自摸，必為門前清，不再另計自摸
-  '地胡': 13,        // 非莊家開局第一次自摸，必為門前清，不再另計自摸
+  '地胡': 13,        // 閒家食莊家開局第一隻打出牌，不再另計自摸
+  '人胡': 13,        // 閒家開局第一釣自摸，必為門前清，不再另計自摸
 });
 
 /** No upper limit: a hand keeps every fan it scores. */
@@ -84,7 +85,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'p2', 'p3', 'p4', 's7', 's8', 's9', 'p9', 'p9'], melds: [], context: {} },
   },
   {
-    id: '門前清', fan: 1, desc: '沒有碰、上、明槓，而且胡牌是自己摸到的。',
+    id: '門前清', fan: 1, desc: '沒有上、碰、槓（包括暗槓），而且胡牌是自己摸到的。',
     example: { concealed: ['m1', 'm2', 'm3', 'p2', 'p3', 'p4', 's2', 's3', 's4', 's7', 's8', 's9', 'p9', 'p9'], melds: [], context: {} },
   },
   {
@@ -136,7 +137,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['C', 'C', 'C', 'F', 'F', 'F', 'B', 'B', 'B', 'm1', 'm2', 'm3', 'm9', 'm9'], melds: [], context: {} },
   },
   {
-    id: '坎坎胡', fan: 8, desc: '沒有碰、明槓過的對對胡（又稱四暗刻；已含對對糊、門前清；暗槓視作暗刻）。',
+    id: '坎坎胡', fan: 13, desc: '沒有碰、槓過的對對胡（又稱四暗刻；已含對對糊、門前清）。',
     example: { concealed: ['m1', 'm1', 'm1', 'p2', 'p2', 'p2', 's3', 's3', 's3', 'E', 'E', 'E', 'C', 'C'], melds: [], context: {} },
   },
   {
@@ -179,11 +180,19 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
-    id: '地胡', fan: 13, desc: '非莊家開局第一次自摸胡牌；必為門前清，不另計自摸。',
+    id: '地胡', fan: 13, desc: '開局後，閒家食莊家打出的第一隻牌。',
     example: {
       concealed: ['m1', 'm1', 'm1', 'm2', 'm3', 'm4', 'p5', 'p6', 'p7', 's2', 's3', 's4', 'E', 'E'],
       melds: [],
-      context: { dihu: true },
+      context: { dihuClaim: true, selfDraw: false },
+    },
+  },
+  {
+    id: '人胡', fan: 13, desc: '閒家於開局第一輪即自摸；必為門前清，不另計自摸。',
+    example: {
+      concealed: ['m1', 'm1', 'm1', 'm2', 'm3', 'm4', 'p5', 'p6', 'p7', 's2', 's3', 's4', 'E', 'E'],
+      melds: [],
+      context: { renhu: true },
     },
   },
   {
@@ -267,6 +276,7 @@ export const ABSORBS = Object.freeze({
   '七對子': ['門前清'],
   '天胡': ['自摸', '門前清'],
   '地胡': ['自摸', '門前清'],
+  '人胡': ['自摸', '門前清'],
   '坎坎胡': ['對對糊', '門前清'],
   '十八羅漢': ['對對糊'],
   '花幺九': ['對對糊'],
@@ -513,10 +523,10 @@ function evaluateDecomposition(concealed, groups, melds, context) {
   if (sets.length === 4 && allTiles.every((t) => BLUE_TILES.has(t))) add('藍一色');
 
   if (sets.length === 4 && sets.every(isPung)) {
-    // 對對糊 is the plain all-pung hand; 坎坎胡 is its concealed (四暗刻) form
-    // and absorbs it. 暗槓 (open: false) still counts as concealed.
+    // 對對糊 is the plain all-pung hand; 坎坎胡 is its fully concealed (四暗刻)
+    // form and absorbs it. Any meld, including 暗槓, breaks 坎坎胡.
     add('對對糊');
-    if (!melds.some((m) => m.open)) add('坎坎胡');
+    if (melds.length === 0) add('坎坎胡');
   }
   if (sets.length === 4 && sets.every((s) => s.type === 'sequence') && pair && !TILE_INFO[pair[0]].isHonor) add('平糊');
 
@@ -549,17 +559,20 @@ function evaluateDecomposition(concealed, groups, melds, context) {
 
   const openingSelfDraw = context.selfDraw && melds.length === 0 && context.kongReplacementChain === 0;
   const isTiangu = openingSelfDraw && context.tiangu;
-  const isDihu = openingSelfDraw && !isTiangu && context.dihu;
+  const isRenhu = openingSelfDraw && !isTiangu && context.renhu;
+  // 地胡 is a claim on the dealer's first discard, never an opening self-draw.
+  const isDihu = !context.selfDraw && context.dihuClaim && context.kongReplacementChain === 0;
   if (isTiangu) add('天胡');
+  if (isRenhu) add('人胡');
   if (isDihu) add('地胡');
   if (!isTiangu && context.kongReplacementChain === 1 && context.selfDraw) add('槓上開花');
   if (!isTiangu && context.kongReplacementChain >= 2 && context.selfDraw) add('連槓開花');
   // 海底撈月 applies to both self-draws and claim wins; 自摸 below is scored
   // separately whenever context.selfDraw is true.
   if (!isTiangu && context.haidi) add('海底撈月');
-  // 門前清 needs both a closed hand and a self-draw. Winning on someone else's
-  // discard is never 門前清 even when no 碰／上／明槓 was made.
-  if (context.selfDraw && !melds.some((m) => m.open)) add('門前清');
+  // 門前清 needs a fully concealed hand (no 碰／上／槓, including 暗槓) and a
+  // self-draw. Winning on someone else's discard is never 門前清 either.
+  if (context.selfDraw && melds.length === 0) add('門前清');
   if (context.selfDraw) add('自摸');
 
   let patterns = resolveOverlaps(found, {
@@ -658,7 +671,8 @@ export function withFlowers(result, flowers = [], seatWind = 'E', fanCap = FAN_C
       kongReplacementChain: 0,
       haidi: false,
       tiangu: false,
-      dihu: false,
+      dihuClaim: false,
+      renhu: false,
       roundWind: 'E',
       seatWind,
       ...context,
@@ -682,7 +696,8 @@ export function flowerWinResult(flowers = [], seatWind = 'E', fanCap = FAN_CAP, 
     kongReplacementChain: 0,
     haidi: false,
     tiangu: false,
-    dihu: false,
+    dihuClaim: false,
+    renhu: false,
     roundWind: 'E',
     seatWind,
     fanCap,
@@ -692,7 +707,8 @@ export function flowerWinResult(flowers = [], seatWind = 'E', fanCap = FAN_CAP, 
   if (ctx.selfDraw) found.push(flowerPattern('自摸'));
   const openingSelfDraw = ctx.selfDraw && ctx.kongReplacementChain === 0;
   if (openingSelfDraw && ctx.tiangu) found.push(flowerPattern('天胡'));
-  if (openingSelfDraw && !ctx.tiangu && ctx.dihu) found.push(flowerPattern('地胡'));
+  if (openingSelfDraw && !ctx.tiangu && ctx.renhu) found.push(flowerPattern('人胡'));
+  // 地胡 is earned by claiming the dealer's first discard, so flower wins never carry it.
   if (ctx.kongReplacementChain === 1 && ctx.selfDraw) found.push(flowerPattern('槓上開花'));
   if (ctx.kongReplacementChain >= 2 && ctx.selfDraw) found.push(flowerPattern('連槓開花'));
   if (ctx.haidi) found.push(flowerPattern('海底撈月'));
@@ -709,11 +725,10 @@ export function flowerWinResult(flowers = [], seatWind = 'E', fanCap = FAN_CAP, 
 
 /**
  * The single entry point used by the game, the hints and all tests.
- * context: { selfDraw, kongReplacementChain, haidi, tiangu, dihu, roundWind, seatWind }
- * melds: { tile, type: 'kong'|'pung'|'chow', tiles, open } — open means 碰／上／明槓,
- * which suppresses 門前清; a claim win (selfDraw: false) suppresses it too.
- * 自摸 depends only on context.selfDraw, and 暗槓 (open: false) still counts as
- * a concealed set.
+ * context: { selfDraw, kongReplacementChain, haidi, tiangu, dihuClaim, renhu, roundWind, seatWind }
+ * melds: { tile, type: 'kong'|'pung'|'chow', tiles, open } — any meld, including
+ * 暗槓, suppresses 門前清; a claim win (selfDraw: false) suppresses it too.
+ * 自摸 depends only on context.selfDraw, and 坎坎胡 also needs no melds at all.
  * fanCap 仍可選擇性傳入以配合自訂屋規，但遊戲預設為無上限。
  */
 export function evaluateHand({ concealed = [], melds = [], winningTile = null, context = {} } = {}) {

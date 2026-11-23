@@ -127,7 +127,7 @@ test('碰／上／明槓保留 open 旗標，長度為三張；暗槓為四張',
   assert.equal(normalizeMelds([{ tile: 'm1', type: 'chow' }])[0].tiles.length, 3);
 });
 
-test('碰／上／明槓只抑制門前清，自摸仍按 context 計算；暗槓視作暗刻', () => {
+test('碰／上／明槓與暗槓都抑制門前清；暗槓也抑制坎坎胡', () => {
   const concealed = tiles('m2 m2 m2 m3 m3 m3 p4 p4 p4 E E');
   const openPung = evaluateHand({
     concealed,
@@ -144,9 +144,9 @@ test('碰／上／明槓只抑制門前清，自摸仍按 context 計算；暗�
 
   const concealedKong = evaluateHand({ concealed, melds: [kong('m1')] });
   assert.ok(names(concealedKong).includes('自摸'));
-  assert.ok(names(concealedKong).includes('坎坎胡'));
-  assert.ok(!names(concealedKong).includes('門前清')); // 坎坎胡 absorbs it
-  assert.ok(!names(concealedKong).includes('對對糊'));
+  assert.ok(!names(concealedKong).includes('坎坎胡'));
+  assert.ok(!names(concealedKong).includes('門前清'));
+  assert.ok(names(concealedKong).includes('對對糊'));
 });
 
 test('上視為順子，可與其他順子組成平糊', () => {
@@ -192,7 +192,7 @@ test('B3：111222333萬 + 789筒 + 將牌 取最高番的分解（平糊）', ()
   const original = evalTiles('m1 m1 m1 m2 m2 m2 m3 m3 m3 p7 p8 p9 E E');
   assert.equal(original.isWin, true);
   assert.ok(!names(original).includes('平糊'));
-  // 真正四組刻子時仍要拿到坎坎胡（8 番）
+  // 真正四組刻子時仍要拿到坎坎胡（13 番）
   assert.ok(names(evalTiles('m1 m1 m1 p2 p2 p2 s3 s3 s3 E E E C C')).includes('坎坎胡'));
 });
 
@@ -203,7 +203,7 @@ test('特殊牌型仍需要合法牌型（B4）', () => {
   assert.equal(evalTiles('C C C F F F B B B m1 m2 m3 m9 m9').isWin, true);
 });
 
-test('B5：暗槓計入清一色／混一色與坎坎胡', () => {
+test('B5：暗槓仍計入清一色／混一色，但不成坎坎胡', () => {
   const mixed = evaluateHand({
     concealed: tiles('m1 m1 m1 m2 m3 m4 m5 m6 m7 m9 m9'), melds: [kong('C')],
   });
@@ -222,6 +222,7 @@ test('B6：花幺九與坎坎胡可疊加，共用對對糊只扣一次；清／
   const hua = evalTiles('m1 m1 m1 p9 p9 p9 s1 s1 s1 E E E C C');
   assert.ok(names(hua).includes('花幺九'));
   assert.ok(names(hua).includes('坎坎胡'));
+  assert.equal(hua.patterns.find((p) => p.id === '坎坎胡').fan, 13);
   const overlap = hua.patterns.find((p) => p.id === '重疊扣減');
   assert.equal(overlap.detail, '對對糊');
   assert.equal(overlap.fan, -3);
@@ -300,22 +301,33 @@ test('天胡：開局補花後立即自摸，13 番且不另計門清／自摸',
   assert.ok(!names(afterKong).includes('天胡'));
 });
 
-test('地胡：非莊家開局第一次自摸，13 番且不另計門清／自摸', () => {
+test('地胡／人胡：地胡食莊家開局第一隻打出牌，人胡為閒家第一釣自摸，各 13 番', () => {
   const hand = 'm1 m1 m1 m2 m3 m4 p5 p6 p7 s2 s3 s4 E E';
   const normal = evalTiles(hand);
-  const dihu = evalTiles(hand, { context: { dihu: true } });
   assert.ok(!names(normal).includes('地胡'));
+  assert.ok(!names(normal).includes('人胡'));
+
+  const dihu = evalTiles(hand, { context: { selfDraw: false, dihuClaim: true } });
   assert.ok(names(dihu).includes('地胡'));
   assert.equal(FAN_VALUES['地胡'], 13);
   assert.equal(dihu.totalFan, 13);
   assert.ok(!names(dihu).includes('自摸'));
   assert.ok(!names(dihu).includes('門前清'));
+  // A claim flag never turns an ordinary self-draw into 地胡.
+  assert.ok(!names(evalTiles(hand, { context: { dihuClaim: true } })).includes('地胡'));
 
-  const both = evalTiles(hand, { context: { tiangu: true, dihu: true } });
+  const renhu = evalTiles(hand, { context: { renhu: true } });
+  assert.ok(names(renhu).includes('人胡'));
+  assert.equal(FAN_VALUES['人胡'], 13);
+  assert.equal(renhu.totalFan, 13);
+  assert.ok(!names(renhu).includes('自摸'));
+  assert.ok(!names(renhu).includes('門前清'));
+
+  const both = evalTiles(hand, { context: { tiangu: true, renhu: true } });
   assert.ok(names(both).includes('天胡'));
-  assert.ok(!names(both).includes('地胡'));
-  const afterKong = evalTiles(hand, { context: { dihu: true, kongReplacementChain: 1 } });
-  assert.ok(!names(afterKong).includes('地胡'));
+  assert.ok(!names(both).includes('人胡'));
+  const afterKong = evalTiles(hand, { context: { renhu: true, kongReplacementChain: 1 } });
+  assert.ok(!names(afterKong).includes('人胡'));
 });
 
 test('B11：九子連環／十三幺必須門前清', () => {
@@ -401,9 +413,11 @@ test('番子細項標明中、發、白與場風／門風', () => {
 
 test('牌型說明與番數依據新定義', () => {
   const byId = Object.fromEntries(PATTERN_TABLE.map((p) => [p.id, p]));
-  assert.equal(byId['門前清'].desc, '沒有碰、上、明槓，而且胡牌是自己摸到的。');
+  assert.equal(byId['門前清'].desc, '沒有上、碰、槓（包括暗槓），而且胡牌是自己摸到的。');
   assert.equal(byId['坎坎胡'].desc,
-    '沒有碰、明槓過的對對胡（又稱四暗刻；已含對對糊、門前清；暗槓視作暗刻）。');
+    '沒有碰、槓過的對對胡（又稱四暗刻；已含對對糊、門前清）。');
+  assert.equal(byId['地胡'].desc, '開局後，閒家食莊家打出的第一隻牌。');
+  assert.equal(byId['人胡'].desc, '閒家於開局第一輪即自摸；必為門前清，不另計自摸。');
   assert.equal(byId['對對糊'].desc, '只有刻子的牌型。');
   assert.equal(byId['對對糊'].fan, 3);
   assert.equal(FAN_VALUES['對對糊'], 3);
@@ -415,18 +429,20 @@ test('牌型說明與番數依據新定義', () => {
   assert.equal(byId['小三元'].desc, '以全部三種三元牌組成兩副刻子加一對將（已含兩組番子）。');
 });
 
-test('對對糊 3 番，坎坎胡只計沒有碰／明槓的四暗刻（暗槓仍是暗刻）', () => {
+test('對對糊 3 番，坎坎胡 13 番且碰／槓（包括暗槓）都不計', () => {
   const concealed = evalTiles('m1 m1 m1 p2 p2 p2 s3 s3 s3 E E E C C');
   assert.ok(names(concealed).includes('坎坎胡'));
+  assert.equal(FAN_VALUES['坎坎胡'], 13);
+  assert.equal(concealed.patterns.find((p) => p.id === '坎坎胡').fan, 13);
   assert.ok(!names(concealed).includes('對對糊'));
 
   const withConcealedKong = evaluateHand({
     concealed: tiles('m2 m2 m2 s3 s3 s3 E E E C C'),
     melds: [kong('p2')],
   });
-  assert.ok(names(withConcealedKong).includes('坎坎胡'), names(withConcealedKong).join(','));
-  assert.ok(!names(withConcealedKong).includes('對對糊'));
-  assert.ok(!names(withConcealedKong).includes('門前清')); // absorbed by 坎坎胡
+  assert.ok(!names(withConcealedKong).includes('坎坎胡'));
+  assert.ok(names(withConcealedKong).includes('對對糊'));
+  assert.ok(!names(withConcealedKong).includes('門前清'));
 
   const open = evaluateHand({
     concealed: tiles('m2 m2 m2 s3 s3 s3 E E E C C'),
@@ -503,15 +519,17 @@ test('花糊（七花）與大花糊（八仙過海）即時胡牌', () => {
   assert.equal(eight.specialHand, true);
 });
 
-test('花糊開局加計天胡／地胡，海底撈月與自摸分開計', () => {
+test('花糊開局加計天胡／人胡，海底撈月與自摸分開計', () => {
   const seven = ['H1', 'H2', 'H3', 'H5', 'H6', 'H7', 'H8'];
-  for (const [key, id] of [['tiangu', '天胡'], ['dihu', '地胡']]) {
+  for (const [key, id] of [['tiangu', '天胡'], ['renhu', '人胡']]) {
     const result = flowerWinResult(seven, 'S', FAN_CAP, { [key]: true });
     assert.deepEqual(names(result).sort(), ['花糊', id, '重疊扣減'].sort());
     assert.equal(result.patterns.find((p) => p.id === '重疊扣減').detail, '自摸');
     assert.equal(result.patterns.find((p) => p.id === '重疊扣減').fan, -1);
     assert.equal(result.totalFan, 15);
   }
+  // 地胡 is a discard claim, so it never appears on a flower self-draw.
+  assert.ok(!names(flowerWinResult(seven, 'S', FAN_CAP, { dihuClaim: true })).includes('地胡'));
   const haidi = flowerWinResult(seven, 'S', FAN_CAP, { haidi: true });
   assert.deepEqual(names(haidi).sort(), ['海底撈月', '花糊'].sort());
   assert.equal(haidi.totalFan, 4);
@@ -827,7 +845,7 @@ test('T1：九子連環 11 番，清一色與門前清被吸收', () => {
 test('T2：大三元與坎坎胡疊加，番子／對對糊／門前清被吸收', () => {
   const result = evalTiles('C C C F F F B B B m2 m2 m2 p5 p5');
   assert.deepEqual(names(result).sort(), ['大三元', '坎坎胡', '自摸'].sort());
-  assert.equal(result.totalFan, 17);
+  assert.equal(result.totalFan, 22);
 });
 
 test('T3：坎坎胡與花幺九共用對對糊，只扣一次 3 番', () => {
@@ -836,7 +854,7 @@ test('T3：坎坎胡與花幺九共用對對糊，只扣一次 3 番', () => {
   const overlap = result.patterns.find((p) => p.id === '重疊扣減');
   assert.equal(overlap.detail, '對對糊');
   assert.equal(overlap.fan, -3);
-  assert.equal(result.totalFan, 10);
+  assert.equal(result.totalFan, 15);
   assert.match(formatWinBreakdown(result), /重疊扣減（與多個牌型共用 對對糊）（-3 番）/);
 });
 
@@ -872,7 +890,7 @@ test('T7：大四喜與坎坎胡疊加，對對糊只扣一次；字一色吸收
   const result = evalTiles('E E E S S S W W W N N N m5 m5');
   assert.deepEqual(names(result).sort(), ['大四喜', '坎坎胡', '重疊扣減', '混一色', '自摸'].sort());
   assert.ok(!names(result).includes('番子'));
-  assert.equal(result.totalFan, 22);
+  assert.equal(result.totalFan, 27);
   const bigWind = result.patterns.find((p) => p.id === '大四喜');
   assert.ok(bigWind.includes.includes('對對糊'), bigWind.includes?.join(','));
 
@@ -885,22 +903,22 @@ test('T7：大四喜與坎坎胡疊加，對對糊只扣一次；字一色吸收
   assert.ok(honor, names(allHonors).join(','));
   assert.deepEqual([...(honor.includes ?? [])].sort(), ['對對糊', '番子', '花幺九'].sort());
   assert.ok(!names(allHonors).includes('番子'));
-  assert.equal(allHonors.totalFan, 16);
+  assert.equal(allHonors.totalFan, 21);
 });
 
 test('T8：清幺九傳遞吸收花幺九與對對糊，共 16 番', () => {
   const result = evalTiles('m1 m1 m1 m9 m9 m9 p1 p1 p1 s9 s9 s9 p9 p9');
   assert.deepEqual(names(result).sort(), ['清幺九', '坎坎胡', '重疊扣減', '自摸'].sort());
-  assert.equal(result.totalFan, 16);
+  assert.equal(result.totalFan, 21);
 });
 
-test('T9：暗槓仍屬暗刻，坎坎胡可計，共 9 番', () => {
+test('T9：暗槓仍計對對糊與自摸，但不成坎坎胡，共 4 番', () => {
   const result = evaluateHand({
     concealed: tiles('m2 m2 m2 m3 m3 m3 p4 p4 p4 E E'),
     melds: [kong('m1')],
   });
-  assert.deepEqual(names(result).sort(), ['坎坎胡', '自摸'].sort());
-  assert.equal(result.totalFan, 9);
+  assert.deepEqual(names(result).sort(), ['對對糊', '自摸'].sort());
+  assert.equal(result.totalFan, 4);
 });
 
 test('T10：七張花牌的花糊固定 3 番，不另列自摸', () => {

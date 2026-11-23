@@ -100,11 +100,13 @@ not keep stale sounds or scoring.
   one suit's `1112345678999` plus one extra tile of that suit. Repeated triplets or pairs cannot
   substitute. 七對子 is the intentional exception: four identical tiles may supply two pairs.
 - **Every fished tile is a self-draw.** `evaluateHand` defaults `context.selfDraw` to `true`;
-  claim wins pass `selfDraw: false`. 自摸 and 門前清 both need that flag, plus no open meld for
-  門前清; a fully concealed hand won off a discard is still not 門前清.
-- **Opening wins.** After the 13 ordinary tiles and any supplemental flowers, check once for
-  天胡 (dealer) / 地胡 (other seats), both 13 fan including 自摸 and 門前清. A failed check
-  consumes nothing. All four seats, including AI, get the check.
+  claim wins pass `selfDraw: false`. 門前清 needs that flag and no meld at all — 碰／上／明槓／暗槓
+  all break it, as does winning off a discard. 坎坎胡 also requires no melds and is 13 fan.
+- **Opening wins.** The dealer starts with 14 tiles and checks 天胡; other seats are dealt exactly
+  13 and fish immediately, with no virtual fourteenth tile. 人胡 (13 fan) is a non-dealer's first
+  fished non-flower tile; a flower caught first is only revealed and does not burn the chance.
+  地胡 (13 fan) is a non-dealer claiming the dealer's first discard of the hand. All three include
+  自摸 and 門前清 where applicable; dealt-flower wins still apply to every seat.
 - **海底撈月.** Any win with `game.timeLeft <= 5` gains 1 fan, self-draw or claim; 自摸 is
   added separately when applicable. No wall needs to be empty.
 - **Fan cap stays `Infinity`.** `FAN_CAP` and default behaviour never change. `context.fanCap`
@@ -120,16 +122,16 @@ not keep stale sounds or scoring.
   explains the payout using 金額倍數 `B`: `V = 2^番 × B` for 番 ≤ 4, then every two 番 doubles with
   a 1.5× factor for odd 番; 出銃 pays `V`, 自摸 pays `V／2` each, 流局 pays nothing. 牌型一覽 lives
   inside it and is generated from `PATTERN_TABLE` + `FLOWER_PATTERN_TABLE`; every pattern needs a
-  validated `example` there. The closing footnote says `碰、上、明槓或胡對手打出牌都不計門前清。`
+  validated `example` there. The closing footnote says `碰、上、槓或胡對手打出牌都不計門前清。`
   without adding the old 自摸-source clause.
 - **No bottom `釣魚` button.** Click/tap the canvas or press Space to cast. Hints are always on;
   terminology is 聽牌, not a hint toggle. Wait hints are advisory and never gate settlement: for
-  each wait they show a hint-only `rawFan` that keeps current flowers but excludes 自摸, 門前清,
-  海底撈月, 槓上開花, 連槓開花 and 無花; 坎坎胡 falls back to the plain 對對糊 3-fan baseline. If a
-  self-draw of that tile reaches 起糊, the note is only `差 X 番，自摸才夠番`; otherwise the note
-  is `差 X 番；可用…補番`, listing 花牌, 門前清, 自摸, 海底撈月 and kong bonuses. 門前清 is omitted
-  for a claim win or once there is an open meld. One triplet/quad suggests 槓上開花 and two or
-  more suggest 連槓開花.
+  each wait they show a claim-win `rawFan`: the real evaluate result with `selfDraw: false`,
+  `haidi: false` and `kongReplacementChain: 0`, including the 無花 1 fan and the full 坎坎胡 13 fan.
+  If a self-draw of that tile reaches 起糊, the note is only `差 X 番，自摸才夠番`; otherwise the
+  note is `差 X 番；可用…補番`, listing 花牌, 門前清, 自摸, 海底撈月 and kong bonuses. 門前清 is
+  omitted once any meld exists. One declared kong (open or concealed) suggests 槓上開花 and two
+  or more suggest 連槓開花.
 
 ## Rules engine (`js/rules.js`)
 
@@ -139,7 +141,7 @@ Node-importable by keeping DOM access inside functions.
 Key exports:
 
 - Tile groups: `WINDS`, `DRAGONS`, `TERMINALS`, `ORPHANS`.
-- Scoring tables: `FAN_VALUES` (fan dictionary), `PATTERN_TABLE` (27 ordinary patterns with
+- Scoring tables: `FAN_VALUES` (fan dictionary), `PATTERN_TABLE` (28 ordinary patterns with
   `desc` and executable `example`), `FLOWER_PATTERN_TABLE` (5 flower patterns), `ABSORBS`
   (transitive higher-pattern → absorbed-pattern map, including `番子:*` pseudo-keys), `FAN_CAP`.
 - Core: `countTiles`, `normalizeMelds`, `decompose`, `isValidWinningHand`, `isThirteenOrphans`,
@@ -157,9 +159,9 @@ Scoring notes:
 - `resolveOverlaps()` drops transitively absorbed patterns and emits `重疊扣減` once per shared
   sub-pattern with fan `-base × (sharers - 1)`. Attach `includes` only for absorbed patterns that
   were actually scored, so a claim win never shows 門前清 in the breakdown. `海底撈月` never absorbs
-  `自摸`; `天胡`/`地胡` absorb 自摸+門前清; 暗槓 stays concealed; open melds and claim wins suppress
-  門前清. `字一色` absorbs 花幺九, 對對糊 and the seat/round 番子 pseudo-keys; `大四喜` still absorbs
-  對對糊. A 番子-only hand is not 雞糊.
+  `自摸`; `天胡`/`地胡`/`人胡` absorb 自摸+門前清; any meld (including 暗槓) and claim wins suppress
+  門前清. 坎坎胡 is 13 fan and also needs no melds. `字一色` absorbs 花幺九, 對對糊 and the seat/round
+  番子 pseudo-keys; `大四喜` still absorbs 對對糊. A 番子-only hand is not 雞糊.
 - `formatWinBreakdown()` is the shared zh-Hant text used by win dialogs; it reports **fan only**
   and must never print money or 分. The game adds payout text separately.
 - Adding a pattern requires entries in both `FAN_VALUES` and `PATTERN_TABLE` (or the flower
@@ -201,10 +203,12 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 - **Deal.** `startGame()` resets the sea, uids, hands, flowers, melds, river, clocks, votes and
   kong/claim state; sets `match.active`; derives `roundWind`/`seatWind` from
   `match.dealerSeat` + `match.handNumber` (never from a random per-hand roll); deals private
-  hands; checks opening flower / 天胡 / 地胡 wins for all seats; spawns fish. The dealer starts
-  with 14 tiles and reaches `AWAIT_DISCARD` (offering an inline concealed-kong prompt first),
-  while other seats start with 13 and reach `AWAIT_CAST`. Only the dealer may take an opening
-  暗槓 before fishing; every other seat's quad is only offered after a real draw in `resolveDraw()`.
+  hands; checks dealt-flower wins for all seats and 天胡 for the dealer only; spawns fish. The
+  dealer starts with 14 tiles and reaches `AWAIT_DISCARD` (offering an inline concealed-kong
+  prompt first), while other seats start with exactly 13 and reach `AWAIT_CAST` with no virtual
+  draw. 人胡 is scored in `resolveDraw()` / `finishAiReel()` on a non-dealer's first non-flower
+  fish, and 地胡 on a claim on the dealer's first public discard. Only the dealer may take an
+  opening 暗槓 before fishing; every other seat's quad is only offered after a real draw.
   The AI dealer follows the same rule through `prepareAiDealerOpening()`. `speakRoundStart()`
   reads the same `roundInfoText()` heading aloud at the start of each hand using the device's
   explicit Hong Kong/Cantonese voice; without one it stays silent, never Mandarin, and never
