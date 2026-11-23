@@ -2040,12 +2040,14 @@ let preferredVoice = null;
 function cantoneseVoiceRank(voice) {
   const lang = String(voice?.lang ?? '').replace(/_/g, '-').toLowerCase();
   const name = String(voice?.name ?? '').toLowerCase();
-  const cantoneseName = /cantonese|粵語|廣東話|香港粵語|香港話/.test(name);
+  const cantoneseName = /cantonese|粵語|廣東話|香港粵語|香港話|hong kong|香港|sin-ji|sinji/i.test(name);
   if (/^(yue|zhy|zh-yue)([-]|$)/.test(lang)) return 0;
   if (/^zh([-]|$)/.test(lang) && /(^|-)hk([-]|$)/.test(lang)
     && !/(^|-)hans([-]|$)/.test(lang)) return 1;
   if (cantoneseName && /^zh([-]|$)/.test(lang)) return 2;
-  if (cantoneseName) return 3;
+  // A few mobile engines give a Cantonese voice a generic zh or empty lang.
+  // Never accept an English/HK voice just because its name mentions Hong Kong.
+  if (cantoneseName && !/^en([-]|$)/.test(lang) && !/english/i.test(name)) return 3;
   return Infinity;
 }
 
