@@ -377,7 +377,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   and **計分 + round block** on the right. The round block stacks `X風第 X 局・X 圈` above
   counters that read only 門風 and 資金 (with a `$` prefix); 巡, 番數 and 最佳 are not shown
   during play. The main menu appears before any lobby or game starts and shows a legal 十三幺
-  winning hand (all 13 orphans plus one duplicate). The 設定 panel keeps only
+  winning hand (all 13 orphans plus one duplicate), but no 最佳紀錄 line. The 設定 panel keeps only
   player name, music, 重來這局 and 回到主選單 — 鉤速 (default 1.0×) and 每局時間 (default 05:00) live in
   the solo/聯機 room alongside money, winds and 金額倍數, ordered 鉤速 → 每局時間 → 圈子數 →
   起始資金 → 金額倍數. Each seat uses a distinct full-body icon from `AVATAR_ICONS`, beside the

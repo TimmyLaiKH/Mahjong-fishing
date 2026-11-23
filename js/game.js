@@ -40,7 +40,7 @@ const ui = {
   claimBoxes: el('claimBoxes'),
   meldPanel: el('meldPanel'), meldRows: el('meldRows'),
   menu: el('menuScreen'), menuStart: el('menuStart'), menuTiles: el('menuTiles'),
-  menuRecord: el('menuRecord'), menuHost: el('menuHost'), menuJoin: el('menuJoin'),
+  menuHost: el('menuHost'), menuJoin: el('menuJoin'),
   menuPlayerName: el('menuPlayerName'),
   join: el('joinScreen'), joinRoomCode: el('joinRoomCode'), joinMessage: el('joinMessage'),
   joinSubmit: el('joinSubmit'), joinBack: el('joinBack'),
@@ -5335,7 +5335,6 @@ function showMenu() {
       addTileTo(ui.menuTiles, id);
     }
   }
-  if (ui.menuRecord) ui.menuRecord.textContent = `最佳紀錄：${game.bestFan} 番`;
   ui.menu?.classList.add('show');
 }
 
