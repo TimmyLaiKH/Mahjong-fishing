@@ -7,7 +7,7 @@ import {
   TILE_IDS, TILE_INFO, FLOWER_IDS, isFlower, loadImages, drawTile,
   createTileElement, tileName,
 } from './tiles.js';
-import { createMusic } from './audio.js?v=1.4.85';
+import { createMusic } from './audio.js?v=1.4.86';
 import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
 import {
@@ -2194,16 +2194,24 @@ function waitForCantoneseVoice(timeout = 2000) {
   });
 }
 
-/** iOS briefly pauses other page audio while an utterance is active. Resume
- *  only after speech finishes: calling play() during the utterance makes the
- *  track stutter on iPhone and iPad. */
+let voiceResumeTimer = null;
+
+/** iOS briefly pauses other page audio while an utterance is active. Calling
+ *  play() the instant onend fires can still catch the audio session while it
+ *  is switching back, so wait a moment for a cleaner restart. */
 function resumeMusicAfterVoice() {
   if (!document.hidden && game.settings.musicEnabled) music.resume();
+}
+
+function scheduleMusicResumeAfterVoice() {
+  clearTimeout(voiceResumeTimer);
+  voiceResumeTimer = setTimeout(resumeMusicAfterVoice, 250);
 }
 
 function speakVoiceNow(voice, text, volume) {
   lastSpeechText = text;
   lastSpeechAt = Date.now();
+  clearTimeout(voiceResumeTimer);
   try {
     if (speechSynthesis.paused) speechSynthesis.resume();
     if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
@@ -2212,8 +2220,8 @@ function speakVoiceNow(voice, text, volume) {
     utterance.lang = voice.lang || 'zh-HK';
     utterance.rate = 0.95;
     utterance.volume = clampVolume(volume, 0);
-    utterance.onend = resumeMusicAfterVoice;
-    utterance.onerror = resumeMusicAfterVoice;
+    utterance.onend = scheduleMusicResumeAfterVoice;
+    utterance.onerror = scheduleMusicResumeAfterVoice;
     speechSynthesis.speak(utterance);
     lastSpeechError = '';
   } catch (error) {

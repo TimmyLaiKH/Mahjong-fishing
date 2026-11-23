@@ -454,8 +454,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   still mutes `speechSynthesis`, so the switch must be off (or Chrome on iOS used). Do not set
   `navigator.audioSession.type = 'playback'`: on iPhone it made speech and music share an
   exclusive session and stopped the background track whenever speech began. `speakVoiceNow()`
-  calls `music.resume()` only on `onend`/`onerror`; calling it during the utterance makes iOS
-  stutter, and the unavoidable pause cannot be prevented from a web page.
+  schedules `music.resume()` 250 ms after `onend`/`onerror` so the audio session has settled;
+  cancelling the timer on a new utterance avoids restarting music mid-speech. Calling it during
+  the utterance makes iOS stutter, and the unavoidable pause cannot be prevented from a web page.
 - `CREDITS.md` is the licence source of truth. The in-game 資料來源 panel must show the required
   attribution strings and links. Do not add assets with unclear licences.
 
