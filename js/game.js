@@ -11,7 +11,7 @@ import { createMusic } from './audio.js?v=1.4.63';
 import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
 import {
-  WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
+  WINDS, ORPHANS, FAN_VALUES, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown,
   withFlowers, flowerWin, flowerWinResult,
 } from './rules.js?v=1.4.69';
@@ -5029,6 +5029,77 @@ function renderMelds() {
   }
 }
 
+// Hint-only fan calculation. The real win path always keeps every pattern;
+// these helpers exist only to tell the player whether a wait needs a bonus.
+const HINT_TIMING_FAN_IDS = new Set(['自摸', '門前清', '海底撈月', '槓上開花', '連槓開花', '無花']);
+
+function hintRawFan(concealed, waitId) {
+  const context = seatWinContext(game.seat, {
+    selfDraw: false,
+    haidi: false,
+    kongReplacementChain: 0,
+  });
+  const result = withFlowers(evaluateHand({
+    concealed: [...concealed, waitId],
+    melds: game.melds,
+    winningTile: waitId,
+    context,
+  }), game.flowers, game.seatWind, game.settings.fanCap, context);
+  if (!result?.isWin) return 0;
+  let rawFan = result.totalFan;
+  for (const pattern of result.patterns) {
+    if (HINT_TIMING_FAN_IDS.has(pattern.id)) rawFan -= pattern.fan;
+  }
+  // 坎坎胡 already absorbs 對對糊 and 門前清. Hints use the plain all-pung
+  // baseline so a closed four-triplet hand reports 對對糊's 3 fan, not 8.
+  if (result.patterns.some((pattern) => pattern.id === '坎坎胡')) {
+    rawFan -= (FAN_VALUES['坎坎胡'] ?? 0) - (FAN_VALUES['對對糊'] ?? 0);
+  }
+  return Math.max(0, rawFan);
+}
+
+function hintSelfDrawResult(concealed, waitId) {
+  const context = winContext();
+  return withFlowers(evaluateHand({
+    concealed: [...concealed, waitId],
+    melds: game.melds,
+    winningTile: waitId,
+    context,
+  }), game.flowers, game.seatWind, game.settings.fanCap, context);
+}
+
+function hintKongGroups(concealed) {
+  const counts = countTiles(concealed);
+  const tripletKinds = Object.values(counts).filter((count) => count >= 3).length;
+  const declaredKongs = game.melds.filter((meld) => meld.type === 'kong' && !meld.open).length;
+  return tripletKinds + declaredKongs;
+}
+
+function hintTips(concealed) {
+  const tips = ['補花'];
+  if (!game.melds.some((meld) => meld.open)) tips.push('門前清');
+  tips.push('自摸');
+  tips.push(game.timeLeft <= HAIDI_SECONDS ? '海底撈月（已計入）' : '海底撈月');
+  const groups = hintKongGroups(concealed);
+  if (groups >= 2) tips.push('連槓開花');
+  else if (groups === 1) tips.push('槓上開花');
+  return tips;
+}
+
+function hintWaitInfo(concealed, waitId) {
+  const rawFan = hintRawFan(concealed, waitId);
+  const minimum = Number(game.match?.minFan ?? game.matchSetup?.minFan ?? DEFAULT_MIN_FAN);
+  const short = Math.max(0, minimum - rawFan);
+  const selfDrawOk = short > 0 && Boolean(qualifyingWin(hintSelfDrawResult(concealed, waitId)));
+  let note = '';
+  if (short > 0) {
+    note = selfDrawOk
+      ? `（差 ${short} 番，自摸才夠番）`
+      : `（差 ${short} 番；${hintTips(concealed).join('、')}）`;
+  }
+  return { id: waitId, rawFan, short, selfDrawOk, note };
+}
+
 function analyzeDiscards() {
   game.discardInfo = new Map();
   // The shared pool is endless, so wait hints are not limited by tile counts.
@@ -5037,7 +5108,7 @@ function analyzeDiscards() {
     const waits = findWaits(after, game.melds, winContext(), null);
     game.discardInfo.set(tile.uid, {
       good: waits.length > 0,
-      waits: waits.map((id) => ({ id })),
+      waits: waits.map((id) => hintWaitInfo(after, id)),
     });
   }
 }
@@ -5064,6 +5135,7 @@ function renderTarget() {
       info.waits.forEach((wait, index) => {
         if (index) appendHintText('、');
         addTileTo(ui.target, wait.id);
+        if (wait.note) appendHintText(wait.note);
       });
     } else {
       appendHintText(' → 暫無聽牌');
@@ -5072,15 +5144,18 @@ function renderTarget() {
   }
 
   // The pool is endless, so waits are never limited by remaining tile counts.
-  const waits = findWaits(concealedIds(), game.melds, winContext(), null);
+  const concealed = concealedIds();
+  const waits = findWaits(concealed, game.melds, winContext(), null)
+    .map((id) => hintWaitInfo(concealed, id));
   if (!waits.length) return; // No need to clutter the middle of the screen.
   ui.target.appendChild(Object.assign(document.createElement('span'), {
     textContent: '胡牌聽牌：',
   }));
-  for (const id of waits) {
+  for (const wait of waits) {
     const span = document.createElement('span');
     span.className = 'wait-note';
-    addTileTo(span, id);
+    addTileTo(span, wait.id);
+    if (wait.note) span.appendChild(Object.assign(document.createElement('span'), { textContent: wait.note }));
     ui.target.appendChild(span);
   }
 }
@@ -5565,6 +5640,7 @@ if (new URLSearchParams(location.search).has('test')) {
     EMOJIS, sendEmoji, showEmojiBubble, toggleEmojiPanel, closeEmojiPanel,
     fanInCantonese, speakCantonese, speakAction, speakWin, showWinEnd,
     currentRoundKey, announceWin,
+    hintRawFan, hintSelfDrawResult, hintKongGroups, hintTips, hintWaitInfo,
     renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,
     commitRoomDurationText, renderRoom,
     syncHostSeaPause, stepHostSea, updateFish, broadcastSeaSnapshot, paused, simulationPaused, modalOpen, keepsSeaMoving,

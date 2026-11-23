@@ -122,7 +122,12 @@ not keep stale sounds or scoring.
   validated `example` there. The closing footnote says `碰、上、明槓不計門前清。` without adding
   the old 自摸-source clause.
 - **No bottom `釣魚` button.** Click/tap the canvas or press Space to cast. Hints are always on;
-  terminology is 聽牌, not a hint toggle.
+  terminology is 聽牌, not a hint toggle. Wait hints are advisory and never gate settlement: for
+  each wait they show a hint-only `rawFan` that keeps current flowers but excludes 自摸, 門前清,
+  海底撈月, 槓上開花, 連槓開花 and 無花; 坎坎胡 falls back to the plain 對對糊 3-fan baseline. If a
+  self-draw of that tile reaches 起糊, the note is only `差 X 番，自摸才夠番`; otherwise it lists
+  the possible bonuses. 門前清 is omitted once there is an open meld; one triplet/quad suggests
+  槓上開花 and two or more suggest 連槓開花.
 
 ## Rules engine (`js/rules.js`)
 
