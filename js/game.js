@@ -805,7 +805,7 @@ function startGame({ keepTurn = false, preset = null } = {}) {
     );
   }
   sortHand();
-  hudRoundInfo = roundInfoText();
+  hudRoundInfo = speakRoundStart();
   updateHUD();
   let awaitingFlowerDecision = false;
   if (qualifyingWin(openingFlowerWin)) {
@@ -2028,6 +2028,13 @@ function speakCantonese(text) {
     } catch { /* lang is enough */ }
     speechSynthesis.speak(utterance);
   } catch { /* voice is optional */ }
+}
+
+/** Read the hand heading at the start of every deal. */
+function speakRoundStart() {
+  const text = roundInfoText();
+  speakCantonese(text);
+  return text;
 }
 
 /** Announce a locally declared 上／碰／槓. 胡 uses speakWin() so the winner,
@@ -5638,7 +5645,7 @@ if (new URLSearchParams(location.search).has('test')) {
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
     EMOJIS, sendEmoji, showEmojiBubble, toggleEmojiPanel, closeEmojiPanel,
-    fanInCantonese, speakCantonese, speakAction, speakWin, showWinEnd,
+    fanInCantonese, speakCantonese, speakRoundStart, speakAction, speakWin, showWinEnd,
     currentRoundKey, announceWin,
     hintRawFan, hintSelfDrawResult, hintKongGroups, hintTips, hintWaitInfo,
     renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,

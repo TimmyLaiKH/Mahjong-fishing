@@ -205,7 +205,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   with 14 tiles and reaches `AWAIT_DISCARD` (offering an inline concealed-kong prompt first),
   while other seats start with 13 and reach `AWAIT_CAST`. Only the dealer may take an opening
   暗槓 before fishing; every other seat's quad is only offered after a real draw in `resolveDraw()`.
-  The AI dealer follows the same rule through `prepareAiDealerOpening()`.
+  The AI dealer follows the same rule through `prepareAiDealerOpening()`. `speakRoundStart()`
+  reads the same `roundInfoText()` heading aloud on every device at the start of each hand;
+  voice remains optional and never blocks the deal.
 - **Cast/reel.** Only host/solo (`fishAuthority()`) spawns and moves fish. Casting and reeling
   both check catches; the host arbitrates first-request-wins, broadcasts `fishCaught`, and
   rejects stale requests with `catchRejected`. Flowers go to the HUD panel and trigger another
