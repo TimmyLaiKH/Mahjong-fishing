@@ -3,9 +3,6 @@
  * Freesound. A different track is chosen after each one finishes. Playback is
  * attempted as soon as the page loads; browsers that block audible autoplay
  * simply wait until the first user gesture, then start normally.
- *
- * The music track is routed through Web Audio so it shares the Web Speech API
- * audio session boundary with voice announcements.
  */
 
 export const TRACKS = Object.freeze([
@@ -37,6 +34,7 @@ export const TRACKS = Object.freeze([
 ]);
 
 export function createMusic() {
+  let audio = null;
   let musicEnabled = true;
   let effectsEnabled = true;
   // masterVolume scales every sound (music, clicks, tile strike, voice).
@@ -46,13 +44,6 @@ export function createMusic() {
   let active = false;
   let current = -1;
   let errors = 0;
-  const buffers = new Map();
-
-  let musicCtx = null;
-  let musicGainNode = null;
-  let activeSource = null;
-  let lastError = '';
-  let decodeCalls = 0;
 
   function randomTrack(previous) {
     if (TRACKS.length === 1) return 0;
@@ -61,118 +52,69 @@ export function createMusic() {
     return index;
   }
 
-  function musicGainValue() {
+  function musicGain() {
     return Math.min(1, masterVolume * musicVolume);
   }
 
-  function ensureMusicContext() {
-    if (musicCtx) return musicCtx;
-    const Ctor = window.AudioContext || window.webkitAudioContext;
-    if (!Ctor) return null;
-    try {
-      musicCtx = new Ctor();
-      if (musicCtx.state === 'suspended') musicCtx.resume();
-      musicGainNode = musicCtx.createGain();
-      musicGainNode.gain.value = musicGainValue();
-      musicGainNode.connect(musicCtx.destination);
-    } catch { musicCtx = null; }
-    return musicCtx;
-  }
-
-  async function decodeTrack(index) {
-    decodeCalls += 1;
-    if (buffers.has(index)) return buffers.get(index);
-    const response = await fetch(TRACKS[index].file);
-    if (!response.ok) throw new Error(`音樂載入失敗：${TRACKS[index].name}`);
-    const arrayBuffer = await response.arrayBuffer();
-    const ctx = ensureMusicContext();
-    if (!ctx) throw new Error('瀏覽器不支援 Web Audio');
-    const buffer = await ctx.decodeAudioData(arrayBuffer);
-    buffers.set(index, buffer);
-    return buffer;
-  }
-
-  function startPlayback(buffer, index) {
-    const ctx = ensureMusicContext();
-    if (!ctx) return;
-    try {
-      if (ctx.state !== 'running') void ctx.resume();
-      if (activeSource) {
-        activeSource.onended = null;
-        activeSource.disconnect();
-        activeSource = null;
-      }
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(musicGainNode);
-      source.onended = () => {
-        if (activeSource !== source) return;
-        activeSource = null;
-        if (!musicEnabled || !active) return;
-        const nextIndex = randomTrack(index);
-        void decodeTrack(nextIndex).then((nextBuffer) => {
-          if (musicEnabled && active && current === index) {
-            current = nextIndex;
-            startPlayback(nextBuffer, nextIndex);
-          }
-        });
-      };
-      source.start(0);
-      activeSource = source;
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
-    }
-  }
-
-  function playTrack(index) {
+  function load(index) {
     current = index;
-    void decodeTrack(index).then((buffer) => {
-      if (musicEnabled && active && current === index) startPlayback(buffer, index);
-    }).catch((error) => {
-      if (!musicEnabled || !active || errors > TRACKS.length * 2) return;
-      errors += 1;
-      lastError = error instanceof Error ? error.message : String(error);
-      current = randomTrack(index);
-      playTrack(current);
-    });
+    if (!audio) return;
+    audio.src = TRACKS[index].file;
+    audio.load();
   }
 
   function play() {
-    if (!musicEnabled || !active || current < 0) return;
-    playTrack(current);
+    if (!musicEnabled || !active || !audio || !audio.src) return;
+    const result = audio.play();
+    if (result?.catch) result.catch(() => {}); // autoplay still blocked
+  }
+
+  function ensureAudio() {
+    if (audio) return;
+    audio = new Audio();
+    audio.preload = 'auto';
+    audio.volume = musicGain();
+    audio.addEventListener('ended', () => {
+      if (!musicEnabled || !active) return;
+      load(randomTrack(current));
+      play();
+    });
+    audio.addEventListener('error', () => {
+      errors += 1;
+      if (!musicEnabled || !active || errors > TRACKS.length) return;
+      load(randomTrack(current));
+      play();
+    });
   }
 
   function start() {
     if (!musicEnabled) return;
     active = true;
-    if (current < 0) current = randomTrack(-1);
+    ensureAudio();
+    if (current < 0) load(randomTrack(-1));
     play();
   }
 
   function suspend() {
-    if (!activeSource) return;
-    activeSource.onended = null;
-    activeSource.disconnect();
-    activeSource = null;
+    if (audio) audio.pause();
   }
 
   function resume() {
-    if (!musicEnabled || !active || activeSource) return;
-    if (current >= 0) playTrack(current);
+    if (musicEnabled && active) play();
   }
 
   function setVolume(value) {
     const next = Number(value);
     if (!Number.isFinite(next)) return;
     masterVolume = Math.min(1, Math.max(0, next));
-    if (musicGainNode) musicGainNode.gain.value = musicGainValue();
+    if (audio) audio.volume = musicGain();
   }
 
   function setMusicVolume(value) {
     const next = Number(value);
     if (!Number.isFinite(next)) return;
     musicVolume = Math.min(1, Math.max(0, next));
-    if (musicGainNode) musicGainNode.gain.value = musicGainValue();
+    if (audio) audio.volume = musicGain();
   }
 
   function setMusicEnabled(value) {
@@ -191,7 +133,7 @@ export function createMusic() {
   }
 
   // The click is synthesised; the tile strike is a short CC0 Freesound
-  // recording. They follow the effects switch and the master volume.
+  // recording. Both follow the effects switch and the master volume.
   let context = null;
   const TILE_SOUND = 'assets/audio/mahjong-tile-strike.mp3?v=1.4.61';
 
@@ -251,13 +193,7 @@ export function createMusic() {
     isMusicEnabled: () => musicEnabled,
     isEffectsEnabled: () => effectsEnabled,
     isEnabled: () => musicEnabled,
-    isPlaying: () => Boolean(activeSource),
+    isPlaying: () => Boolean(audio && !audio.paused),
     trackName: () => (current >= 0 ? TRACKS[current].name : TRACKS[0].name),
-    debug: () => ({
-      current, active, musicEnabled, effectsEnabled,
-      activeSource: Boolean(activeSource),
-      musicCtx: Boolean(musicCtx), musicGainNode: Boolean(musicGainNode),
-      buffers: [...buffers.keys()], errors, lastError, decodeCalls,
-    }),
   };
 }

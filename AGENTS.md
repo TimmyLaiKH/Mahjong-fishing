@@ -447,9 +447,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   attempts audible autoplay on load and falls back to the first user gesture where blocked, and
   supports separate music/effects enables plus master/music volumes. Both volumes live in
   `mf-volume` as `main,music`; a legacy single number is read as the master volume with music at
-  100%. The two enables live in `mf-sound` as `music,effects`. Background music is routed through
-  Web Audio so it shares a separate session from `speechSynthesis`; `music.debug()` exposes the
-  current source/gain state for probes.
+  100%. The two enables live in `mf-sound` as `music,effects`.
 - Announcements follow the 音效與語音 half of `mf-sound` and the master half of `mf-volume`, and
   use only an explicit `zh-HK`/Cantonese `SpeechSynthesis` voice cached on the first user gesture.
   A device without one stays silent instead of falling back to Mandarin; the iPhone silent switch
