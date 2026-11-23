@@ -7,7 +7,7 @@ import {
   TILE_IDS, TILE_INFO, FLOWER_IDS, isFlower, loadImages, drawTile,
   createTileElement, tileName,
 } from './tiles.js';
-import { createMusic } from './audio.js?v=1.4.78';
+import { createMusic } from './audio.js?v=1.4.83';
 import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
 import {
@@ -5826,6 +5826,9 @@ async function boot() {
   music.setVolume(game.settings.mainVolume);
   music.setMusicVolume(game.settings.musicVolume);
   music.setEnabled(game.settings.sound);
+  // Try audible autoplay immediately; where browsers block it, the first
+  // pointerdown/keydown below starts the music instead.
+  music.start();
   if (typeof speechSynthesis !== 'undefined'
     && typeof speechSynthesis.addEventListener === 'function') {
     speechSynthesis.addEventListener('voiceschanged', primeDeviceVoice);

@@ -442,7 +442,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   Olivier Dugornay / Ifremer; the game draws mountains, houses, bamboo and grass in canvas, so
   no extra scenery images are needed.
 - `js/audio.js` plays five CC0 Freesound tracks, switches to a different track after each one,
-  starts only after a user gesture, and supports enable plus master/music volumes. Both volumes
+  attempts audible autoplay on load and falls back to the first user gesture where blocked, and
+  supports enable plus master/music volumes. Both volumes
   live in `mf-volume` as `main,music`; a legacy single number is read as the master volume with
   music at 100%.
 - Announcements follow `mf-sound` and the master half of `mf-volume`, and use only an explicit

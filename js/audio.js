@@ -1,7 +1,8 @@
 /*
  * Background music player for five CC0 Chinese-instrument tracks from
- * Freesound. A different track is chosen after each one finishes. Playback
- * only starts after a user gesture, as required by browser autoplay rules.
+ * Freesound. A different track is chosen after each one finishes. Playback is
+ * attempted as soon as the page loads; browsers that block audible autoplay
+ * simply wait until the first user gesture, then start normally.
  */
 
 export const TRACKS = Object.freeze([
