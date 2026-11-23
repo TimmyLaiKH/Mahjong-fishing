@@ -8,7 +8,6 @@ import {
   createTileElement, tileName,
 } from './tiles.js';
 import { createMusic } from './audio.js?v=1.4.63';
-import { primeVoice, speakWithESpeak, synthesizeVoice, voiceStatus } from './voice.js?v=1.4.74';
 import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
 import {
@@ -2008,45 +2007,83 @@ function fanInCantonese(value) {
   return parts.join('').replace(/^一十/, '十').replace(/零+$/, '');
 }
 
-/** Last-resort device voice when the bundled eSpeak NG worker cannot start.
- *  Speech is a bonus: a blocked voice never affects gameplay or settlement. */
-function speakWithBrowser(text, volume = 1) {
-  if (typeof SpeechSynthesisUtterance === 'undefined'
-    || typeof speechSynthesis === 'undefined' || !text) return;
-  try {
-    speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'zh-HK';
-    utterance.rate = 0.95;
-    utterance.volume = Math.max(0, Math.min(1, Number(volume) || 0));
-    // A voice from another engine can reject assignment; keep the zh-HK lang
-    // and still speak rather than losing the announcement entirely.
-    try {
-      const voices = speechSynthesis.getVoices() ?? [];
-      const voice = voices.find((item) => /zh[-_]HK/i.test(item.lang))
-        ?? voices.find((item) => /zh[-_](Hant|TW)/i.test(item.lang))
-        ?? voices.find((item) => /^zh/i.test(item.lang));
-      if (voice) utterance.voice = voice;
-    } catch { /* lang is enough */ }
-    speechSynthesis.speak(utterance);
-  } catch { /* voice is optional */ }
+/** Only an explicit Hong Kong / Cantonese voice may speak. zh-TW, zh-CN,
+ *  zh-Hans-HK, en-HK and generic zh voices are never used as a fallback. */
+function cantoneseVoiceRank(voice) {
+  const lang = String(voice?.lang ?? '').replace(/_/g, '-').toLowerCase();
+  const name = String(voice?.name ?? '').toLowerCase();
+  const cantoneseName = /cantonese|粵語|廣東話|香港粵語|香港話/.test(name);
+  if (/^(yue|zhy|zh-yue)([-]|$)/.test(lang)) return 0;
+  if (/^zh([-]|$)/.test(lang) && /(^|-)hk([-]|$)/.test(lang)
+    && !/(^|-)hans([-]|$)/.test(lang)) return 1;
+  if (cantoneseName && /^zh([-]|$)/.test(lang)) return 2;
+  if (cantoneseName) return 3;
+  return Infinity;
 }
 
-/** Every announcement uses the same bundled `yue` voice on every device. The
- *  worker is loaded on the first gesture; if it is unavailable, fall back to
- *  the device voice instead of leaving the announcement silent. */
+function isCantoneseVoice(voice) {
+  return Number.isFinite(cantoneseVoiceRank(voice));
+}
+
+function cantoneseVoice() {
+  if (typeof speechSynthesis === 'undefined') return null;
+  try {
+    return (speechSynthesis.getVoices() ?? [])
+      .filter(isCantoneseVoice)
+      .sort((a, b) => cantoneseVoiceRank(a) - cantoneseVoiceRank(b))[0] ?? null;
+  } catch { return null; }
+}
+
+/** getVoices() can be empty until voiceschanged fires on the first load. */
+function waitForCantoneseVoice(timeout = 2000) {
+  const immediate = cantoneseVoice();
+  if (immediate) return Promise.resolve(immediate);
+  if (typeof speechSynthesis === 'undefined'
+    || typeof speechSynthesis.addEventListener !== 'function') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let timer = null;
+    let done = false;
+    const finish = (voice) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { speechSynthesis.removeEventListener('voiceschanged', onChange); } catch { /* ignore */ }
+      resolve(voice);
+    };
+    const onChange = () => {
+      const voice = cantoneseVoice();
+      if (voice) finish(voice);
+    };
+    timer = setTimeout(() => finish(null), timeout);
+    try {
+      speechSynthesis.addEventListener('voiceschanged', onChange);
+      onChange();
+    } catch {
+      finish(null);
+    }
+  });
+}
+
+/** Announcements use the device's own Hong Kong / Cantonese voice. Speech is
+ *  optional: without an explicit Cantonese voice the line is simply skipped,
+ *  never read by a Mandarin voice. */
 function speakCantonese(text) {
-  if (!text || !game.settings.sound) return;
+  if (!text || !game.settings.sound
+    || typeof SpeechSynthesisUtterance === 'undefined'
+    || typeof speechSynthesis === 'undefined') return;
   const volume = game.settings.musicVolume;
-  let fellBack = false;
-  const fallback = () => {
-    if (fellBack) return;
-    fellBack = true;
-    speakWithBrowser(text, volume);
-  };
-  speakWithESpeak(text, { enabled: true, volume })
-    .then((spoken) => { if (!spoken) fallback(); })
-    .catch(fallback);
+  waitForCantoneseVoice().then((voice) => {
+    if (!voice) return;
+    try {
+      speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.voice = voice;
+      utterance.lang = voice.lang || 'zh-HK';
+      utterance.rate = 0.95;
+      utterance.volume = Math.max(0, Math.min(1, Number(volume) || 0));
+      speechSynthesis.speak(utterance);
+    } catch { /* voice is optional */ }
+  });
 }
 
 /** Read the hand heading at the start of every deal. */
@@ -5429,20 +5466,13 @@ function updateSettingsUI() {
 function setSoundEnabled(value) {
   game.settings.sound = Boolean(value);
   music.setEnabled(game.settings.sound);
-  if (game.settings.sound) {
-    music.start();
-    primeVoice();
-  }
+  if (game.settings.sound) music.start();
   save('mf-sound', game.settings.sound);
   updateSettingsUI();
 }
 
 function unlockMusic() {
-  if (!game.settings.sound) return;
-  music.start();
-  // Load the shared voice now, while a user gesture is active. The promise is
-  // deliberately ignored; speech itself still waits until it is needed.
-  primeVoice();
+  if (game.settings.sound) music.start();
 }
 
 function setMusicVolume(value) {
@@ -5679,7 +5709,7 @@ if (new URLSearchParams(location.search).has('test')) {
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
     EMOJIS, sendEmoji, showEmojiBubble, toggleEmojiPanel, closeEmojiPanel,
     fanInCantonese, speakCantonese, speakRoundStart, speakAction, speakWin, speakDraw, showWinEnd,
-    voiceStatus, primeVoice, speakWithESpeak, synthesizeVoice,
+    isCantoneseVoice, cantoneseVoice, waitForCantoneseVoice,
     currentRoundKey, announceWin,
     hintRawFan, hintSelfDrawResult, hintKongGroups, hintTips, hintWaitInfo,
     renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,

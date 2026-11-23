@@ -66,10 +66,8 @@ not keep stale sounds or scoring.
 | `js/payout.js` | Pure payout/settlement engine. Node-runnable; no DOM or storage. |
 | `js/game.js` | Browser orchestration: state machine, shared sea, canvas rendering, input, AI, network messages, HUD, settings and score UI. |
 | `js/net.js` | Thin PeerJS wrapper: room IDs, host/guest connections, message relay. |
-| `js/voice.js` | Shared eSpeak NG `yue` announcement voice via Web Worker; falls back to `SpeechSynthesis`, never blocks play. |
 | `js/audio.js` | CC0 background-music player plus a short CC0 tile-strike effect; enable/volume controls. |
 | `js/vendor/peerjs.min.js` | Local fallback when the CDN script fails. |
-| `js/vendor/espeakng/` | eSpeak NG browser Worker plus full `yue` dictionary, GPL-3.0-or-later; source package and full licence included. |
 | `assets/` | Runtime tile faces, underwater background, five MP3s. Source originals live under `assets/tiles/raw/` and `assets/bg/underwater.source.jpg`. |
 | `scripts/` | Asset download and processing scripts. Not part of runtime. |
 | `tests/rules.test.mjs` | 64 rule tests: T1–T13, table-driven patterns, flowers, weighted pool, 1000-game simulation. |
@@ -208,8 +206,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   while other seats start with 13 and reach `AWAIT_CAST`. Only the dealer may take an opening
   暗槓 before fishing; every other seat's quad is only offered after a real draw in `resolveDraw()`.
   The AI dealer follows the same rule through `prepareAiDealerOpening()`. `speakRoundStart()`
-  reads the same `roundInfoText()` heading aloud on every device at the start of each hand with
-  the bundled eSpeak NG `yue` voice; voice remains optional and never blocks the deal.
+  reads the same `roundInfoText()` heading aloud at the start of each hand using the device's
+  explicit Hong Kong/Cantonese voice; without one it stays silent, never Mandarin, and never
+  blocks the deal.
 - **Cast/reel.** Only host/solo (`fishAuthority()`) spawns and moves fish. Casting and reeling
   both check catches; the host arbitrates first-request-wins, broadcasts `fishCaught`, and
   rejects stale requests with `catchRejected`. Flowers go to the HUD panel and trigger another
@@ -255,11 +254,12 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   settling or rendering, so a failure in payout/overlay code can never leave rods, AI and the clock
   still running without a settlement screen. All three win paths call `showWinEnd(seat, result, log)`,
   which wraps the overlay in a fallback and then calls `speakWin(result, seat)`:
-  the shared eSpeak NG `yue` voice reads the winner's name, pattern names and
+  the device's `zh-HK`/Cantonese voice reads the winner's name, pattern names and
   `共 XX 番` (Chinese numerals via `fanInCantonese()`). `speakAction()` uses the same helper for
   locally declared 上／碰／槓, and `speakDraw()` reads `流局 時間到，沒有胡牌。` from both
-  draw paths on every device. If the worker cannot start, `SpeechSynthesis` is the fallback;
-  voice failures stay silent. The overlay leads with
+  draw paths. Only an explicit Hong Kong/Cantonese voice is accepted: `zh-TW`, `zh-CN` and generic
+  `zh` voices are Mandarin and are never used as a fallback, so a device without one stays silent.
+  Voice failures never affect settlement. The overlay leads with
   `X風第 X 局・X 圈`, then `ICON ID 胡牌!` and
   `formatWinBreakdown()` with its leading `胡牌！` line stripped (the heading already says `胡牌!`);
   `showOverlay({ inlineTiles })` inserts `handEndTiles(result)` between
@@ -438,10 +438,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   no extra scenery images are needed.
 - `js/audio.js` plays five CC0 Freesound tracks, switches to a different track after each one,
   starts only after a user gesture, and supports enable/volume. Music volume is `mf-volume`.
-- `js/voice.js` uses the bundled eSpeak NG `yue` worker for all announcements and falls back to
-  `SpeechSynthesis`; announcements follow `mf-sound` and `mf-volume`. The upstream GPL-3.0-or-later
-  licence and source package live in `js/vendor/espeakng/` and are disclosed in `CREDITS.md` and the
-  in-game 資料來源 panel.
+- Announcements follow `mf-sound` and `mf-volume` and use only an explicit `zh-HK`/Cantonese
+  `SpeechSynthesis` voice. A device without one stays silent instead of falling back to Mandarin.
 - `CREDITS.md` is the licence source of truth. The in-game 資料來源 panel must show the required
   attribution strings and links. Do not add assets with unclear licences.
 

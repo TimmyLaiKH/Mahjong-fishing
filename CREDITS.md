@@ -40,13 +40,6 @@
 - 授權：**CC0 1.0**（公有領域貢獻）。
 - 處理方式：從 HQ MP3 預覽檔截取一次清晰的牌張撞擊，正規化音量並加上極短淡入淡出，輸出為 `assets/audio/mahjong-tile-strike.mp3`；按鈕點擊音仍由 WebAudio 合成。
 
-## 粵語語音
-
-- 來源：[ianmarmour/espeak-ng.js](https://github.com/ianmarmour/espeak-ng.js) 的 npm 套件 [`espeak-ng@1.0.2`](https://www.npmjs.com/package/espeak-ng)。
-- 上游為 [eSpeak NG](https://github.com/espeak-ng/espeak-ng) 的 Emscripten 編譯版本；使用其中的完整 `yue` 粵語字典，漢字會以粵語讀音合成。
-- 授權：**GPL-3.0-or-later**（https://www.gnu.org/licenses/gpl-3.0.html）。完整授權條款隨附於 `js/vendor/espeakng/LICENSE`，來源與檔案說明見 `js/vendor/espeakng/README.md`。
-- 處理方式：`js/vendor/espeakng/espeak-ng.js` 與 `espeak-ng.wasm` 原檔隨網站提供；`full-worker.js` 只叫用上游模組合成單句語音並解碼成 PCM，沒有修改二進位檔；載入失敗時退回瀏覽器本身的語音。
-
 ## 規則資料
 
 - 花牌、正花、一檯花、花糊與大花糊的番數及風位對應，參考[維基百科「香港麻雀番牌列表」](https://zh.wikipedia.org/wiki/%E9%A6%99%E6%B8%AF%E9%BA%BB%E9%9B%80%E8%83%A1%E7%89%8C%E5%88%97%E8%A1%A8)。
@@ -65,5 +58,5 @@
 完整字串：
 
 ```
-Background: Olivier Dugornay / Ifremer, CC BY 4.0, via Wikimedia Commons. Tiles: FluffyStuff / Lilia Chen May Wither, CC0. Music: neolein / f-r-a-g-i-l-e / Ehved, CC0, via Freesound. SFX: Detective_Lemons, CC0, via Freesound. Voice: eSpeak NG, GPL-3.0-or-later, via ianmarmour/espeak-ng.js.
+Background: Olivier Dugornay / Ifremer, CC BY 4.0, via Wikimedia Commons. Tiles: FluffyStuff / Lilia Chen May Wither, CC0. Music: neolein / f-r-a-g-i-l-e / Ehved, CC0, via Freesound. SFX: Detective_Lemons, CC0, via Freesound.
 ```
