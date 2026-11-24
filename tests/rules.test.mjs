@@ -49,10 +49,10 @@ test('無四張上限：五張、六張相同牌都能組成胡牌', () => {
   assert.equal(evalTiles('m1 m1 m1 m1 m1 m1 m2 m3 m4 p2 p3 p4 s7 s7').isWin, true);
 });
 
-test('無四張上限：四張相同牌可當兩對，仍可成立七對子', () => {
+test('七對子必須七種不同牌，四張相同牌不能當兩對', () => {
   const result = evalTiles('m1 m1 m1 m1 p2 p2 s3 s3 s4 s4 E E C C');
-  assert.equal(result.isWin, true);
-  assert.ok(names(result).includes('七對子'));
+  assert.equal(result.isWin, false);
+  assert.ok(!names(result).includes('七對子'));
 });
 
 test('無限牌池維持普通牌 4：1 花牌加權', () => {
@@ -213,10 +213,10 @@ test('B3：111222333萬 + 789筒 + 將牌 取最高番的分解（平糊）', ()
   assert.ok(names(result).includes('平糊'), names(result).join(','));
   assert.ok(!names(result).includes('雞糊'));
   assert.ok(result.decomposition.every((g) => g.type !== 'triplet'));
-  // 原始回報的牌型（東東作將，平糊不成立）也必須正常評估
-  const original = evalTiles('m1 m1 m1 m2 m2 m2 m3 m3 m3 p7 p8 p9 E E');
-  assert.equal(original.isWin, true);
-  assert.ok(!names(original).includes('平糊'));
+  // 字牌作將仍可計平糊。
+  const honorPair = evalTiles('m1 m1 m1 m2 m2 m2 m3 m3 m3 p7 p8 p9 E E');
+  assert.equal(honorPair.isWin, true);
+  assert.ok(names(honorPair).includes('平糊'));
   // 真正四組刻子時仍要拿到坎坎胡（13 番）
   assert.ok(names(evalTiles('m1 m1 m1 p2 p2 p2 s3 s3 s3 E E E C C')).includes('坎坎胡'));
 });
@@ -273,6 +273,9 @@ test('B6：大小三元、大小四喜不疊加，番數不設上限', () => {
   const dupWinds = evalTiles('E E E E E E S S W W W m1 m2 m3');
   assert.ok(!names(dupWinds).includes('小四喜'));
   assert.ok(!names(dupWinds).includes('大四喜'));
+  const smallWind = evalTiles('E E E S S S W W W N N m1 m2 m3');
+  assert.ok(names(smallWind).includes('小四喜'));
+  assert.ok(!names(smallWind).includes('混一色'), names(smallWind).join(','));
 });
 
 test('B7：槓上開花只在開槓補摸的那一張生效', () => {
@@ -285,6 +288,11 @@ test('B7：槓上開花只在開槓補摸的那一張生效', () => {
   const chain = names(evaluateHand({ ...args, context: { kongReplacementChain: 2 } }));
   assert.ok(chain.includes('連槓開花'));
   assert.ok(!chain.includes('槓上開花'));
+  // 槓上開花／連槓開花不與海底撈月並計。
+  for (const kongReplacementChain of [1, 2]) {
+    const kongHaidi = evaluateHand({ ...args, context: { kongReplacementChain, haidi: true } });
+    assert.ok(!names(kongHaidi).includes('海底撈月'), names(kongHaidi).join(','));
+  }
 });
 
 test('海底撈月：最後 5 秒自摸或胡他人打出牌都計，自摸另計', () => {
@@ -555,6 +563,8 @@ test('花糊（七花）與大花糊（八仙過海）即時胡牌', () => {
   assert.deepEqual(names(afterKong).sort(), ['花糊', '槓上開花', '重疊扣減'].sort());
   assert.equal(afterKong.patterns.find((p) => p.id === '重疊扣減').detail, '自摸');
   assert.equal(afterKong.totalFan, 4);
+  const kongHaidi = flowerWinResult(seven, 'E', FAN_CAP, { kongReplacementChain: 1, haidi: true });
+  assert.ok(!names(kongHaidi).includes('海底撈月'), names(kongHaidi).join(','));
   const eight = flowerWinResult(FLOWER_IDS, 'E');
   assert.deepEqual(names(eight), ['大花糊']);
   assert.equal(eight.totalFan, 8);
@@ -570,8 +580,13 @@ test('花糊開局加計天胡／人胡，海底撈月與自摸分開計', () =>
     assert.equal(result.patterns.find((p) => p.id === '重疊扣減').fan, -1);
     assert.equal(result.totalFan, 15);
   }
-  // 地胡 is a discard claim, so it never appears on a flower self-draw.
-  assert.ok(!names(flowerWinResult(seven, 'S', FAN_CAP, { dihuClaim: true })).includes('地胡'));
+  // 一開牌／補花後七花：閒家另計地胡；槓後摸齊則不計天地人胡。
+  const dihua = flowerWinResult(seven, 'S', FAN_CAP, { dihuaClaim: true });
+  assert.deepEqual(names(dihua).sort(), ['地胡', '花糊', '重疊扣減'].sort());
+  assert.equal(dihua.totalFan, 15);
+  assert.ok(!names(flowerWinResult(seven, 'S', FAN_CAP, {
+    dihuaClaim: true, kongReplacementChain: 1,
+  })).includes('地胡'));
   const haidi = flowerWinResult(seven, 'S', FAN_CAP, { haidi: true });
   assert.deepEqual(names(haidi).sort(), ['海底撈月', '花糊'].sort());
   assert.equal(haidi.totalFan, 4);
@@ -930,9 +945,9 @@ test('T6：小三元吸收兩組三元番子，但風牌番子仍可疊加，共
 
 test('T7：大四喜與坎坎胡疊加，對對糊只扣一次；字一色吸收場風／門風番子', () => {
   const result = evalTiles('E E E S S S W W W N N N m5 m5');
-  assert.deepEqual(names(result).sort(), ['大四喜', '坎坎胡', '重疊扣減', '混一色', '自摸'].sort());
+  assert.deepEqual(names(result).sort(), ['大四喜', '坎坎胡', '重疊扣減', '自摸'].sort());
   assert.ok(!names(result).includes('番子'));
-  assert.equal(result.totalFan, 27);
+  assert.equal(result.totalFan, 24);
   const bigWind = result.patterns.find((p) => p.id === '大四喜');
   assert.ok(bigWind.includes.includes('對對糊'), bigWind.includes?.join(','));
 

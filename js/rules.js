@@ -82,7 +82,7 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
-    id: '平糊', fan: 1, desc: '四組順子加一對非字牌將。',
+    id: '平糊', fan: 1, desc: '四組順子加一對將（可為字牌）。',
     example: { concealed: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'p2', 'p3', 'p4', 's7', 's8', 's9', 'p9', 'p9'], melds: [], context: {} },
   },
   {
@@ -138,7 +138,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm2', 'm3', 'm4', 'm9', 'm9'], melds: [], context: {} },
   },
   {
-    id: '七對子', fan: 3, desc: '門前清七對不同的牌（又稱嚦咕嚦咕）。',
+    id: '七對子', fan: 3, desc: '門前清七種不同牌各一對（又稱嚦咕嚦咕）；四張相同牌不能當兩對。',
     example: { concealed: ['m1', 'm1', 'm3', 'm3', 'p2', 'p2', 'p7', 'p7', 's4', 's4', 'E', 'E', 'C', 'C'], melds: [], context: {} },
   },
   {
@@ -292,6 +292,7 @@ export const ABSORBS = Object.freeze({
   '清幺九': ['花幺九', '對對糊'],
   '字一色': ['花幺九', '對對糊', '番子:SEAT', '番子:ROUND'],
   '大四喜': ['對對糊', '小四喜', '番子:SEAT', '番子:ROUND'],
+  '小四喜': ['混一色'],
   '大三元': ['小三元', '番子:C', '番子:F', '番子:B'],
   '小三元': ['番子:PUNG_DRAGON'],
   '綠一色': ['清一色', '混一色'],
@@ -408,9 +409,10 @@ export function isThirteenOrphans(tiles) {
 
 export function isSevenPairs(tiles) {
   if (tiles.length !== 14) return false;
-  // With no four-copy limit, four identical tiles may supply two pairs.
+  // Seven distinct pairs: four identical tiles cannot be split into two pairs.
   const counts = countTiles(tiles);
-  return Object.values(counts).every((n) => n % 2 === 0);
+  const kinds = Object.keys(counts);
+  return kinds.length === 7 && kinds.every((id) => counts[id] === 2);
 }
 
 export function isNineGates(tiles) {
@@ -542,7 +544,7 @@ function evaluateDecomposition(concealed, groups, melds, context) {
       || Boolean(pair?.includes(context.winningTile));
     if (melds.length === 0 && singlePairClaim) add('坎坎胡');
   }
-  if (sets.length === 4 && sets.every((s) => s.type === 'sequence') && pair && !TILE_INFO[pair[0]].isHonor) add('平糊');
+  if (sets.length === 4 && sets.every((s) => s.type === 'sequence') && pair) add('平糊');
 
   const suits = new Set(allTiles.filter((t) => !TILE_INFO[t].isHonor).map((t) => TILE_INFO[t].suit));
   const hasHonor = allTiles.some((t) => TILE_INFO[t].isHonor);
@@ -582,8 +584,9 @@ function evaluateDecomposition(concealed, groups, melds, context) {
   if (!isTiangu && context.kongReplacementChain === 1 && context.selfDraw) add('槓上開花');
   if (!isTiangu && context.kongReplacementChain >= 2 && context.selfDraw) add('連槓開花');
   // 海底撈月 applies to both self-draws and claim wins; 自摸 below is scored
-  // separately whenever context.selfDraw is true.
-  if (!isTiangu && context.haidi) add('海底撈月');
+  // separately whenever context.selfDraw is true. 槓上開花／連槓開花 never
+  // combine with 海底撈月.
+  if (!isTiangu && context.haidi && context.kongReplacementChain === 0) add('海底撈月');
   // 搶槓 is a claim-only bonus; the kong declarer becomes the 出銃 seat.
   if (context.qianggang && !context.selfDraw) add('搶槓');
   // 門前清 needs a fully concealed hand (no 碰／上／槓, including 暗槓), but
@@ -722,12 +725,14 @@ export function flowerWinResult(flowers = [], seatWind = 'E', fanCap = FAN_CAP, 
   const found = [win];
   if (ctx.selfDraw) found.push(flowerPattern('自摸'));
   const openingSelfDraw = ctx.selfDraw && ctx.kongReplacementChain === 0;
+  // 一開牌／補花後摸齊七花：莊家計天胡、閒家計地胡；首釣自摸才計人胡。
+  // 暗槓或其他槓後補到七花只計槓上開花，不計天地人胡。
   if (openingSelfDraw && ctx.tiangu) found.push(flowerPattern('天胡'));
-  if (openingSelfDraw && !ctx.tiangu && ctx.renhu) found.push(flowerPattern('人胡'));
-  // 地胡 is earned by claiming the dealer's first discard, so flower wins never carry it.
+  else if (openingSelfDraw && ctx.dihuaClaim) found.push(flowerPattern('地胡'));
+  else if (openingSelfDraw && ctx.renhu) found.push(flowerPattern('人胡'));
   if (ctx.kongReplacementChain === 1 && ctx.selfDraw) found.push(flowerPattern('槓上開花'));
   if (ctx.kongReplacementChain >= 2 && ctx.selfDraw) found.push(flowerPattern('連槓開花'));
-  if (ctx.haidi) found.push(flowerPattern('海底撈月'));
+  if (ctx.haidi && ctx.kongReplacementChain === 0) found.push(flowerPattern('海底撈月'));
   return capResult({
     isWin: true,
     patterns: resolveOverlaps(found, ctx),

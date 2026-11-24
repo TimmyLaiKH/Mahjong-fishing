@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult,
-} from './rules.js?v=1.4.90';
+} from './rules.js?v=1.4.91';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -189,8 +189,9 @@ const game = {
     gameSeconds: readGameSeconds(),
   },
   hookSpeed: Math.min(2, Math.max(0.5, readNumberWithDefault('mf-hookspeed', 1))),
-  lastDraw: null,           // { uid, id, source: 'fish' | 'flower' | 'kong' }
+  lastDraw: null,           // { uid, id, source: 'fish' | 'flower' | 'kong', fromKong? }
   kongChain: 0,
+  kongOrigin: null,         // first kong of the chain: { open, sourceSeat, declarerSeat }
   rodAngle: 0, rodDir: 1, hookLen: 0,
   spawnTimer: 0,
   selectedDiscard: 0,
@@ -687,10 +688,64 @@ function seatWinContext(seat, { opening = false, ...extra } = {}) {
   if (opening) {
     context.haidi = false;
     // Non-dealers are dealt 13 tiles and must fish; 人胡 is scored on their
-    // first fished tile instead of a virtual opening draw.
+    // first fished tile instead of a virtual opening draw. 開局七花則不論
+    // 莊閒都即時成糊，閒家計地胡。
     if (dealer) context.tiangu = true;
+    else context.dihuaClaim = true;
   }
   return { ...context, ...extra };
+}
+
+function kongStateFor(seat) {
+  if (seat === game.seat) return game;
+  return game.aiStates[seat] ?? null;
+}
+
+/** Clear both the count and the remembered first kong whenever the replacement
+ *  chain ends (discard, ordinary fish, flower, rob or a new hand). */
+function resetKongChain(seat = game.seat) {
+  const state = kongStateFor(seat);
+  if (!state) return;
+  state.kongChain = 0;
+  state.kongOrigin = null;
+}
+
+/** Record a kong in the current chain. 連槓 keeps the FIRST kong's nature, so
+ *  明槓→暗槓 still settles as 出槓 by the first kong's discarded-tile source. */
+function beginKongChain(seat, { open = false, sourceSeat = null } = {}) {
+  const state = kongStateFor(seat);
+  if (!state) return;
+  const first = state.kongChain > 0 && state.kongOrigin
+    ? state.kongOrigin
+    : { open, sourceSeat, declarerSeat: seat };
+  state.kongOrigin = first;
+  state.kongChain += 1;
+}
+
+/** 出槓 is only a settlement route: the winner keeps 槓上開花／連槓開花 (and its
+ *  自摸 fan), but the first 明槓's discarded-tile source pays like 出銃. */
+function kongClaimMeta(seat, result) {
+  if (!result?.patterns?.some((pattern) => ['槓上開花', '連槓開花'].includes(pattern.id))) return null;
+  const state = kongStateFor(seat);
+  if (!state?.kongChain || !state.kongOrigin?.open) return null;
+  const sourceSeat = state.kongOrigin.sourceSeat;
+  if (sourceSeat === null || sourceSeat === undefined || sourceSeat === seat) return null;
+  return { discarder: sourceSeat, selfDraw: false, kongClaim: true };
+}
+
+function isOpeningFlowerMoment(seat) {
+  if (seat === game.match?.dealerSeat) return !game.dealerDiscarded;
+  if (seat === game.seat) return !game.firstFished.has(seat);
+  return !game.aiStates[seat]?.firstFished;
+}
+
+/** A flower caught as a kong replacement is still 補花, never 開局天地糊. */
+function withOpeningFlowerFlags(seat, context, { kongReplacement = false } = {}) {
+  if (kongReplacement || !isOpeningFlowerMoment(seat)) return context;
+  return {
+    ...context,
+    ...(seat === game.match?.dealerSeat ? { tiangu: true } : { dihuaClaim: true }),
+  };
 }
 
 /** Public flower display is shared; concealed hands are never sent. */
@@ -765,6 +820,7 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   game.restartRequester = null;
   game.restartMessage = '';
   game.kongChain = 0;
+  game.kongOrigin = null;
   game.lastDraw = null;
   game.hookLen = 0;
   game.spawnTimer = 0;
@@ -966,17 +1022,23 @@ function applyFishCaught(msg, caughtFish = null) {
   if (ai) assignCatchToAi(msg.seat, msg.tileId);
   if (msg.seat === game.seat && !ai) {
     const flower = isFlower(msg.tileId);
-    const kongReplacement = !flower && game.kongChain > 0;
+    const pendingKong = game.kongChain > 0;
+    const kongReplacement = pendingKong && !flower;
     game.pendingCatch = null;
     game.lastDraw = {
       id: msg.tileId,
       uid: game.nextUid++,
       source: flower ? 'flower' : (kongReplacement ? 'kong' : 'fish'),
+      // A flower caught while a kong replacement is pending still breaks the
+      // chain, but finishReel() needs to know so it can refuse 槓上開花.
+      fromKong: pendingKong,
     };
-    if (!kongReplacement) game.kongChain = 0;
+    if (!kongReplacement) resetKongChain(game.seat);
     setState(S.REELING);
     setStatus(flower
-      ? `釣到花牌 ${tileName(msg.tileId)}！再釣一張牌。`
+      ? (pendingKong
+        ? `釣到花牌 ${tileName(msg.tileId)}！連槓中斷，再釣一張牌。`
+        : `釣到花牌 ${tileName(msg.tileId)}！再釣一張牌。`)
       : `釣到 ${tileName(msg.tileId)}！`);
   } else if (game.pendingCatch === msg.fishId) {
     game.pendingCatch = null;
@@ -1002,14 +1064,18 @@ function checkCatch() {
 
 function finishReel() {
   if (game.lastDraw?.source === 'flower') {
-    // A flower never enters the hand, but a flower caught as a kong replacement
-    // still leaves us waiting for the actual replacement tile.
-    const waitingForKongReplacement = game.kongChain > 0;
+    // A flower never enters the hand. If it was caught while a kong replacement
+    // was pending, it breaks the chain: the next tile is an ordinary fish, not
+    // 槓上開花／連槓開花. The rod still owes that next draw before a discard.
+    const waitingForKongReplacement = Boolean(game.lastDraw.fromKong);
     if (!waitingForKongReplacement) game.grabPending = false;
     game.flowers.push(game.lastDraw.id);
     syncSeatFlowers(game.seat, game.flowers);
+    const flowerContext = withOpeningFlowerFlags(game.seat, winContext(), {
+      kongReplacement: waitingForKongReplacement,
+    });
     const immediate = flowerWinResult(
-      game.flowers, game.seatWind, game.settings.fanCap, winContext(),
+      game.flowers, game.seatWind, game.settings.fanCap, flowerContext,
     );
     if (qualifyingWin(immediate)) {
       // 八花沒有更大的花糊可等待，直接即時胡牌；七花可選「過」拒絕。
@@ -1022,16 +1088,14 @@ function finishReel() {
       offerSelfWin(immediate, null, () => {
         game.declinedFlowerWin = true;
         game.lastDraw = null;
-        if (!waitingForKongReplacement) game.kongChain = 0;
         setState(S.AWAIT_CAST);
       });
       return;
     }
     // No automatic replacement: the player hooks the next tile instead.
     game.lastDraw = null;
-    if (!waitingForKongReplacement) game.kongChain = 0;
     setState(S.AWAIT_CAST);
-    if (waitingForKongReplacement) setStatus('釣到花牌！再釣一張牌補槓。');
+    if (waitingForKongReplacement) setStatus('補花後連槓中斷，再釣一張牌。');
     return;
   }
   if (game.lastDraw?.source === 'fish' || game.lastDraw?.source === 'kong') {
@@ -1086,9 +1150,8 @@ function declareKong(kind, sourceKey = `${game.seat}:kong:${kind}:${game.nextUid
   const meld = { tile: kind, type: 'kong', tiles: [kind, kind, kind, kind], sourceKey };
   game.melds.push(meld);
   addSeatMeld(game.seat, meld);
-  const previousChain = game.lastDraw?.source === 'kong' ? game.kongChain : 0;
   const lastDraw = game.lastDraw ? { ...game.lastDraw } : null;
-  game.kongChain = previousChain + 1;
+  beginKongChain(game.seat, { open: false, sourceSeat: null });
   // No automatic replacement: the player hooks the next tile, which becomes
   // the kong replacement and keeps 槓上開花／連槓開花 available.
   game.lastDraw = null;
@@ -1117,7 +1180,7 @@ function discard(uid) {
   const [tile] = game.hand.splice(index, 1);
   game.river.push(tile);
   game.lastDraw = null;
-  game.kongChain = 0;
+  resetKongChain(game.seat);
   game.turn += 1;
   game.mustDiscard = false;
   game.grabPending = false;
@@ -1410,7 +1473,7 @@ function cancelKongBySource(sourceKey, kongSeat = null) {
       game.hand.push(...kong.removed);
       sortHand();
       game.lastDraw = kong.lastDraw ? { ...kong.lastDraw } : null;
-      game.kongChain = 0;
+      resetKongChain(game.seat);
       game.mustDiscard = Boolean(kong.restoreDiscard);
       game.grabPending = false;
       clearSelfWin();
@@ -1424,7 +1487,7 @@ function cancelKongBySource(sourceKey, kongSeat = null) {
     if (kong) {
       state.hand.push(...kong.removed);
       state.hand.sort((a, b) => TILE_IDS.indexOf(a.id) - TILE_IDS.indexOf(b.id));
-      state.kongChain = 0;
+      resetKongChain(seat);
       state.lastDraw = kong.lastDraw ? { ...kong.lastDraw } : null;
       state.mustDiscard = Boolean(kong.restoreDiscard);
       state.discardTimer = kong.restoreDiscard ? 0.6 : 0;
@@ -1586,7 +1649,7 @@ function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass 
       label: `明槓 ${tileName(discardId)}`,
       type: 'kong', kinds,
       disabled: !canCall,
-      onClick: () => declareOpenMeld('kong', discardId, kinds, sourceKey),
+      onClick: () => declareOpenMeld('kong', discardId, kinds, sourceKey, discarderSeat),
     });
   }
   if (callShape && (counts[discardId] ?? 0) >= 2) {
@@ -1691,6 +1754,8 @@ function createAiState(seat) {
     river: [],
     lastDraw: null,
     kongChain: 0,
+    kongOrigin: null,
+    caughtFromKong: false,
     firstFished: false,
     mustDiscard: false,
     openingReady: false,
@@ -1773,11 +1838,14 @@ function aiDeclareConcealedKong(state, kind) {
     return true;
   });
   if (taken.length !== 4) return;
-  const meld = { tile: kind, type: 'kong', tiles: Array(4).fill(kind), open: false, sourceKey };
+  const meld = {
+    tile: kind, type: 'kong', tiles: Array(4).fill(kind),
+    open: false, sourceKey, sourceSeat: null,
+  };
   state.melds.push(meld);
   addSeatMeld(state.seat, meld);
   const lastDraw = state.lastDraw ? { ...state.lastDraw } : null;
-  state.kongChain += 1;
+  beginKongChain(state.seat, { open: false, sourceSeat: null });
   state.lastDraw = null;
   state.mustDiscard = false;
   state.discardTimer = 0;
@@ -1835,6 +1903,7 @@ function assignCatchToAi(seat, tileId) {
   const state = game.aiStates[seat];
   if (!state) return;
   state.caught = tileId;
+  state.caughtFromKong = state.kongChain > 0;
   state.rod.phase = 'reeling';
 }
 
@@ -1842,7 +1911,9 @@ function assignCatchToAi(seat, tileId) {
 function finishAiReel(state) {
   const tileId = state.caught;
   const seat = state.seat;
+  const caughtFromKong = Boolean(state.caughtFromKong);
   state.caught = null;
+  state.caughtFromKong = false;
   if (!tileId) {
     resetAiRod(state);
     return;
@@ -1850,9 +1921,14 @@ function finishAiReel(state) {
   if (isFlower(tileId)) {
     state.flowers.push(tileId);
     syncSeatFlowers(seat, state.flowers);
+    // 補花 never continues a kong chain; the next tile is an ordinary fish.
+    const flowerContext = withOpeningFlowerFlags(seat, seatWinContext(seat), {
+      kongReplacement: caughtFromKong,
+    });
     const result = flowerWinResult(
-      state.flowers, seatWindOf(seat), game.settings.fanCap, seatWinContext(seat),
+      state.flowers, seatWindOf(seat), game.settings.fanCap, flowerContext,
     );
+    resetKongChain(seat);
     if (qualifyingWin(result)) commitAiWin(seat, result);
     else resetAiRod(state);
     return;
@@ -1877,7 +1953,7 @@ function finishAiReel(state) {
     commitAiWin(seat, result);
     return;
   }
-  if (!kongReplacement) state.kongChain = 0;
+  if (!kongReplacement) resetKongChain(seat);
   const handCounts = countTiles(state.hand.map((tile) => tile.id));
   const kongTile = state.melds.length < 4
     ? Object.keys(handCounts).find((id) => handCounts[id] >= 4)
@@ -1891,10 +1967,13 @@ function finishAiReel(state) {
         return true;
       });
       if (taken.length === 4) {
-        const meld = { tile: kongTile, type: 'kong', tiles: Array(4).fill(kongTile), open: false, sourceKey };
+        const meld = {
+          tile: kongTile, type: 'kong', tiles: Array(4).fill(kongTile),
+          open: false, sourceKey, sourceSeat: null,
+        };
         state.melds.push(meld);
         addSeatMeld(seat, meld);
-        state.kongChain += 1;
+        beginKongChain(seat, { open: false, sourceSeat: null });
         // Like the human seat, a kong owes a replacement draw before any discard.
         resetAiRod(state);
         beginKongOpportunity({
@@ -1936,7 +2015,7 @@ function aiChooseAndDiscard(state) {
   const [discarded] = state.hand.splice(index, 1);
   state.river.push(discarded);
   state.lastDraw = null;
-  state.kongChain = 0;
+  resetKongChain(seat);
   state.mustDiscard = false;
   state.discardTimer = 0;
   // A claimed fish keeps `caught` and the line extended until the forced
@@ -2136,14 +2215,18 @@ function applyAiMeldClaim(msg) {
     tiles: [...removed.map((tile) => tile.id), msg.tileId],
     open: true,
     sourceKey: msg.sourceKey ?? null,
+    sourceSeat: msg.type === 'kong' ? (msg.discarderSeat ?? null) : null,
   };
   state.melds.push(meld);
   addSeatMeld(msg.seat, meld);
   state.caught = null;
+  state.caughtFromKong = false;
   resetAiRod(state);
   if (msg.type === 'kong') {
     // 明槓 also needs a replacement fish before the forced discard.
-    state.kongChain += 1;
+    beginKongChain(msg.seat, {
+      open: true, sourceSeat: msg.discarderSeat ?? null,
+    });
     beginKongOpportunity({
       seat: msg.seat, tileId: msg.tileId, concealed: false,
       sourceKey: msg.sourceKey, removed, meld, restoreDiscard: false,
@@ -2162,8 +2245,14 @@ function commitAiWin(seat, result, fanTotal = null, meta = {}) {
   game.pendingAiClaims = [];
   const state = game.aiStates[seat];
   const total = fanTotal ?? (state?.fanTotal ?? 0) + result.totalFan;
-  const selfDraw = meta.selfDraw === undefined ? winIsSelfDraw(result) : Boolean(meta.selfDraw);
-  const winMeta = { discarder: selfDraw ? null : (meta.discarder ?? null), selfDraw };
+  const kongClaim = kongClaimMeta(seat, result);
+  const selfDraw = kongClaim ? false
+    : (meta.selfDraw === undefined ? winIsSelfDraw(result) : Boolean(meta.selfDraw));
+  const winMeta = {
+    discarder: kongClaim ? kongClaim.discarder : (selfDraw ? null : (meta.discarder ?? null)),
+    selfDraw,
+    kongClaim: Boolean(kongClaim),
+  };
   if (game.mode === 'multi') {
     if (net.isHost) {
       announceWin({ t: 'win', seat, result, fanTotal: total, isBot: true, ...winMeta });
@@ -2244,7 +2333,8 @@ function aiTick(dt) {
   }
 }
 
-function declareOpenMeld(type, discardId, handKinds, sourceKey = game.pendingClaim?.sourceKey ?? null) {
+function declareOpenMeld(type, discardId, handKinds,
+  sourceKey = game.pendingClaim?.sourceKey ?? null, sourceSeat = null) {
   if (!canDeclareMeld()) return;
   cancelAiClaimsForTile(discardId);
   const removed = takeHandTiles(handKinds);
@@ -2256,18 +2346,19 @@ function declareOpenMeld(type, discardId, handKinds, sourceKey = game.pendingCla
     tiles: [...removed.map((tile) => tile.id), discardId],
     open: true,
     sourceKey: type === 'kong' ? sourceKey : null,
+    sourceSeat: type === 'kong' ? sourceSeat : null,
   };
   game.melds.push(meld);
   addSeatMeld(game.seat, meld);
   clearClaim();
   clearSelfWin();
   game.lastDraw = null;
-  game.kongChain = 0;
+  resetKongChain(game.seat);
   // The replacement draw (or forced discard) must happen before another claim.
   game.grabPending = true;
   game.mustDiscard = type !== 'kong';
   if (type === 'kong') {
-    game.kongChain = 1;
+    beginKongChain(game.seat, { open: true, sourceSeat });
     setState(S.AWAIT_CAST);
     beginKongOpportunity({
       seat: game.seat, tileId: discardId, concealed: false, sourceKey,
@@ -2295,8 +2386,15 @@ function passClaim() {
   renderClaim();
 }
 
+/** 自摸 is absorbed by several self-draw-only patterns, so the bare `自摸`
+ *  pattern id is absent from those breakdowns. Claim paths always pass an
+ *  explicit `selfDraw: false`, which overrides this inference. */
+const SELF_DRAW_PATTERN_IDS = new Set([
+  '自摸', '天胡', '地胡', '人胡', '花糊', '大花糊', '槓上開花', '連槓開花',
+]);
+
 function winIsSelfDraw(result) {
-  return Boolean(result?.patterns?.some((pattern) => pattern.id === '自摸'));
+  return Boolean(result?.patterns?.some((pattern) => SELF_DRAW_PATTERN_IDS.has(pattern.id)));
 }
 
 /** 起糊: a structurally complete hand only counts as a win once it reaches the
@@ -2315,7 +2413,8 @@ function currentRoundKey() {
 }
 
 /** Settle one finished hand and keep the money/dealer state in sync. */
-function recordRoundResult({ winner = null, discarder = null, result = null, selfDraw = false } = {}) {
+function recordRoundResult({ winner = null, discarder = null, result = null,
+  selfDraw = false, kongClaim = false } = {}) {
   const match = game.match;
   if (!match || match.over) return null;
   // A guest may see the win message and the host's match snapshot in either
@@ -2352,6 +2451,7 @@ function recordRoundResult({ winner = null, discarder = null, result = null, sel
     settled.log.windIndex = Math.floor(match.handNumber / 4);
   }
   settled.log.roundKey = roundKey;
+  settled.log.kongClaim = Boolean(kongClaim);
   // Keep the finished hand's number for the end-overlay heading (the match
   // state below immediately advances to the upcoming hand).
   settled.log.handNumber = match.handNumber;
@@ -2376,6 +2476,8 @@ function payoutSummary(log = game.match?.lastPayout) {
   if (log.winner !== null && log.winner !== undefined) {
     if (log.selfDraw) {
       lines.push(`自摸：三家各付 ${moneyText(log.payout.each)}，共得 ${moneyText(log.payout.total)}`);
+    } else if (log.kongClaim) {
+      lines.push(`出槓：${scoreSeatName(log.discarder)} 支付 ${moneyText(log.payout.value)}`);
     } else {
       lines.push(`出銃：${scoreSeatName(log.discarder)} 支付 ${moneyText(log.payout.value)}`);
     }
@@ -2716,13 +2818,21 @@ function showWinEnd(seat, result, log) {
     console.warn('[mf] 結算畫面顯示失敗', error);
     showOverlay({ title: handEndTitle(seat), message: `共 ${result?.totalFan ?? 0} 番` });
   }
-  speakWin(result, seat, game.match?.over ? `${matchEndMessage()}.` : '');
+  const kongNote = log?.kongClaim ? `由 ${scoreSeatName(log.discarder)} 出槓。` : '';
+  const matchNote = game.match?.over ? `${matchEndMessage()}.` : '';
+  speakWin(result, seat, [kongNote, matchNote].filter(Boolean).join(' '));
 }
 
 function commitWin(result, { discarder = null, selfDraw = null } = {}) {
   if (!qualifyingWin(result)) return;
-  const isSelfDraw = selfDraw === null ? winIsSelfDraw(result) : Boolean(selfDraw);
-  const meta = { discarder: isSelfDraw ? null : discarder, selfDraw: isSelfDraw };
+  const kongClaim = kongClaimMeta(game.seat, result);
+  const isSelfDraw = kongClaim ? false
+    : (selfDraw === null ? winIsSelfDraw(result) : Boolean(selfDraw));
+  const meta = {
+    discarder: kongClaim ? kongClaim.discarder : (isSelfDraw ? null : discarder),
+    selfDraw: isSelfDraw,
+    kongClaim: Boolean(kongClaim),
+  };
   game.pendingAiClaims = [];
   if (game.mode === 'multi') {
     const fanTotal = game.fanTotal + result.totalFan;
@@ -3571,7 +3681,8 @@ function claimFromBox(box, action) {
 }
 
 function declareOpenMeldMulti(type, discardId, kinds, sourceKey = null,
-  { deadline = null, priorityGraceUntil = null, thirteenSeats = null } = {}) {
+  { deadline = null, priorityGraceUntil = null, thirteenSeats = null,
+    sourceSeat = null } = {}) {
   if (!canDeclareMeld() || !Array.isArray(kinds) || !kinds.length) return;
   const removed = takeHandTiles(kinds);
   if (!removed) return;
@@ -3582,6 +3693,7 @@ function declareOpenMeldMulti(type, discardId, kinds, sourceKey = null,
     tiles: [...removed.map((tile) => tile.id), discardId],
     open: true,
     sourceKey: type === 'kong' ? sourceKey : null,
+    sourceSeat: type === 'kong' ? sourceSeat : null,
   };
   game.melds.push(meld);
   addSeatMeld(game.seat, meld);
@@ -3590,11 +3702,12 @@ function declareOpenMeldMulti(type, discardId, kinds, sourceKey = null,
   game.lastDraw = null;
   // 明槓 waits for a replacement hook instead of a forced discard; only
   // 碰／上 must play a tile before the next claim.
-  game.kongChain = type === 'kong' ? 1 : 0;
+  resetKongChain(game.seat);
   game.mustDiscard = type !== 'kong';
   game.grabPending = true;
   setState(type === 'kong' ? S.AWAIT_CAST : S.AWAIT_DISCARD);
   if (type === 'kong') {
+    beginKongChain(game.seat, { open: true, sourceSeat });
     beginKongOpportunity({
       seat: game.seat, tileId: discardId, concealed: false, sourceKey,
       removed, meld, restoreDiscard: false, deadline, priorityGraceUntil, thirteenSeats,
@@ -3706,7 +3819,7 @@ function applyClaimResult(msg) {
   if (msg.seat === game.seat) {
     declareOpenMeldMulti(msg.type, msg.tileId, msg.kinds ?? [], msg.sourceKey, {
       deadline: msg.deadline, priorityGraceUntil: msg.priorityGraceUntil,
-      thirteenSeats: msg.thirteenSeats,
+      thirteenSeats: msg.thirteenSeats, sourceSeat: msg.discarderSeat ?? null,
     });
     speakAction(msg.type);
   } else if (game.aiStates[msg.seat]) {
@@ -4056,6 +4169,7 @@ function finishMultiWin(seat, result, fanTotal, meta = {}) {
     discarder: selfDraw ? null : (meta.discarder ?? null),
     result,
     selfDraw,
+    kongClaim: Boolean(meta.kongClaim),
   });
   if (seat === game.seat) {
     game.fanTotal = fanTotal ?? game.fanTotal + (result?.totalFan ?? 0);
@@ -4438,6 +4552,7 @@ function wireNetEvents() {
     finishMultiWin(msg.seat, msg.result, msg.fanTotal, {
       discarder: msg.discarder ?? null,
       selfDraw,
+      kongClaim: Boolean(msg.kongClaim),
       authoritative: true,
       winId,
     });
@@ -6467,6 +6582,7 @@ if (new URLSearchParams(location.search).has('test')) {
     isCantoneseVoice, cantoneseVoice, waitForCantoneseVoice, voiceStatus, showVoiceDebug,
     primeDeviceVoice, setMainVolume, setMusicVolume, setMusicEnabled, setEffectsEnabled,
     currentRoundKey, announceWin,
+    kongClaimMeta, beginKongChain, resetKongChain, withOpeningFlowerFlags,
     hintRawFan, hintSelfDrawResult, hintKongGroups, hintTips, hintWaitInfo,
     renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,
     PRIORITY_GRACE_MS, claimPriorityState, isThirteenWaitForSeat, thirteenSeatsForTile,

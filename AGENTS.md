@@ -80,8 +80,9 @@ not keep stale sounds or scoring.
 - **No finite wall.** The sea and opening tiles use `randomTileKind()` from the endless weighted
   pool: each of the 34 regular kinds has weight 4, each of the 8 flowers weight 1 (4:1).
   Sampling is independent; there is no depletion, no wall display, no four-copy cap. The
-  evaluator deliberately allows 5+ identical tiles and four identical tiles as two pairs in
-  七對子. `createWall()` exists as a tested utility but gameplay must not depend on it.
+  evaluator deliberately allows 5+ identical tiles, but 七對子 needs seven distinct pairs and
+  four identical tiles cannot be split into two pairs. `createWall()` exists as a tested utility
+  but gameplay must not depend on it.
 - **No dealing help.** AI seats are real players with private hands, their own rods, their own
   fishing and their own decisions. They never read other hands and never receive dealt tiles.
   `shanten`, `getUsefulTiles` and `getAssistTiles` are engine/test utilities; `game.js` does not
@@ -98,7 +99,8 @@ not keep stale sounds or scoring.
   small form's pair must be the missing dragon), and 大／小四喜 require the four wind kinds the
   same way. 十三幺 needs all 13 distinct orphans plus a duplicate of one of them; 九子連環 needs
   one suit's `1112345678999` plus one extra tile of that suit. Repeated triplets or pairs cannot
-  substitute. 七對子 is the intentional exception: four identical tiles may supply two pairs.
+  substitute. 七對子 follows the same distinct-kind rule: exactly seven kinds, each appearing
+  twice.
 - **Every fished tile is a self-draw.** `evaluateHand` defaults `context.selfDraw` to `true`;
   claim wins pass `selfDraw: false`. 門前清 only needs no meld at all — 碰／上／明槓／暗槓 break it,
   but winning off a discard still counts. 九子連環 may be claimed from another player's discard
@@ -106,14 +108,20 @@ not keep stale sounds or scoring.
   requires no melds and is 13 fan, but a discard claim only counts when the claimed tile completes
   the 單騎 pair; claiming a completed triplet downgrades to 對對糊 and still scores 門前清. 搶槓 is a
   claim-only 1-fan bonus; 明槓 may be robbed by any winning hand and 暗槓 only by 十三幺, with the
-  kong declarer as 出銃 and the kong plus its replacement draw cancelled.
+  kong declarer as 出銃 and the kong plus its replacement draw cancelled. A win after a kong keeps
+  its 槓上開花／連槓開花 fan, but settles as 出槓 when the FIRST kong is 明槓: the seat that discarded
+  the kong tile pays like 出銃, including through 連槓. A concealed/added first kong stays 自摸 with
+  three payers. 補花 may not sit between kongs: a flower caught while a replacement is pending ends
+  the chain, so the next ordinary tile is no longer a kong replacement.
 - **Opening wins.** The dealer starts with 14 tiles and checks 天胡; other seats are dealt exactly
   13 and fish immediately, with no virtual fourteenth tile. 人胡 (13 fan) is a non-dealer's first
   fished non-flower tile; a flower caught first is only revealed and does not burn the chance.
   地胡 (13 fan) is a non-dealer claiming the dealer's first discard of the hand. All three include
-  自摸 and 門前清 where applicable; dealt-flower wins still apply to every seat.
+  自摸 and 門前清 where applicable; dealt-flower wins still apply to every seat. Dealt seven flowers,
+  or seven flowers completed on the first 補花, also score 天胡 for the dealer and 地胡 for a
+  non-dealer; flowers caught after a kong only score 槓上開花／連槓開花.
 - **海底撈月.** Any win with `game.timeLeft <= 5` gains 1 fan, self-draw or claim; 自摸 is
-  added separately when applicable. No wall needs to be empty.
+  added separately when applicable, but 槓上開花／連槓開花 excludes 海底撈月. No wall needs to be empty.
 - **Fan cap stays `Infinity`.** `FAN_CAP` and default behaviour never change. `context.fanCap`
   is only an internal/test override. There is no 番數上限 UI and no separate point system.
 - **Player-facing strings are contractual.** Waiting-to-cast status is exactly
@@ -166,9 +174,10 @@ Scoring notes:
   sub-pattern with fan `-base × (sharers - 1)`. Attach `includes` only for absorbed patterns that
   were actually scored, so a hand with a meld never shows 門前清 in the breakdown. `海底撈月` never
   absorbs `自摸`; `天胡`/`地胡`/`人胡` absorb 自摸+門前清; any meld (including 暗槓) suppresses
-  門前清, but a claim win no longer does. 坎坎胡 is 13 fan and also needs no melds. `字一色` absorbs
-  花幺九, 對對糊 and the seat/round 番子 pseudo-keys; `大四喜` still absorbs 對對糊. A 番子-only hand
-  is not 雞糊.
+  門前清, but a claim win no longer does. 坎坎胡 is 13 fan and also needs no melds. 平糊 allows an
+  honor-pair 將; 七對子 needs seven distinct pairs; 小四喜 absorbs 混一色. 槓上開花／連槓開花 suppress
+  海底撈月. `字一色` absorbs 花幺九, 對對糊 and the seat/round 番子 pseudo-keys; `大四喜` still absorbs
+  對對糊. A 番子-only hand is not 雞糊.
 - `formatWinBreakdown()` is the shared zh-Hant text used by win dialogs; it reports **fan only**
   and must never print money or 分. The game adds payout text separately.
 - Adding a pattern requires entries in both `FAN_VALUES` and `PATTERN_TABLE` (or the flower
@@ -223,8 +232,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 - **Cast/reel.** Only host/solo (`fishAuthority()`) spawns and moves fish. Casting and reeling
   both check catches; the host arbitrates first-request-wins, broadcasts `fishCaught`, and
   rejects stale requests with `catchRejected`. Flowers go to the HUD panel and trigger another
-  fish without consuming a turn; ordinary/kong tiles enter the hand only when the hook returns,
-  then `resolveDraw()` checks win → inline kong prompt → `AWAIT_DISCARD`.
+  fish without consuming a turn; a flower caught during a kong replacement breaks the chain, so
+  the next ordinary tile is no longer a kong replacement. Ordinary/kong tiles enter the hand only
+  when the hook returns, then `resolveDraw()` checks win → inline kong prompt → `AWAIT_DISCARD`.
 - **Discard and claims.** `discard()` bumps the turn, publishes a 5-second claim window with a
   shared `sourceKey`, and returns the human to fishing. `claimBoxes[]` gives each opponent one
   box; `renderClaimBoxes()` renders a box whenever `buildClaimActions({ potential: true })` is
@@ -257,7 +267,12 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   sends are guarded in `net.js` so a dead peer cannot throw into the settlement path. Self wins, concealed kongs and 七花 use the
   enlarged inline `selfWinBar` left of the rod with `胡牌`／`開槓` and `過`／`不開槓` — never a
   blocking popup. 碰／上 show `成功！請選一張牌打出。`; 明槓 (solo and multiplayer) shows
-  `明槓成功！再釣一張牌補槓。` and sets `kongChain = 1`, never asking for an immediate discard.
+  `明槓成功！等待是否搶槓…`, starts `kongChain = 1` and records
+  `kongOrigin` (first kong's open/source seat), never asking for an immediate discard. A flower
+  during the chain clears both. 連槓 keeps the first `kongOrigin`; `kongClaimMeta()` routes a win
+  after a first 明槓 to that source seat as 出槓 in all three settlement paths. `winIsSelfDraw()`
+  also recognises patterns that absorb 自摸 (天胡、地胡、人胡、花糊、大花糊、槓上開花、連槓開花);
+  claim paths still pass explicit `selfDraw: false`, and 出槓 overrides a first 明槓.
 - **AI seats.** `createAiState()` deals private tiles and a rod to each AI. `aiTick()` sweeps the
   rod, casts to `maxHookLength()`, and checks catches on both descent and return; the tile is
   added in `finishAiReel()` only when the hook reaches the rod, and is drawn on the hook while
@@ -280,7 +295,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `formatWinBreakdown()` with its leading `胡牌！` line stripped (the heading already says `胡牌!`);
   `showOverlay({ inlineTiles })` inserts `handEndTiles(result)` between
   the 牌型 bullets and `共 N 番`, so a claimed tile sits at the far right like a self-drawn one.
-  `payoutSummary()` adds the 出銃／自摸 and 連莊 lines, `matchEndMessage()` is rendered as a larger
+  `payoutSummary()` adds the 出銃／出槓／自摸 and 連莊 lines, `matchEndMessage()` is rendered as a larger
   standalone line and appended to the 胡/draw speech as `比賽結束！資金最多：X（$N）.`, and
   `renderStandings()` supplies the ranked 計分 board with this 小局's `(+x)`／`(-x)` beside each purse.
   `進入下一局` advances
