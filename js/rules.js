@@ -68,6 +68,12 @@ export const FAN_VALUES = Object.freeze({
 /** No upper limit: a hand keeps every fan it scores. */
 export const FAN_CAP = Infinity;
 
+/** Order table rows by fan, keeping custom patterns after official and flower ones. */
+export function sortPatternRows(rows) {
+  const isCustom = (row) => row.category === '自訂牌型';
+  return [...rows].sort((a, b) => (isCustom(a) - isCustom(b)) || (a.fan - b.fan));
+}
+
 /**
  * The pattern table used both by evaluateHand() and by the in-game
  * 牌型一覽. Every example is validated by tests/rules.test.mjs.

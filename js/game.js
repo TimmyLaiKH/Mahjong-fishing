@@ -13,7 +13,7 @@ import { settleRound } from './payout.js';
 import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
-  withFlowers, flowerWin, flowerWinResult,
+  withFlowers, flowerWin, flowerWinResult, sortPatternRows,
 } from './rules.js?v=1.4.96';
 
 const canvas = document.getElementById('game');
@@ -6363,7 +6363,7 @@ function quitToMenu() {
 
 function buildPatternTable() {
   ui.patternsBody.innerHTML = '';
-  const rows = [...PATTERN_ROWS, ...FLOWER_PATTERN_TABLE].sort((a, b) => a.fan - b.fan);
+  const rows = sortPatternRows([...PATTERN_ROWS, ...FLOWER_PATTERN_TABLE]);
   for (const pattern of rows) {
     const tr = document.createElement('tr');
     const name = document.createElement('td');

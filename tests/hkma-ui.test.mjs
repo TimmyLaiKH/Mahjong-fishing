@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { sortPatternRows } from '../js/rules.js';
 
 let passed = 0;
 let failed = 0;
@@ -48,6 +49,17 @@ test('玩法說明清單可多於六項且保留固定入口', () => {
   assert.match(html, /id="helpFanTableBtn"[^>]*>前往番數表</);
   assert.match(html, /id="payoutTableTitle"/);
   assert.match(html, /id="patternsBody"/);
+});
+
+test('自訂牌型排在牌型表最底', () => {
+  const rows = [
+    { id: '人胡', fan: 10, category: '自訂牌型' },
+    { id: '平糊', fan: 1 },
+    { id: '花糊', fan: 3 },
+    { id: '七對子', fan: 3, category: '自訂牌型' },
+  ];
+  assert.deepEqual(sortPatternRows(rows).map((r) => r.id),
+    ['平糊', '花糊', '七對子', '人胡']);
 });
 
 console.log(`結果：${passed} 通過，${failed} 失敗`);
