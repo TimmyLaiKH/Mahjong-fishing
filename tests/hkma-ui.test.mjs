@@ -83,5 +83,18 @@ test('43 張牌圖都是 RGBA 144x205', () => {
   }
 });
 
+test('玩家版本與 cachebust 已更新', () => {
+  const html = readFileSync('index.html', 'utf8');
+  const game = readFileSync('js/game.js', 'utf8');
+  const readme = readFileSync('README.md', 'utf8');
+  const changelog = readFileSync('CHANGELOG.md', 'utf8');
+  assert.match(html, /css\/style\.css\?v=1\.4\.97/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.97/);
+  assert.match(game, /\.\/tiles\.js\?v=1\.4\.97/);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.97/);
+  assert.match(readme, /\?v=1\.4\.97/);
+  assert.match(changelog, /^## 1\.4\.97/m);
+});
+
 console.log(`結果：${passed} 通過，${failed} 失敗`);
 process.exitCode = failed ? 1 : 0;

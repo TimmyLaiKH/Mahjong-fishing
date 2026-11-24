@@ -35,11 +35,12 @@ node --check js/net.js
 node tests/rules.test.mjs        # must print 64 通過，0 失敗
 node tests/payout.test.mjs       # must print 12 通過，0 失敗
 node tests/net.test.mjs          # must print 2 通過，0 失敗
+node tests/hkma-ui.test.mjs      # must print 8 通過，0 失敗
 git diff --check
 ```
 
-`npm test` currently runs **only** `tests/rules.test.mjs`; always run the payout suite explicitly.
-Both suites use a tiny local harness with `process.exitCode`, not an external test framework.
+`npm test` currently runs **only** `tests/rules.test.mjs`; always run the payout and static suites explicitly.
+All suites use a tiny local harness with `process.exitCode`, not an external test framework.
 
 Regenerating image assets (requires `curl`, `file`, `python3`, Pillow):
 
@@ -48,12 +49,16 @@ bash scripts/fetch_assets.sh
 python3 scripts/process_assets.py
 ```
 
+`scripts/process_assets.py` calls `scripts/restyle_tiles.py` to bake the approved edges and shadow into
+each runtime PNG; the restyle script can also be run alone as
+`python3 scripts/restyle_tiles.py INPUT_FOLDER OUTPUT_FOLDER`.
+
 Deployment is GitHub Pages from `main`. Commit, push, then verify the live site with distinct
 cachebusts (`index.html`, `js/game.js`, `js/payout.js`, `css/style.css`). `index.html` also pins a
 `?v=` version on `css/style.css` and `js/game.js`; bump it whenever those files change so players do
 not keep a stale cached 胡 handler. `js/game.js` also pins `./audio.js?v=...`,
 `./rules.js?v=...` and `./tiles.js?v=...`; bump those imports when the audio helper, rules engine
-or tile drawing helpers change so players do not keep stale sounds, scoring or tile bevels.
+or tile drawing helpers change so players do not keep stale sounds, scoring or tile faces.
 
 ## Repository map
 
@@ -73,6 +78,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
 | `tests/rules.test.mjs` | 64 rule tests: T1–T13, table-driven patterns, flowers, weighted pool, 1000-game simulation. |
 | `tests/payout.test.mjs` | 12 payout/settlement tests. |
 | `tests/net.test.mjs` | 2 tests for PeerJS-safe outgoing message normalisation. |
+| `tests/hkma-ui.test.mjs` | 8 static checks: no old character, three help tabs, jump button, custom-pattern order, baked 144×205 tiles, version cachebusts. |
 | `tests/browser-ai-discard.test.html` | Browser regression page: loads the real game with `?test=1`, forces an AI discard via `aiTick()`, and fails on any exception or missing river tile. |
 | `README.md`, `CHANGELOG.md`, `CREDITS.md`, `AGENTS.md` | Player docs, change history, asset licences, agent instructions. |
 
@@ -140,12 +146,15 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   `所有人加入後，請等待房主按下「開始遊戲」。` at the top of the 聯機 room screen.
   The solo lobby instead shows `三位 AI 對手已自動補位，按下「開始遊戲」即可開始。` and hides all
   room-code/share-link UI.
-- **Help and pattern table.** 玩法說明 has exactly six `<li>` items. Its header has a
-  `前往番數表` button (`#helpFanTableBtn`) that scrolls the modal card to `#fanTableTitle` without
-  adding a list item. Outside the list, a static 0–10 番 payout table (`#payoutTableTitle`) shows
+- **Help and pattern table.** 玩法說明 has three tabs (`data-help-tab` = `rules`/`patterns`/`payout`,
+  panels `#helpTabRules`/`#helpTabPatterns`/`#helpTabPayout`); the `玩法說明` list may exceed six
+  `<li>` items. Its header has a `前往番數表` button (`#helpFanTableBtn`) that first switches to the
+  `牌型一覽` tab and then scrolls the modal card to `#fanTableTitle` without adding a list item.
+  Custom patterns sort to the bottom of the generated table. The separate `派彩計算表` tab has a
+  static 0–10 番 payout table (`#payoutTableTitle`) that shows
   倍率 V/B, 出銃支付, 自摸每家 and 自摸三家合計, followed by a note that B is the host's 金額倍數
   (default 1, range 1–100), 自摸 rounds to an integer and 無限番 continues the same formula. A HKMA
-  source note sits beside it. 牌型一覽 lives inside it and is generated from `PATTERN_TABLE` +
+  source note sits beside it. The `牌型一覽` tab is generated from `PATTERN_TABLE` +
   `FLOWER_PATTERN_TABLE`; every pattern needs a validated `example` there. HKMA《香港麻雀總例》is the
   sole fan authority; `花么九` is 4 番 (花么). Patterns carrying `category: '自訂牌型'`
   (七對子、人胡、綠一色、藍一色) get a small 自訂牌型 tag in the name cell only; settlement and speech
@@ -451,10 +460,11 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   comes first: the floor (`WORLD_H`) or the nearest side (`view.width / 2 - TILE_W / 2`), and
   `hookPositionFor()` clamps only at half a tile so the hook still reaches the edge without
   leaving the canvas.
-- Tile faces stay as the existing 43 runtime PNGs with `TILE_ASSET_VERSION = 6`; the subtle 3D
-  look is only a CSS/canvas overlay. `.tile-img` adds `drop-shadow` and a `::before` bevel with
-  `pointer-events: none`, while `drawTile()` adds a gradient and edge strokes without touching
-  PNGs or image paths. `js/game.js` pins `./tiles.js?v=...`; bump it when tile drawing changes.
+- Tile faces are 43 runtime PNGs at 144×205 RGBA with `TILE_ASSET_VERSION = 7`; the subtle 3D
+  edges and soft shadow are baked into the PNGs by `scripts/restyle_tiles.py` (called by
+  `scripts/process_assets.py`). There is no CSS `::before` bevel and no canvas gradient/edge-stroke
+  bevel in `drawTile()`; `.tile-img img` only keeps its separation `drop-shadow`. `js/game.js`
+  pins `./tiles.js?v=...`; bump it when tile drawing changes.
 - `各家副露` sits above your own 副露 (flowers and concealed kongs), below status/toast and above
   the hand; it is always expanded (never collapsible) and lists only the other three seats' live
   `$` purse, melds and flower counts with original tile sizes. `updateScoreUI()` refreshes these
@@ -491,13 +501,14 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   The 設定 modal must not mention AI, 起糊 or 番數上限 — those live in the room lobby; host hook
   speed and duration lock after start; both
   volume sliders save into `mf-volume`, and both switches save into `mf-sound`.
-- Exact waiting status, help count, pattern table source and no-bottom-button rules are listed
+- Exact waiting status, help tabs, pattern table source and no-bottom-button rules are listed
   under **Core game invariants**; keep them in sync with `index.html`.
 
 ## Assets, audio and credits
 
-- Tile faces are 43 runtime PNGs (34 regular, 8 flowers, 1 back) at 120×160, generated from CC0
-  artwork by FluffyStuff and Lilia Chen May Wither. `H6.png` uses 繁體「蘭」.
+- Tile faces are 43 runtime PNGs (34 regular, 8 flowers, 1 back) at 144×205 RGBA, generated from
+  CC0 artwork by FluffyStuff and Lilia Chen May Wither with baked edges from
+  `scripts/restyle_tiles.py`. `H6.png` uses 繁體「蘭」.
 - `assets/bg/underwater.jpg` is under 400 KB, derived from a CC BY 4.0 Wikimedia image by
   Olivier Dugornay / Ifremer; the game draws mountains, houses, bamboo and grass in canvas, so
   no extra scenery images are needed.

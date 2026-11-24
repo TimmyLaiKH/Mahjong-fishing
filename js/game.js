@@ -6,7 +6,7 @@
 import {
   TILE_IDS, TILE_INFO, FLOWER_IDS, isFlower, loadImages, drawTile,
   createTileElement, tileName,
-} from './tiles.js?v=1.4.96';
+} from './tiles.js?v=1.4.97';
 import { createMusic } from './audio.js?v=1.4.86';
 import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.96';
+} from './rules.js?v=1.4.97';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
