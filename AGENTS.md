@@ -98,7 +98,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   needs all eight; duplicates never complete a set.
 - **Combination patterns need distinct tiles.** 大／小三元 require all three dragon kinds (the
   small form's pair must be the missing dragon), and 大／小四喜 require the four wind kinds the
-  same way. 十三幺 needs all 13 distinct orphans plus a duplicate of one of them; 九子連環 needs
+  same way. 十三么 needs all 13 distinct orphans plus a duplicate of one of them; 九子連環 needs
   one suit's `1112345678999` plus one extra tile of that suit. Repeated triplets or pairs cannot
   substitute. 七對子 follows the same distinct-kind rule: exactly seven kinds, each appearing
   twice.
@@ -108,7 +108,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   while still 門前清; it still never adds 自摸 (門前清 is absorbed by the limit hand). 坎坎胡 also
   requires no melds and is 10 fan, but a discard claim only counts when the claimed tile completes
   the 單騎 pair; claiming a completed triplet downgrades to 對對糊 and still scores 門前清. 搶槓 is a
-  claim-only 1-fan bonus; 明槓 may be robbed by any winning hand and 暗槓 only by 十三幺, with the
+  claim-only 1-fan bonus; 明槓 may be robbed by any winning hand and 暗槓 only by 十三么, with the
   kong declarer as 出銃 and the kong plus its replacement draw cancelled. A win after a kong keeps
   its 槓上開花／連槓開花 fan, but settles as 出槓 when the FIRST kong is 明槓: the seat that discarded
   the kong tile pays like 出銃, including through 連槓. A concealed/added first kong stays 自摸 with
@@ -130,7 +130,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   All evaluate/withFlowers/flowerWinResult calls already read that local cap. There is no separate
   point system.
 - **Official fan authority.** HKMA《香港麻雀總例》is the sole authority for pattern names and fan
-  values. `花幺九` keeps its in-game ID but is 4 番 (the 總例 calls it `花么`). `七對子`, `人胡`,
+  values. `花么九` keeps its in-game ID but is 4 番 (the 總例 calls it `花么`). `七對子`, `人胡`,
   `綠一色` and `藍一色` are explicitly in-game custom patterns (`category: '自訂牌型'`) and keep
   their existing fan values; do not present them as official 總例 patterns.
 - **Player-facing strings are contractual.** Waiting-to-cast status is exactly
@@ -147,7 +147,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   (default 1, range 1–100), 自摸 rounds to an integer and 無限番 continues the same formula. A HKMA
   source note sits beside it. 牌型一覽 lives inside it and is generated from `PATTERN_TABLE` +
   `FLOWER_PATTERN_TABLE`; every pattern needs a validated `example` there. HKMA《香港麻雀總例》is the
-  sole fan authority; `花幺九` is 4 番 (花么). Patterns carrying `category: '自訂牌型'`
+  sole fan authority; `花么九` is 4 番 (花么). Patterns carrying `category: '自訂牌型'`
   (七對子、人胡、綠一色、藍一色) get a small 自訂牌型 tag in the name cell only; settlement and speech
   never show it. The closing footnote says
   `碰、上、槓才不計門前清，吃胡他人打出的牌仍可計門前清（但不計自摸）。`
@@ -190,7 +190,7 @@ Scoring notes:
   absorbs `自摸`; `天胡`/`地胡`/`人胡` absorb 自摸+門前清; any meld (including 暗槓) suppresses
   門前清, but a claim win no longer does. 坎坎胡 is 10 fan and also needs no melds. 平糊 allows an
   honor-pair 將; 七對子 needs seven distinct pairs; 小四喜 absorbs 混一色. 槓上開花／連槓開花 suppress
-  海底撈月. `字一色` absorbs 花幺九, 對對糊 and the seat/round 番子 pseudo-keys; `大四喜` still absorbs
+  海底撈月. `字一色` absorbs 花么九, 對對糊 and the seat/round 番子 pseudo-keys; `大四喜` still absorbs
   對對糊. A 番子-only hand is not 雞糊.
 - `formatWinBreakdown()` is the shared zh-Hant text used by win dialogs; it reports **fan only**
   and must never print money or 分. The game adds payout text separately.
@@ -260,17 +260,17 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   disappear instead of spending tiles that are no longer held. While the rod is out, the box
   stays visible but every button is disabled; it unlocks when the hook returns empty or when a
   caught tile has been discarded. 胡／碰／明槓 can target any opponent; 上 only the previous
-  wind's 上家 (label prefix `上家・`). **Only a 十三幺 wait is 牌王:** while that player's wait is
-  valid for the tile, every other seat's 胡／槓／碰／上 button is disabled until the 十三幺 player
+  wind's 上家 (label prefix `上家・`). **Only a 十三么 wait is 牌王:** while that player's wait is
+  valid for the tile, every other seat's 胡／槓／碰／上 button is disabled until the 十三么 player
   wins, sends `過`, or the window closes. The host relays `priority` registrations and
-  `priorityPass` messages and queues other presses in arrival order. Among multiple 十三幺 players,
+  `priorityPass` messages and queues other presses in arrival order. Among multiple 十三么 players,
   and among every other action, it is still strictly first-press-wins. Otherwise first valid claim
   wins; a claimant must discard before claiming again; timeout implicitly passes.
   `canDeclareClaim()` requires a 13-tile-equivalent hand with the rod home, no pending kong
   replacement or forced discard; `canDeclareMeld()` adds the four-meld limit.
   Delayed AI claims are revalidated at execution for the same conditions and recomputed as wins.
   Opponent claim boxes include a local `過` button that marks that box `passed` and hides it; it
-  never cancels AI or other seats' claims on the same discard. A 十三幺 candidate's `過` is also
+  never cancels AI or other seats' claims on the same discard. A 十三么 candidate's `過` is also
   sent to the host and relayed to every device, because it releases the blocked claims.
   `claimFromBox()` also ignores a passed box. A 胡 never enters the wait-for-ruling path: it calls
   `commitWin()` at once, settling locally and broadcasting `{t:'win'}` so every device ends the
@@ -432,7 +432,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 - The HUD opens with one bar: **設定 → 玩法說明 → 表情** on the left, a large centered timer,
   and **計分 + round block** on the right. The round block stacks `X風第 X 局・X 圈` above
   counters that read only 門風 and 資金 (with a `$` prefix); 巡, 番數 and 最佳 are not shown
-  during play. The main menu appears before any lobby or game starts and shows a legal 十三幺
+  during play. The main menu appears before any lobby or game starts and shows a legal 十三么
   winning hand (all 13 orphans plus one duplicate), but no fan record line. The 設定 panel keeps only
   player name, two switches (背景音樂, 音效與語音), 主音量, 音樂音量, 重來這局 and 回到主選單 —
   鉤速 (default 1.0×) and

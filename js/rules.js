@@ -42,7 +42,7 @@ export const FAN_VALUES = Object.freeze({
   '槓上開花': 2,
   '搶槓': 1,          // 聽牌者搶別家槓出的牌；被搶者視作出銃
   '混一色': 3,
-  '花幺九': 4,        // 香港麻雀總例：花么 1 番另加對對糊 3 番
+  '花么九': 4,        // 香港麻雀總例：花么 1 番另加對對糊 3 番
   '小三元': 5,
   '小四喜': 10,
   '清一色': 7,
@@ -53,10 +53,10 @@ export const FAN_VALUES = Object.freeze({
   '連槓開花': 10,
   '大花糊': 10,       // 八仙過海，已含自摸
   '字一色': 10,
-  '清幺九': 10,
+  '清么九': 10,
   '九子連環': 10,
   '大四喜': 10,
-  '十三幺': 10,
+  '十三么': 10,
   '十八羅漢': 10,
   '綠一色': 10,       // 自訂牌型
   '藍一色': 10,       // 自訂牌型
@@ -110,7 +110,7 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
-    id: '搶槓', fan: 1, desc: '聽牌時別家槓出自己所聽之牌即可胡牌並加 1 番；暗槓只有十三幺可搶，被搶槓者視作出銃。',
+    id: '搶槓', fan: 1, desc: '聽牌時別家槓出自己所聽之牌即可胡牌並加 1 番；暗槓只有十三么可搶，被搶槓者視作出銃。',
     example: {
       concealed: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'p2', 'p3', 'p4', 's7', 's8', 's9', 'p9', 'p9'],
       melds: [],
@@ -122,7 +122,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['m1', 'm1', 'm1', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'E', 'E', 'E', 'S', 'S'], melds: [], context: {} },
   },
   {
-    id: '花幺九', fan: 4, desc: '全部由幺九牌及字牌的刻子／槓子與一對將組成；基本 1 番另加對對糊 3 番，合計 4 番（香港麻雀協會《香港麻雀總例》稱「花么」）。',
+    id: '花么九', fan: 4, desc: '全部由么九牌及字牌的刻子／槓子與一對將組成；基本 1 番另加對對糊 3 番，合計 4 番（香港麻雀協會《香港麻雀總例》稱「花么」）。',
     example: { concealed: ['m1', 'm1', 'm1', 'p9', 'p9', 'p9', 's1', 's1', 's1', 'E', 'E', 'E', 'C', 'C'], melds: [], context: {} },
   },
   {
@@ -169,11 +169,11 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
-    id: '字一色', fan: 10, desc: '全部由字牌組成（香港麻雀協會《香港麻雀總例》稱「全番子」；已含花幺九、對對糊與場風／門風番子）。',
+    id: '字一色', fan: 10, desc: '全部由字牌組成（香港麻雀協會《香港麻雀總例》稱「全番子」；已含花么九、對對糊與場風／門風番子）。',
     example: { concealed: ['E', 'E', 'E', 'S', 'S', 'S', 'W', 'W', 'W', 'C', 'C', 'C', 'B', 'B'], melds: [], context: {} },
   },
   {
-    id: '清幺九', fan: 10, desc: '全部由各花色的幺九牌（一、九）組成，不含字牌。',
+    id: '清么九', fan: 10, desc: '全部由各花色的么九牌（一、九）組成，不含字牌。',
     example: { concealed: ['m1', 'm1', 'm1', 'p1', 'p1', 'p1', 's9', 's9', 's9', 'm9', 'm9', 'm9', 'p9', 'p9'], melds: [], context: {} },
   },
   {
@@ -209,7 +209,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['E', 'E', 'E', 'S', 'S', 'S', 'W', 'W', 'W', 'N', 'N', 'N', 'C', 'C'], melds: [], context: {} },
   },
   {
-    id: '十三幺', fan: 10, desc: '集齊六種么九牌及七種字牌牌，再加其中一張。',
+    id: '十三么', fan: 10, desc: '集齊六種么九牌及七種字牌牌，再加其中一張。',
     example: { concealed: ['m1', 'm9', 'p1', 'p9', 's1', 's9', 'E', 'S', 'W', 'N', 'C', 'F', 'B', 'B'], melds: [], context: {} },
   },
   {
@@ -281,16 +281,16 @@ const BONUS_IDS = new Set([
  */
 export const ABSORBS = Object.freeze({
   '九子連環': ['清一色', '門前清'],
-  '十三幺': ['門前清'],
+  '十三么': ['門前清'],
   '七對子': ['門前清'],
   '天胡': ['自摸', '門前清'],
   '地胡': ['自摸', '門前清'],
   '人胡': ['自摸', '門前清'],
   '坎坎胡': ['對對糊', '門前清'],
   '十八羅漢': ['對對糊'],
-  '花幺九': ['對對糊'],
-  '清幺九': ['花幺九', '對對糊'],
-  '字一色': ['花幺九', '對對糊', '番子:SEAT', '番子:ROUND'],
+  '花么九': ['對對糊'],
+  '清么九': ['花么九', '對對糊'],
+  '字一色': ['花么九', '對對糊', '番子:SEAT', '番子:ROUND'],
   '大四喜': ['對對糊', '小四喜', '番子:SEAT', '番子:ROUND'],
   '小四喜': ['混一色'],
   '大三元': ['小三元', '番子:C', '番子:F', '番子:B'],
@@ -434,7 +434,7 @@ function isSpecialHand(concealed, melds) {
     && concealed.length === 2 && concealed[0] === concealed[1];
 }
 
-/** Transitive absorbed sub-patterns, e.g. 清幺九 → 花幺九 → 對對糊. */
+/** Transitive absorbed sub-patterns, e.g. 清么九 → 花么九 → 對對糊. */
 function expandAbsorbed(id, visiting = new Set()) {
   if (visiting.has(id)) return [];
   visiting.add(id);
@@ -512,7 +512,7 @@ function evaluateDecomposition(concealed, groups, melds, context) {
 
   // 極高番牌型先判定；之後仍然檢查其餘牌型。預設不設番數上限。
   if (melds.length === 4 && melds.every((m) => m.type === 'kong') && pair && pair[0] === pair[1]) add('十八羅漢');
-  if (melds.length === 0 && isThirteenOrphans(concealed)) add('十三幺');
+  if (melds.length === 0 && isThirteenOrphans(concealed)) add('十三么');
   if (melds.length === 0 && isNineGates(concealed)) add('九子連環');
 
   const windPungs = sets.filter((s) => isPung(s) && WINDS.includes(s.tiles[0]));
@@ -529,7 +529,7 @@ function evaluateDecomposition(concealed, groups, melds, context) {
     && !dragonPungTiles.has(pair[0])) add('小三元');
   if (melds.length === 0 && isSevenPairs(concealed)) add('七對子');
   if (sets.length === 4 && allTiles.every((t) => TILE_INFO[t].isHonor)) add('字一色');
-  if (sets.length === 4 && allTiles.every((t) => TERMINALS.includes(t))) add('清幺九');
+  if (sets.length === 4 && allTiles.every((t) => TERMINALS.includes(t))) add('清么九');
   if (sets.length === 4 && allTiles.every((t) => GREEN_TILES.has(t))) add('綠一色');
   if (sets.length === 4 && allTiles.every((t) => BLUE_TILES.has(t))) add('藍一色');
 
@@ -552,7 +552,7 @@ function evaluateDecomposition(concealed, groups, melds, context) {
   else if (suits.size === 1 && hasHonor) add('混一色');
 
   if (sets.length === 4 && sets.every(isPung)
-      && allTiles.every((t) => TERMINALS.includes(t) || TILE_INFO[t].isHonor)) add('花幺九');
+      && allTiles.every((t) => TERMINALS.includes(t) || TILE_INFO[t].isHonor)) add('花么九');
 
   // Always generate one 番子 per dragon pung and per seat/round wind pung;
   // overlapping big patterns absorb them later via resolveOverlaps().
@@ -880,10 +880,10 @@ function hasSequenceNeighbour(counts, id) {
  * Ranked candidate tiles for the AI fish assist.
  *
  * `wins` complete a hand right now — findWaits() runs the full evaluator, so
- * this already covers 十三幺、七對子、綠一色、藍一色、九子連環 and every
+ * this already covers 十三么、七對子、綠一色、藍一色、九子連環 and every
  * ordinary pattern. `flowers` advances 花糊／大花糊, `kongs` completes a
  * concealed kong, and `progress` advances any other pattern family: pairs and
- * pungs (七對子／對對糊), sequences, 十三幺, the colour/honour/terminal hands
+ * pungs (七對子／對對糊), sequences, 十三么, the colour/honour/terminal hands
  * and the one-suit hands.
  *
  * This deliberately uses cheap tile counts instead of repeated shanten() calls:

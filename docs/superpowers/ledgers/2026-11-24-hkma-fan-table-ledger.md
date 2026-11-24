@@ -21,7 +21,7 @@
 
 - Task 1 changes only data in `js/rules.js` (`FAN_VALUES`, `PATTERN_TABLE`) and assertions in `tests/rules.test.mjs`.
 - No export signatures change. `FAN_CAP` stays `Infinity`.
-- Task 2 consumes the new `自訂牌型` category and `花幺九 4 番`; it does not change logic.
+- Task 2 consumes the new `自訂牌型` category and `花么九 4 番`; it does not change logic.
 - Task 3 changes only presentation in `js/tiles.js` / `css/style.css` plus the `js/game.js` import cachebust; no gameplay interfaces.
 - Task 4 changes docs only and performs verification/deploy.
 - Conflicts found: none. Sequence Tasks 1 → 2 → 3 → 4 is valid.
@@ -39,7 +39,7 @@
 - 2026-11-24: Native OpenCode worktree creation failed twice; git worktree fallback created `hkma-fan-table` from `0404438`; session moved into it.
 - 2026-11-24: Loaded `executing-plans`, `using-git-worktrees`, `test-driven-development`. No prior ledger found.
 - 2026-11-24: Interface pre-flight completed; no conflicts.
-- 2026-11-24: Task 1 RED observed (62/64; 人胡 desc, 花幺九 desc/category, T3 total). GREEN after `js/rules.js` data changes: 64/12/2 passing; four `node --check` and `git diff --check` clean.
+- 2026-11-24: Task 1 RED observed (62/64; 人胡 desc, 花么九 desc/category, T3 total). GREEN after `js/rules.js` data changes: 64/12/2 passing; four `node --check` and `git diff --check` clean.
 - 2026-11-24: Task 2 static-check RED (`要有派彩表標題`) then GREEN. Browser check on port 8124 with fresh `?test=1&v=1.4.96-task2-c`: six `<li>`, payout rows 0–10 exact, four `自訂牌型` tags, no `特殊牌型`, no bottom 釣魚 button, `#helpFanTableBtn` focuses/scrolls to `#fanTableTitle`, HUD/canvas unchanged, no console errors/warnings, no overflow. `.gitignore` gap with main noted for final reconciliation.
 - 2026-11-24: Task 3 static-check RED (`要有 relative 定位`) then GREEN. Browser check on port 8124 with fresh `?test=1&v=1.4.96-task3-b`: solo game reached `AWAIT_CAST`; DOM tile bevel applied with `pointer-events:none` pseudo-element; canvas non-blank; no bottom 釣魚 button, no horizontal overflow; frames advanced 37→38; no console errors/warnings; no 4xx/5xx requests.
 - 2026-11-24: Task 4 docs synced across `README.md`, `CHANGELOG.md`, `AGENTS.md`, `CREDITS.md`; four `node --check`, suites 64/12/2 and `git diff --check` clean; stale-tag grep found only intentional test strings. Fresh browser check `?test=1&v=1.4.96-task4-b`: six `<li>`, exact 0–10 payout rows, four `自訂牌型` tags, no bottom 釣魚 button, DOM/canvas bevel visible, geometry unchanged, frames advancing, no 4xx/5xx requests; only a probe-induced `getImageData` warning.
