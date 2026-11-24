@@ -99,7 +99,7 @@ export const EMOJI_TO_ID = Object.fromEntries(
 export const BACK_ID = 'BACK';
 export const TILE_IMAGE_DIR = 'assets/tiles/faces';
 // Bump after replacing runtime faces so browsers reload them without a hard refresh.
-export const TILE_ASSET_VERSION = 6;
+export const TILE_ASSET_VERSION = 7;
 
 export function tileImagePath(id) {
   const suffix = `?v=${TILE_ASSET_VERSION}`;
@@ -177,34 +177,6 @@ export function drawTile(ctx, id, x, y, width, height, options = {}) {
     ctx.textBaseline = 'middle';
     ctx.fillText(emojiForTile(imageId), 0, 0);
   }
-  // Subtle bevel and highlight, drawn in the tile's own rotated/scaled space.
-  ctx.shadowColor = 'transparent';
-  ctx.shadowBlur = 0;
-  ctx.shadowOffsetY = 0;
-  const bevel = Math.min(width, height) * 0.08;
-  ctx.beginPath();
-  ctx.roundRect(-width / 2, -height / 2, width, height, bevel);
-  const sheen = ctx.createLinearGradient(-width / 2, -height / 2, width / 2, height / 2);
-  sheen.addColorStop(0, 'rgba(255, 255, 255, .28)');
-  sheen.addColorStop(0.42, 'rgba(255, 255, 255, 0)');
-  sheen.addColorStop(1, 'rgba(0, 0, 0, .14)');
-  ctx.fillStyle = sheen;
-  ctx.fill();
-  ctx.lineWidth = Math.max(1, width * 0.012);
-  ctx.strokeStyle = 'rgba(255, 255, 255, .35)';
-  ctx.beginPath();
-  ctx.moveTo(-width / 2 + bevel, -height / 2 + ctx.lineWidth / 2);
-  ctx.lineTo(width / 2 - bevel, -height / 2 + ctx.lineWidth / 2);
-  ctx.moveTo(-width / 2 + ctx.lineWidth / 2, -height / 2 + bevel);
-  ctx.lineTo(-width / 2 + ctx.lineWidth / 2, height / 2 - bevel);
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(0, 0, 0, .18)';
-  ctx.beginPath();
-  ctx.moveTo(-width / 2 + bevel, height / 2 - ctx.lineWidth / 2);
-  ctx.lineTo(width / 2 - bevel, height / 2 - ctx.lineWidth / 2);
-  ctx.moveTo(width / 2 - ctx.lineWidth / 2, -height / 2 + bevel);
-  ctx.lineTo(width / 2 - ctx.lineWidth / 2, height / 2 - bevel);
-  ctx.stroke();
   ctx.restore();
 }
 

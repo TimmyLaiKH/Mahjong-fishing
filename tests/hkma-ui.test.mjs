@@ -1,7 +1,7 @@
 /* Static checks for tracked text files. Run: node tests/hkma-ui.test.mjs */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { sortPatternRows } from '../js/rules.js';
 
 let passed = 0;
@@ -60,6 +60,27 @@ test('自訂牌型排在牌型表最底', () => {
   ];
   assert.deepEqual(sortPatternRows(rows).map((r) => r.id),
     ['平糊', '花糊', '七對子', '人胡']);
+});
+
+test('牌圖版本已升級且沒有雙重立體疊圖', () => {
+  const tiles = readFileSync('js/tiles.js', 'utf8');
+  const css = readFileSync('css/style.css', 'utf8');
+  assert.match(tiles, /TILE_ASSET_VERSION = 7;/);
+  assert.doesNotMatch(tiles, /createLinearGradient\(-width \/ 2, -height \/ 2/);
+  assert.doesNotMatch(css, /\.tile-img:not\(\.tile-fallback\)::before/);
+  assert.equal(statSync('scripts/restyle_tiles.py').isFile(), true);
+});
+
+test('43 張牌圖都是 RGBA 144x205', () => {
+  const files = readdirSync('assets/tiles/faces').filter((f) => f.endsWith('.png'));
+  assert.equal(files.length, 43);
+  for (const file of files) {
+    const buf = readFileSync(`assets/tiles/faces/${file}`);
+    assert.equal(buf.subarray(1, 4).toString(), 'PNG');
+    assert.equal(buf.readUInt32BE(16), 144, file);
+    assert.equal(buf.readUInt32BE(20), 205, file);
+    assert.equal(buf[25], 6, `${file} must be RGBA`);
+  }
 });
 
 console.log(`結果：${passed} 通過，${failed} 失敗`);
