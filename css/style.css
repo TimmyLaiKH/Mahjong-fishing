@@ -551,6 +551,23 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
 .jump-btn { background: #fff; color: #8c1d1d; border-color: #8c1d1d; padding: 5px 10px; font-size: 0.9em; }
 .jump-btn:hover { background: #fff3e0; }
 .close-btn { background: #c62828; color: #fff; border: none; }
+.help-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #e0c8a0;
+}
+.help-tab {
+  padding: 6px 14px;
+  font-weight: 700;
+  color: #8c1d1d;
+  background: #fffaf0;
+  border-color: #c62828;
+}
+.help-tab:hover { background: #fff3e0; }
+.help-tab.active { background: #8c1d1d; color: #fff; }
+.help-tab-panel[hidden] { display: none; }
 .modal-card p { margin: 0.5em 0; }
 .modal-card a { color: #8c1d1d; }
 .modal-card a:hover { color: #c62828; }

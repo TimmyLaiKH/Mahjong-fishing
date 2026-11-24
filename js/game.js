@@ -6285,9 +6285,29 @@ function showOverlay({
 function openModal(id) { el(id)?.classList.add('show'); }
 function closeModal(id) { el(id)?.classList.remove('show'); }
 
-/** Scroll inside the help card so the pattern table is reachable on phones
- *  without dragging past all six explanation items. */
+/** Show one section of 玩法說明 and reset its scroll position. */
+function switchHelpTab(name) {
+  const panel = el('helpPanel');
+  const tab = panel?.querySelector(`[data-help-tab="${name}"]`);
+  if (!panel || !tab) return;
+  for (const button of panel.querySelectorAll('[data-help-tab]')) {
+    const active = button === tab;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  }
+  for (const section of panel.querySelectorAll('.help-tab-panel')) {
+    const active = section.id === tab.getAttribute('aria-controls');
+    section.hidden = !active;
+    section.setAttribute('aria-hidden', String(!active));
+  }
+  const card = panel.querySelector('.modal-card');
+  if (card) card.scrollTop = 0;
+}
+
+/** Switch to the pattern table and scroll inside the help card so its heading
+ *  is reachable on phones without dragging through the rules list. */
 function jumpToFanTable() {
+  switchHelpTab('patterns');
   const card = el('helpPanel')?.querySelector('.modal-card');
   const title = el('fanTableTitle');
   if (!card || !title) return;
@@ -6573,11 +6593,14 @@ function wireInput() {
     });
   }
   ui.roomGameDurationText.addEventListener('change', commitRoomDurationText);
-  el('menuHelp').addEventListener('click', () => openModal('helpPanel'));
+  el('menuHelp').addEventListener('click', () => { switchHelpTab('rules'); openModal('helpPanel'); });
   el('menuSettings').addEventListener('click', () => openModal('settingsPanel'));
   el('menuCredits').addEventListener('click', () => openModal('creditsPanel'));
   el('restartBtn').addEventListener('click', () => { closeTopModal(); requestRestart(); });
-  el('helpBtn').addEventListener('click', () => openModal('helpPanel'));
+  el('helpBtn').addEventListener('click', () => { switchHelpTab('rules'); openModal('helpPanel'); });
+  for (const button of el('helpPanel').querySelectorAll('[data-help-tab]')) {
+    button.addEventListener('click', () => switchHelpTab(button.dataset.helpTab));
+  }
   el('helpFanTableBtn')?.addEventListener('click', jumpToFanTable);
   el('settingsBtn').addEventListener('click', () => openModal('settingsPanel'));
   ui.emojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.emojiBtn));
