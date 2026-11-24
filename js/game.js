@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult,
-} from './rules.js?v=1.4.91';
+} from './rules.js?v=1.4.92';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -55,7 +55,7 @@ const ui = {
   roomStartingMoney: el('roomStartingMoney'), roomStartingMoneyText: el('roomStartingMoneyText'),
   roomStartingMoneyValue: el('roomStartingMoneyValue'),
   roomWinds: el('roomWinds'), roomBase: el('roomBase'), roomBaseText: el('roomBaseText'),
-  roomBaseValue: el('roomBaseValue'), roomMinFan: el('roomMinFan'),
+  roomBaseValue: el('roomBaseValue'), roomMinFan: el('roomMinFan'), roomFanCap: el('roomFanCap'),
   roomStart: el('roomStart'), roomLeave: el('roomLeave'), roomMessage: el('roomMessage'),
   settingsMusic: el('settingsMusic'), settingsSound: el('settingsSound'),
   mainVolume: el('mainVolume'), mainVolumeValue: el('mainVolumeValue'),
@@ -125,10 +125,13 @@ const MIN_BASE = 1;
 const MAX_BASE = 100;
 const DEFAULT_BASE = 1;
 // 起糊 is a room rule: 0 means no minimum, otherwise a hand must reach this
-// many fan. The host picks 0–13 before the first deal.
+// many fan. The host picks 0–10 before the first deal; 3 is the default.
 const MIN_MIN_FAN = 0;
-const MAX_MIN_FAN = 13;
-const DEFAULT_MIN_FAN = 0;
+const MAX_MIN_FAN = 10;
+const DEFAULT_MIN_FAN = 3;
+/** Fan cap is also a room rule. Infinity cannot cross PeerJS, so the shared
+ *  setting stores a boolean and each device derives its own local cap. */
+const DEFAULT_FAN_CAP_TEN = true;
 /** One storage key holds both volumes: master first, music-only second. */
 const DEFAULT_MAIN_VOLUME = 0.32;
 const DEFAULT_MUSIC_VOLUME = 1;
@@ -179,13 +182,13 @@ const game = {
   fanTotal: readNumber('mf-fantotal'),
   matchSetup: {
     startingMoney: DEFAULT_STARTING_MONEY, winds: DEFAULT_WINDS, base: DEFAULT_BASE,
-    minFan: DEFAULT_MIN_FAN,
+    minFan: DEFAULT_MIN_FAN, fanCapTen: DEFAULT_FAN_CAP_TEN,
   },
   match: null,              // created by resetMatch(); authoritative on the host
   settings: {
     ...readSoundSettings(),
     ...readVolumeSettings(),
-    fanCap: Infinity,
+    fanCap: fanCapFromSetup({ fanCapTen: DEFAULT_FAN_CAP_TEN }),
     gameSeconds: readGameSeconds(),
   },
   hookSpeed: Math.min(2, Math.max(0.5, readNumberWithDefault('mf-hookspeed', 1))),
@@ -215,7 +218,7 @@ const game = {
   roomSettings: {
     hookSpeed: 1, gameSeconds: GAME_SECONDS,
     startingMoney: DEFAULT_STARTING_MONEY, winds: DEFAULT_WINDS, base: DEFAULT_BASE,
-    minFan: DEFAULT_MIN_FAN,
+    minFan: DEFAULT_MIN_FAN, fanCapTen: DEFAULT_FAN_CAP_TEN,
   },
   claimBoxes: [],           // multiplayer claim slots (one per recent discard / kong)
   claimedKeys: new Set(),   // solo: one AI claim per played tile
@@ -340,12 +343,23 @@ function clampInt(value, min, max, fallback) {
   return Math.min(max, Math.max(min, Math.round(number)));
 }
 
+/** Only a finite number may cross PeerJS: `false` means unlimited, anything
+ *  else (including older snapshots) keeps the new 10-fan default. */
+function fanCapFromSetup(setup = game.matchSetup) {
+  return setup?.fanCapTen === false ? Infinity : 10;
+}
+
+function applyFanCap(setup = game.matchSetup) {
+  game.settings.fanCap = fanCapFromSetup(setup);
+}
+
 function normalizeMatchSetup(source = {}) {
   return {
     startingMoney: clampInt(source.startingMoney, MIN_STARTING_MONEY, MAX_STARTING_MONEY, DEFAULT_STARTING_MONEY),
     winds: clampInt(source.winds, MIN_WINDS, MAX_WINDS, DEFAULT_WINDS),
     base: clampInt(source.base, MIN_BASE, MAX_BASE, DEFAULT_BASE),
     minFan: clampInt(source.minFan, MIN_MIN_FAN, MAX_MIN_FAN, DEFAULT_MIN_FAN),
+    fanCapTen: source.fanCapTen !== false,
   };
 }
 
@@ -361,6 +375,7 @@ function moneyText(value) {
 function resetMatch(setup = game.matchSetup, dealerSeat = null) {
   const settings = normalizeMatchSetup(setup);
   game.matchSetup = settings;
+  applyFanCap(settings);
   const money = Array.from({ length: 4 }, () => settings.startingMoney);
   game.match = {
     ...settings,
@@ -386,6 +401,7 @@ function cloneMatch(match = game.match) {
   return {
     startingMoney: match.startingMoney, winds: match.winds, base: match.base,
     minFan: clampInt(match.minFan, MIN_MIN_FAN, MAX_MIN_FAN, DEFAULT_MIN_FAN),
+    fanCapTen: match.fanCapTen !== false,
     money: [...match.money], dealerSeat: match.dealerSeat,
     repeatCount: match.repeatCount, handNumber: match.handNumber,
     history: match.history.map((entry) => ({ ...entry })),
@@ -398,6 +414,7 @@ function cloneMatch(match = game.match) {
 function adoptMatch(data) {
   if (!data || !Array.isArray(data.money) || data.money.length !== 4) return;
   game.matchSetup = normalizeMatchSetup(data);
+  applyFanCap(game.matchSetup);
   game.match = {
     ...game.matchSetup,
     money: data.money.map((value) => Math.round(Number(value) || 0)),
@@ -438,6 +455,7 @@ function seatZeroWind(match = game.match) {
 function applyMatchSetup(setup) {
   const normalized = normalizeMatchSetup(setup);
   game.matchSetup = normalized;
+  applyFanCap(normalized);
   if (game.match && game.match.handNumber === 0 && !game.match.history.length) {
     resetMatch(normalized, game.match.dealerSeat);
   }
@@ -907,7 +925,7 @@ function startGame({ keepTurn = false, preset = null } = {}) {
 
 /** Resume the normal opening flow after a declined seven-flower win. */
 function continueAfterOpeningFlowerDecline() {
-  // 天胡：莊家補花後的 14 張起手牌若已胡牌，直接以 13 番例牌結局。
+  // 天胡：莊家補花後的 14 張起手牌若已胡牌，直接以 10 番例牌結局。
   if (checkInitialSelfDraw()) return;
   prepareAiDealerOpening();
 
@@ -3374,6 +3392,7 @@ function renderRoom() {
     ui.roomBaseText.value = String(setup.base);
   }
   if (ui.roomMinFan) ui.roomMinFan.value = String(setup.minFan);
+  if (ui.roomFanCap) ui.roomFanCap.value = setup.fanCapTen ? '10' : 'infinite';
   if (ui.roomAvatars) {
     ui.roomAvatars.innerHTML = '';
     const players = game.players.length ? game.players : defaultRoomPlayers();
@@ -3431,6 +3450,9 @@ function currentRoomMatchSetup() {
     winds: ui.roomWinds?.value ?? game.matchSetup.winds,
     base: ui.roomBase?.value ?? game.matchSetup.base,
     minFan: ui.roomMinFan?.value ?? game.matchSetup.minFan,
+    fanCapTen: ui.roomFanCap
+      ? ui.roomFanCap.value !== 'infinite'
+      : game.matchSetup.fanCapTen,
   });
 }
 
@@ -3509,7 +3531,7 @@ function startRoomGame() {
 
 function startMultiGame() {
   if (game.mode !== 'multi' || !net.isHost) return;
-  // A fresh match uses the settings chosen in the room, including 起糊.
+  // A fresh match uses the settings chosen in the room, including 起糊 and 上限番數.
   if (game.match?.over) resetMatch(game.matchSetup);
   fillEmptySeatsWithBots();
   const seatWind = seatZeroWind(game.match);
@@ -3537,7 +3559,10 @@ function applyMultiStart(msg) {
   game.pendingMultiStart = msg;
   game.roomSettings = { ...msg.settings };
   if (msg.match) adoptMatch(msg.match);
-  else game.matchSetup = normalizeMatchSetup(msg.settings);
+  else {
+    game.matchSetup = normalizeMatchSetup(msg.settings);
+    applyFanCap(game.matchSetup);
+  }
   game.hookSpeed = msg.settings.hookSpeed;
   game.settings.gameSeconds = msg.settings.gameSeconds;
   game.rematchVotes = [];
@@ -6201,6 +6226,12 @@ function buildPatternTable() {
     const tr = document.createElement('tr');
     const name = document.createElement('td');
     name.textContent = pattern.id;
+    if (pattern.category) {
+      const tag = document.createElement('span');
+      tag.className = 'pattern-category';
+      tag.textContent = pattern.category;
+      name.appendChild(tag);
+    }
     const desc = document.createElement('td');
     desc.textContent = pattern.desc;
     const fan = document.createElement('td');
@@ -6403,6 +6434,7 @@ function wireInput() {
   ui.roomWinds?.addEventListener('change', updateRoomSettings);
   ui.roomBase?.addEventListener('input', updateRoomSettings);
   ui.roomMinFan?.addEventListener('change', updateRoomSettings);
+  ui.roomFanCap?.addEventListener('change', updateRoomSettings);
   ui.roomStartingMoneyText?.addEventListener('change', commitRoomMoneyText);
   ui.roomBaseText?.addEventListener('change', commitRoomBaseText);
   for (const [input, commit] of [

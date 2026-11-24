@@ -91,7 +91,7 @@ not keep stale sounds or scoring.
   revealed in the HUD flower panel, never enter the concealed hand, and never auto-replace a
   tile. Seat mapping is 東＝春/梅, 南＝夏/蘭, 西＝秋/菊, 北＝冬/竹. A full season or plant
   series gives 一檯花 (2) and suppresses that series' own 正花. 七花＝花糊 (3, includes 自摸),
-  八花＝大花糊 (8); 七花 can be declined, after which only 八花 wins immediately and a later
+  八花＝大花糊 (10); 七花 can be declined, after which only 八花 wins immediately and a later
   hand win adds 花糊. 七對子 is never called 花糊. All flower patterns count distinct IDs only:
   一檯花 needs all four seasons or all four plants, 花糊 needs seven distinct flowers and 大花糊
   needs all eight; duplicates never complete a set.
@@ -105,7 +105,7 @@ not keep stale sounds or scoring.
   claim wins pass `selfDraw: false`. 門前清 only needs no meld at all — 碰／上／明槓／暗槓 break it,
   but winning off a discard still counts. 九子連環 may be claimed from another player's discard
   while still 門前清; it still never adds 自摸 (門前清 is absorbed by the limit hand). 坎坎胡 also
-  requires no melds and is 13 fan, but a discard claim only counts when the claimed tile completes
+  requires no melds and is 10 fan, but a discard claim only counts when the claimed tile completes
   the 單騎 pair; claiming a completed triplet downgrades to 對對糊 and still scores 門前清. 搶槓 is a
   claim-only 1-fan bonus; 明槓 may be robbed by any winning hand and 暗槓 only by 十三幺, with the
   kong declarer as 出銃 and the kong plus its replacement draw cancelled. A win after a kong keeps
@@ -114,16 +114,20 @@ not keep stale sounds or scoring.
   three payers. 補花 may not sit between kongs: a flower caught while a replacement is pending ends
   the chain, so the next ordinary tile is no longer a kong replacement.
 - **Opening wins.** The dealer starts with 14 tiles and checks 天胡; other seats are dealt exactly
-  13 and fish immediately, with no virtual fourteenth tile. 人胡 (13 fan) is a non-dealer's first
+  13 and fish immediately, with no virtual fourteenth tile. 人胡 (10 fan) is a non-dealer's first
   fished non-flower tile; a flower caught first is only revealed and does not burn the chance.
-  地胡 (13 fan) is a non-dealer claiming the dealer's first discard of the hand. All three include
+  地胡 (10 fan) is a non-dealer claiming the dealer's first discard of the hand. All three include
   自摸 and 門前清 where applicable; dealt-flower wins still apply to every seat. Dealt seven flowers,
   or seven flowers completed on the first 補花, also score 天胡 for the dealer and 地胡 for a
   non-dealer; flowers caught after a kong only score 槓上開花／連槓開花.
 - **海底撈月.** Any win with `game.timeLeft <= 5` gains 1 fan, self-draw or claim; 自摸 is
   added separately when applicable, but 槓上開花／連槓開花 excludes 海底撈月. No wall needs to be empty.
-- **Fan cap stays `Infinity`.** `FAN_CAP` and default behaviour never change. `context.fanCap`
-  is only an internal/test override. There is no 番數上限 UI and no separate point system.
+- **Engine fan cap stays `Infinity`.** `FAN_CAP` never changes and `context.fanCap` remains an
+  internal/test override, but the room host picks 上限番數 before the deal: 10 (default) or 無限.
+  `Infinity` cannot cross PeerJS, so room/match snapshots carry only the boolean `fanCapTen`
+  (`false` = 無限) and every device derives `game.settings.fanCap = 10` or `Infinity` locally.
+  All evaluate/withFlowers/flowerWinResult calls already read that local cap. There is no separate
+  point system.
 - **Player-facing strings are contractual.** Waiting-to-cast status is exactly
   `拋竿釣起你需要的牌吧！(點擊屏幕)`. Other fixed strings include `房主已離開`,
   `房主已離開，請重新開房間`, `房間已滿，請換一個房間。`,
@@ -135,13 +139,14 @@ not keep stale sounds or scoring.
   explains the payout using 金額倍數 `B`: `V = 2^番 × B` for 番 ≤ 4, then every two 番 doubles with
   a 1.5× factor for odd 番; 出銃 pays `V`, 自摸 pays `V／2` each, 流局 pays nothing. 牌型一覽 lives
   inside it and is generated from `PATTERN_TABLE` + `FLOWER_PATTERN_TABLE`; every pattern needs a
-  validated `example` there. The closing footnote says
+  validated `example` there. Patterns carrying `category: '特殊牌型'` (七對子、綠一色、藍一色) get a
+  small 特殊牌型 tag in the name cell only; settlement and speech never show it. The closing footnote says
   `碰、上、槓才不計門前清，吃胡他人打出的牌仍可計門前清（但不計自摸）。`
 - **No bottom `釣魚` button.** Click/tap the canvas or press Space to cast. Hints are always on;
   terminology is 聽牌, not a hint toggle. Wait hints are advisory and never gate settlement: for
   each wait they show a claim-win `rawFan`: the real evaluate result with `selfDraw: false`,
   `haidi: false` and `kongReplacementChain: 0`, including 無花 1 fan, 門前清 1 fan when there is no
-  meld, and the full 坎坎胡 13 fan. If a self-draw of that tile reaches 起糊, the note is only
+  meld, and the full 坎坎胡 10 fan. If a self-draw of that tile reaches 起糊, the note is only
   `差 X 番，自摸才夠番`; otherwise the note is `差 X 番；可用…補番`, listing 花牌, 自摸, 海底撈月
   and kong bonuses. 門前清 is already included in claim `rawFan` when eligible, so it is not
   listed as a top-up. One declared kong (open or concealed) suggests 槓上開花 and two or more
@@ -174,7 +179,7 @@ Scoring notes:
   sub-pattern with fan `-base × (sharers - 1)`. Attach `includes` only for absorbed patterns that
   were actually scored, so a hand with a meld never shows 門前清 in the breakdown. `海底撈月` never
   absorbs `自摸`; `天胡`/`地胡`/`人胡` absorb 自摸+門前清; any meld (including 暗槓) suppresses
-  門前清, but a claim win no longer does. 坎坎胡 is 13 fan and also needs no melds. 平糊 allows an
+  門前清, but a claim win no longer does. 坎坎胡 is 10 fan and also needs no melds. 平糊 allows an
   honor-pair 將; 七對子 needs seven distinct pairs; 小四喜 absorbs 混一色. 槓上開花／連槓開花 suppress
   海底撈月. `字一色` absorbs 花幺九, 對對糊 and the seat/round 番子 pseudo-keys; `大四喜` still absorbs
   對對糊. A 番子-only hand is not 雞糊.
@@ -309,13 +314,17 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   opens a separate `重新開始投票` requiring all humans; anyone can cancel. Requester is stored as
   a seat so `你` appears only on that device; each seat is marked `（你）` in vote lists.
 - **Scoring integration.** `normalizeMatchSetup()` clamps money `1–100000000` (default 20),
-  winds `1–4` (default 1), the UI-named 金額倍數 `1–100` (default 1×) and 起糊 `minFan` `0–13`
-  (default 0 = no minimum). `qualifyingWin()` is the only game-side 起糊 gate: every self-draw,
+  winds `1–4` (default 1), the UI-named 金額倍數 `1–100` (default 1×), 起糊 `minFan` `0–10`
+  (default 3) and the serialisable cap flag `fanCapTen` (default `true` = 10 番; `false` = 無限).
+  `fanCapFromSetup()` / `applyFanCap()` derive the local `game.settings.fanCap` in
+  `resetMatch()`, `adoptMatch()` and `applyMatchSetup()`; `cloneMatch()` emits `fanCapTen`, never
+  `Infinity`. `qualifyingWin()` is the only game-side 起糊 gate: every self-draw,
   claim, flower and AI win decision calls it, so a hand below the chosen minimum is never offered
   or settled; 0 keeps the original behaviour. `handleClaim()` never silently drops a 胡 just
   because the host's claim box expired in transit: only a tile already claimed by another seat is
   rejected, so latency cannot leave the hand running with no settlement. `minFan` rides in `roomSettings`, `matchSetup`,
-  `match`, `cloneMatch()` and `adoptMatch()`, so guests use the host's rule. `resetMatch()` builds
+  `match`, `cloneMatch()` and `adoptMatch()`, as does `fanCapTen`, so guests use the host's rules.
+  `resetMatch()` builds
   the four-purse runtime state; `cloneMatch()` /
   `adoptMatch()` snapshot it for the network. `recordRoundResult()` is the only settlement
   funnel: it checks `lastPayout.roundKey`, calls pure `settleRound()`, writes money/dealer/
@@ -463,7 +472,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `joinScreen` and `roomScreen` never do. The in-game 設定／玩法說明／計分 panels and the
   `重新開始投票` overlay are informational — they block input but not simulation. In-game
   `回到主選單` quits the round, clears pending prompts, sets `LOADING`, and shows the menu.
-  Settings must not mention AI or 番數上限; host hook speed and duration lock after start; both
+  The 設定 modal must not mention AI, 起糊 or 番數上限 — those live in the room lobby; host hook
+  speed and duration lock after start; both
   volume sliders save into `mf-volume`, and both switches save into `mf-sound`.
 - Exact waiting status, help count, pattern table source and no-bottom-button rules are listed
   under **Core game invariants**; keep them in sync with `index.html`.
@@ -522,7 +532,8 @@ Beyond syntax/tests:
   出銃/自摸, 連莊, dealer rotation, match winner and history are exact; settlements happen once.
 - 聯機: host controls sync to guests; guests see the same room layout with all host controls
   disabled, 開始遊戲 disabled and the `(由房主設定)` note; 起糊 syncs with the host and blocks
-  below-minimum wins; room join, full/dead room messages, start lock, rematch/restart votes,
+  below-minimum wins, and 上限番數 (10／無限) derives the same local cap on every device; room join,
+  full/dead room messages, start lock, rematch/restart votes,
   win/draw settlement and host disconnect behave as specified. Real two-device PeerJS WebRTC smoke tests are still pending; message-level/browser
   simulations are the current practical check.
 - Deployment: after push, fetch live assets with distinct cachebusts and confirm the new code is

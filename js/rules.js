@@ -15,7 +15,7 @@ export const DRAGONS = ['C', 'F', 'B'];
 export const TERMINALS = ['m1', 'm9', 'p1', 'p9', 's1', 's9'];
 export const ORPHANS = [...TERMINALS, ...WINDS, ...DRAGONS];
 
-// Custom 13-fan colour hands from the HK fan table.
+// Custom 10-fan colour hands from the HK fan table.
 const GREEN_TILES = new Set(['s2', 's3', 's4', 's6', 's8', 'F']);
 const BLUE_TILES = new Set(['E', 'S', 'W', 'N', 'B', 'p8']);
 
@@ -42,27 +42,27 @@ export const FAN_VALUES = Object.freeze({
   '槓上開花': 2,
   '搶槓': 1,          // 聽牌者搶別家槓出的牌；被搶者視作出銃
   '混一色': 3,
-  '花幺九': 4,
+  '花幺九': 5,        // 2 番另加對對糊 3 番
   '小三元': 5,
-  '小四喜': 6,
+  '小四喜': 10,
   '清一色': 7,
-  '七對子': 3,        // 香港稱「嚦咕嚦咕」，不要再叫「花糊」
+  '七對子': 3,        // 特殊牌型；香港稱「嚦咕嚦咕」，不要再叫「花糊」
   '大三元': 8,
-  '坎坎胡': 13,
+  '坎坎胡': 10,
   '對對糊': 3,         // 只有刻子的牌型；坎坎胡不另計此項
-  '連槓開花': 8,
-  '大花糊': 8,        // 八仙過海，已含自摸
+  '連槓開花': 10,
+  '大花糊': 10,       // 八仙過海，已含自摸
   '字一色': 10,
   '清幺九': 10,
   '九子連環': 10,
-  '大四喜': 13,
-  '十三幺': 13,
-  '十八羅漢': 13,
-  '綠一色': 13,
-  '藍一色': 13,
-  '天胡': 13,        // 開局補花後立即自摸，必為門前清，不再另計自摸
-  '地胡': 13,        // 閒家食莊家開局第一隻打出牌，不再另計自摸
-  '人胡': 13,        // 閒家開局第一釣自摸，必為門前清，不再另計自摸
+  '大四喜': 10,
+  '十三幺': 10,
+  '十八羅漢': 10,
+  '綠一色': 10,       // 特殊牌型
+  '藍一色': 10,       // 特殊牌型
+  '天胡': 10,        // 開局補花後立即自摸，必為門前清，不再另計自摸
+  '地胡': 10,        // 閒家食莊家開局第一隻打出牌，不再另計自摸
+  '人胡': 10,        // 閒家開局第一釣自摸，必為門前清，不再另計自摸
 });
 
 /** No upper limit: a hand keeps every fan it scores. */
@@ -122,7 +122,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['m1', 'm1', 'm1', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'E', 'E', 'E', 'S', 'S'], melds: [], context: {} },
   },
   {
-    id: '花幺九', fan: 4, desc: '全部由幺九牌及字牌的刻子／槓子與一對將組成（已含對對糊）。',
+    id: '花幺九', fan: 5, desc: '全部由幺九牌及字牌的刻子／槓子與一對將組成；基本 2 番另加對對糊 3 番，合計 5 番。',
     example: { concealed: ['m1', 'm1', 'm1', 'p9', 'p9', 'p9', 's1', 's1', 's1', 'E', 'E', 'E', 'C', 'C'], melds: [], context: {} },
   },
   {
@@ -130,7 +130,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['C', 'C', 'C', 'F', 'F', 'F', 'B', 'B', 'm1', 'm2', 'm3', 'p4', 'p5', 'p6'], melds: [], context: {} },
   },
   {
-    id: '小四喜', fan: 6, desc: '三種不同風牌刻子加剩下一種風牌將。',
+    id: '小四喜', fan: 10, desc: '三種不同風牌刻子加剩下一種風牌將。',
     example: { concealed: ['E', 'E', 'E', 'S', 'S', 'S', 'W', 'W', 'W', 'N', 'N', 'm1', 'm2', 'm3'], melds: [], context: {} },
   },
   {
@@ -138,7 +138,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm2', 'm3', 'm4', 'm9', 'm9'], melds: [], context: {} },
   },
   {
-    id: '七對子', fan: 3, desc: '門前清七種不同牌各一對（又稱嚦咕嚦咕）；四張相同牌不能當兩對。',
+    id: '七對子', fan: 3, category: '特殊牌型', desc: '特殊牌型：門前清七種不同牌各一對（又稱嚦咕嚦咕）；四張相同牌不能當兩對。',
     example: { concealed: ['m1', 'm1', 'm3', 'm3', 'p2', 'p2', 'p7', 'p7', 's4', 's4', 'E', 'E', 'C', 'C'], melds: [], context: {} },
   },
   {
@@ -146,7 +146,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['C', 'C', 'C', 'F', 'F', 'F', 'B', 'B', 'B', 'm1', 'm2', 'm3', 'm9', 'm9'], melds: [], context: {} },
   },
   {
-    id: '坎坎胡', fan: 13, desc: '沒有碰、槓過的對對胡（又稱四暗刻；已含對對糊、門前清）。自摸成立；胡他人打出牌時必須是單騎。',
+    id: '坎坎胡', fan: 10, desc: '沒有碰、槓過的對對胡（又稱四暗刻；已含對對糊、門前清）。自摸成立；胡他人打出牌時必須是單騎。',
     example: { concealed: ['m1', 'm1', 'm1', 'p2', 'p2', 'p2', 's3', 's3', 's3', 'E', 'E', 'E', 'C', 'C'], melds: [], context: {} },
   },
   {
@@ -158,7 +158,7 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
-    id: '連槓開花', fan: 8, desc: '連續開兩次或以上槓後，補摸的第一張牌胡牌（已含槓上開花、自摸）。',
+    id: '連槓開花', fan: 10, desc: '連續開兩次或以上槓後，補摸的第一張牌胡牌（已含槓上開花、自摸）。',
     example: {
       concealed: ['m3', 'm3', 'm3', 's4', 's4', 's4', 'E', 'E'],
       melds: [
@@ -181,7 +181,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['m1', 'm1', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm9', 'm9', 'm5'], melds: [], context: {} },
   },
   {
-    id: '天胡', fan: 13, desc: '開局補花後立即自摸；必為門前清，不另計自摸。',
+    id: '天胡', fan: 10, desc: '開局補花後立即自摸；必為門前清，不另計自摸。',
     example: {
       concealed: ['m1', 'm1', 'm1', 'm2', 'm3', 'm4', 'p5', 'p6', 'p7', 's2', 's3', 's4', 'E', 'E'],
       melds: [],
@@ -189,7 +189,7 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
-    id: '地胡', fan: 13, desc: '開局後，閒家食莊家打出的第一隻牌。',
+    id: '地胡', fan: 10, desc: '開局後，閒家食莊家打出的第一隻牌。',
     example: {
       concealed: ['m1', 'm1', 'm1', 'm2', 'm3', 'm4', 'p5', 'p6', 'p7', 's2', 's3', 's4', 'E', 'E'],
       melds: [],
@@ -197,7 +197,7 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
-    id: '人胡', fan: 13, desc: '閒家於開局第一輪即自摸；必為門前清，不另計自摸。',
+    id: '人胡', fan: 10, desc: '閒家於開局第一輪即自摸；必為門前清，不另計自摸。',
     example: {
       concealed: ['m1', 'm1', 'm1', 'm2', 'm3', 'm4', 'p5', 'p6', 'p7', 's2', 's3', 's4', 'E', 'E'],
       melds: [],
@@ -205,15 +205,15 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
-    id: '大四喜', fan: 13, desc: '東南西北四組風牌刻子（已含小四喜、對對糊及場風、門風番子）。',
+    id: '大四喜', fan: 10, desc: '東南西北四組風牌刻子（已含小四喜、對對糊及場風、門風番子）。',
     example: { concealed: ['E', 'E', 'E', 'S', 'S', 'S', 'W', 'W', 'W', 'N', 'N', 'N', 'C', 'C'], melds: [], context: {} },
   },
   {
-    id: '十三幺', fan: 13, desc: '集齊六種么九牌及七種字牌牌，再加其中一張。',
+    id: '十三幺', fan: 10, desc: '集齊六種么九牌及七種字牌牌，再加其中一張。',
     example: { concealed: ['m1', 'm9', 'p1', 'p9', 's1', 's9', 'E', 'S', 'W', 'N', 'C', 'F', 'B', 'B'], melds: [], context: {} },
   },
   {
-    id: '十八羅漢', fan: 13, desc: '四個槓子加一對將。',
+    id: '十八羅漢', fan: 10, desc: '四個槓子加一對將。',
     example: {
       concealed: ['m1', 'm1'],
       melds: ['m2', 'm3', 'p4', 's5'].map((tile) => ({ tile, type: 'kong', tiles: [tile, tile, tile, tile] })),
@@ -221,11 +221,11 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
-    id: '綠一色', fan: 13, desc: '全部由二、三、四、六、八索或發財組成。',
+    id: '綠一色', fan: 10, category: '特殊牌型', desc: '特殊牌型：全部由二、三、四、六、八索或發財組成。',
     example: { concealed: ['s2', 's3', 's4', 's2', 's3', 's4', 's6', 's6', 's6', 'F', 'F', 'F', 's8', 's8'], melds: [], context: {} },
   },
   {
-    id: '藍一色', fan: 13, desc: '全部由東、南、西、北、白板或八筒組成。',
+    id: '藍一色', fan: 10, category: '特殊牌型', desc: '特殊牌型：全部由東、南、西、北、白板或八筒組成。',
     example: { concealed: ['E', 'E', 'E', 'S', 'S', 'S', 'W', 'W', 'W', 'B', 'B', 'B', 'p8', 'p8'], melds: [], context: { roundWind: 'E', seatWind: 'S' } },
   },
 ]);
@@ -256,7 +256,7 @@ export const FLOWER_PATTERN_TABLE = Object.freeze([
     example: { flowers: ['H1', 'H2', 'H3', 'H5', 'H6', 'H7', 'H8'] },
   },
   {
-    id: '大花糊', fan: 8, desc: '集齊八張花牌（八仙過海）即時胡牌，已計自摸。',
+    id: '大花糊', fan: 10, desc: '集齊八張花牌（八仙過海）即時胡牌，已計自摸。',
     example: { flowers: [...FLOWER_IDS] },
   },
 ]);

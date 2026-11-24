@@ -744,6 +744,17 @@ table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
 th, td { border: 1px solid #e0b4b4; padding: 6px 8px; text-align: left; vertical-align: middle; }
 th { background: #ffe4e4; white-space: nowrap; }
 td:last-child { min-width: 220px; }
+.pattern-category {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: #ffe4e4;
+  color: #8c1d1d;
+  font-size: 0.75em;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .example-tiles { display: flex; flex-wrap: wrap; gap: 2px; }
 .example-tiles .tile-img img { height: 26px; }
 .example-tiles .tile-img.fallback { font-size: 26px; }
