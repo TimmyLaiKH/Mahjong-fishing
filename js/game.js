@@ -12,9 +12,9 @@ import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
 import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
-  evaluateHand, findWaits, formatWinBreakdown,
+  evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult,
-} from './rules.js?v=1.4.88';
+} from './rules.js?v=1.4.89';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -139,6 +139,8 @@ const HOOK_BROADCAST_INTERVAL = 0.05;
 /** AI claims wait briefly so a nearby human press still wins the tile. */
 const AI_CLAIM_DELAY_MIN = 0.25;
 const AI_CLAIM_DELAY_RANGE = 0.6;
+/** 十三幺牌王 may register from any device before ordinary claims are released. */
+const PRIORITY_GRACE_MS = 250;
 
 const view = { scale: 1, width: REFERENCE_W, dpr: 1 };
 const game = {
@@ -214,8 +216,11 @@ const game = {
     startingMoney: DEFAULT_STARTING_MONEY, winds: DEFAULT_WINDS, base: DEFAULT_BASE,
     minFan: DEFAULT_MIN_FAN,
   },
-  claimBoxes: [],           // multiplayer claim slots (one per recent discard)
+  claimBoxes: [],           // multiplayer claim slots (one per recent discard / kong)
   claimedKeys: new Set(),   // solo: one AI claim per played tile
+  claimPriorities: new Map(), // sourceKey -> 十三幺牌王 arbitration for that tile
+  pendingKongs: new Map(),  // sourceKey -> kong that can still be robbed
+  cancelledKongKeys: new Set(), // late meld messages for robbed kongs are ignored
   seatMelds: {},            // seat -> meld[], used by the 副露 panel
   mustDiscard: false,       // after 碰／上／明槓, block further claims until discard
   grabPending: false,       // from casting until the grabbed tile is discarded
@@ -767,6 +772,9 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   game.declinedFlowerWin = false;
   game.claimBoxes = [];
   game.claimedKeys = new Set();
+  game.claimPriorities = new Map();
+  game.pendingKongs = new Map();
+  game.cancelledKongKeys = new Set();
   game.seatMelds = {};
   game.seatFlowers = {};
   game.aiStates = {};
@@ -895,8 +903,17 @@ function findKongTile() {
   return Object.keys(counts).find((id) => counts[id] >= 4) ?? null;
 }
 
+function seatHasPendingKong(seat) {
+  for (const kong of game.pendingKongs.values()) if (kong.seat === seat) return true;
+  return false;
+}
+
 function startCast() {
   if (game.state !== S.AWAIT_CAST || paused()) return;
+  if (seatHasPendingKong(game.seat)) {
+    setStatus('等待其他玩家是否搶槓…');
+    return;
+  }
   game.hookLen = 0;
   // Lock claims from the moment the hook drops: a grabbed tile must be
   // discarded before 碰／上／明槓, even while it is still on the line.
@@ -1057,19 +1074,20 @@ function resolveDraw() {
   }
 }
 
-function declareKong(kind) {
-  let removed = 0;
+function declareKong(kind, sourceKey = `${game.seat}:kong:${kind}:${game.nextUid++}`) {
+  if (game.cancelledKongKeys.has(sourceKey)) return;
+  const taken = [];
   game.hand = game.hand.filter((tile) => {
-    if (tile.id === kind && removed < 4) { removed += 1; return false; }
+    if (tile.id === kind && taken.length < 4) { taken.push(tile); return false; }
     return true;
   });
-  if (removed !== 4) return;
+  if (taken.length !== 4) return;
   speakAction('kong');
-  const meld = { tile: kind, type: 'kong', tiles: [kind, kind, kind, kind] };
+  const meld = { tile: kind, type: 'kong', tiles: [kind, kind, kind, kind], sourceKey };
   game.melds.push(meld);
   addSeatMeld(game.seat, meld);
-  if (game.mode === 'multi') broadcastOrSend({ t: 'meld', seat: game.seat, meld });
   const previousChain = game.lastDraw?.source === 'kong' ? game.kongChain : 0;
+  const lastDraw = game.lastDraw ? { ...game.lastDraw } : null;
   game.kongChain = previousChain + 1;
   // No automatic replacement: the player hooks the next tile, which becomes
   // the kong replacement and keeps 槓上開花／連槓開花 available.
@@ -1077,7 +1095,19 @@ function declareKong(kind) {
   game.pendingResult = null;
   clearSelfWin();
   setState(S.AWAIT_CAST);
-  setStatus('開槓成功！再釣一張牌。');
+  beginKongOpportunity({
+    seat: game.seat, tileId: kind, concealed: true, sourceKey,
+    removed: taken, meld, lastDraw, restoreDiscard: true,
+  });
+  if (game.mode === 'multi') {
+    broadcastOrSend({
+      t: 'meld', seat: game.seat, meld,
+      deadline: Date.now() + MULTI_CLAIM_SECONDS * 1000,
+      priorityGraceUntil: Date.now() + PRIORITY_GRACE_MS,
+      thirteenSeats: thirteenSeatsForTile(kind, game.seat),
+    });
+  }
+  if (game.pendingKongs.has(sourceKey)) setStatus('等待其他玩家是否搶槓…');
 }
 
 function discard(uid) {
@@ -1152,13 +1182,273 @@ function claimReadyTiles() {
   return tiles;
 }
 
+/* ------------------------------------------------------------------ *
+ * 十三幺牌王 priority and 搶槓 (rob-the-kong) arbitration
+ *
+ * A 十三幺 wait outranks every other 胡／槓／碰／上 claim, including a rob of a
+ * concealed kong. Every other claim is first-come-first-served. The host holds
+ * claims briefly so a guest's 十三幺 registration can arrive, then releases the
+ * queue in arrival order once that player wins or presses 過.
+ * ------------------------------------------------------------------ */
+
+function claimTilesForSeat(seat) {
+  return seat === game.seat
+    ? claimReadyTiles().map((tile) => tile.id)
+    : handIdsForSeat(seat);
+}
+
+function isThirteenWaitForSeat(seat, tileId) {
+  if (!ORPHANS.includes(tileId) || meldsForSeat(seat).length > 0) return false;
+  const concealed = claimTilesForSeat(seat);
+  const expected = Math.max(0, 13 - meldsForSeat(seat).length * 3);
+  return concealed.length === expected && isThirteenOrphans([...concealed, tileId]);
+}
+
+function thirteenSeatsForTile(tileId, exceptSeat = null) {
+  const seats = (game.mode === 'multi' && !net.isHost)
+    ? [game.seat]
+    : [game.seat, ...Object.keys(game.aiStates).map(Number)];
+  return [...new Set(seats)].filter((seat) => seat !== exceptSeat
+    && isThirteenWaitForSeat(seat, tileId));
+}
+
+function claimPriorityState(sourceKey) {
+  return sourceKey ? game.claimPriorities.get(sourceKey) ?? null : null;
+}
+
+function startClaimPriority({ sourceKey, tileId, kind = 'discard', declarerSeat = null,
+  concealed = false, deadline = Date.now() + MULTI_CLAIM_SECONDS * 1000,
+  graceUntil = Date.now() + PRIORITY_GRACE_MS, thirteenSeats = [] } = {}) {
+  if (!sourceKey || game.claimPriorities.has(sourceKey)) return null;
+  const state = {
+    sourceKey, tileId, kind, declarerSeat, concealed, deadline, graceUntil,
+    candidates: new Map(), queued: [], released: false,
+  };
+  for (const seat of thirteenSeats) {
+    if (seat !== declarerSeat) state.candidates.set(seat, { passed: false, claimed: false });
+  }
+  game.claimPriorities.set(sourceKey, state);
+  return state;
+}
+
+function priorityPending(state) {
+  if (!state || state.released) return false;
+  if (state.graceUntil > Date.now()) return true;
+  return [...state.candidates.values()].some((item) => !item.passed && !item.claimed);
+}
+
+function releaseClaimPriority(sourceKey, { replay = true } = {}) {
+  const state = claimPriorityState(sourceKey);
+  if (!state || state.released) return;
+  state.released = true;
+  state.graceUntil = 0;
+  const queued = state.queued.splice(0);
+  renderClaimBoxes();
+  // A 十三幺 win or rob beats every press that was held behind it: those are
+  // discarded, not replayed. A 過 or window expiry releases them in arrival
+  // order, preserving first-come-first-served among all non-十三幺 actions.
+  if (replay) for (const msg of queued) handleClaim(msg);
+}
+
+function refreshClaimPriority(sourceKey) {
+  const state = claimPriorityState(sourceKey);
+  if (!state || state.released) return state;
+  if (!priorityPending(state)) releaseClaimPriority(sourceKey);
+  return claimPriorityState(sourceKey);
+}
+
+function priorityBlocksAction(sourceKey, seat, actionType) {
+  const state = refreshClaimPriority(sourceKey);
+  if (!priorityPending(state)) return false;
+  const candidate = state.candidates.get(seat);
+  if (candidate && !candidate.passed && !candidate.claimed) {
+    return actionType !== 'win' && actionType !== 'rob';
+  }
+  return true;
+}
+
+function sendPriorityRegistration(sourceKey, tileId, kind = 'discard') {
+  if (game.mode !== 'multi' || net.isHost) return;
+  if (!isThirteenWaitForSeat(game.seat, tileId)) return;
+  net.sendToHost({ t: 'priority', sourceKey, tileId, kind, seat: game.seat });
+}
+
+function applyPriorityRegistration(msg) {
+  const state = claimPriorityState(msg.sourceKey);
+  if (!state || state.released || msg.seat === state.declarerSeat) return;
+  if (!state.candidates.has(msg.seat)) {
+    state.candidates.set(msg.seat, { passed: false, claimed: false });
+  }
+  if (net.isHost && !msg.relayed) {
+    net.broadcast({ ...msg, t: 'priority', relayed: true });
+  }
+  renderClaimBoxes();
+}
+
+function applyPriorityPass(msg) {
+  const state = claimPriorityState(msg.sourceKey);
+  if (!state) return;
+  const candidate = state.candidates.get(msg.seat);
+  if (candidate) candidate.passed = true;
+  if (net.isHost && !msg.relayed) {
+    net.broadcast({ ...msg, t: 'priorityPass', relayed: true });
+  }
+  if (!priorityPending(state)) releaseClaimPriority(msg.sourceKey);
+  renderClaimBoxes();
+}
+
+function passPriority(sourceKey, seat = game.seat) {
+  const state = claimPriorityState(sourceKey);
+  const candidate = state?.candidates.get(seat);
+  if (!candidate || candidate.passed || candidate.claimed) return;
+  candidate.passed = true;
+  if (game.mode === 'multi') {
+    const msg = { t: 'priorityPass', sourceKey, seat };
+    if (net.isHost) net.broadcast(msg);
+    else net.sendToHost(msg);
+  }
+  if (!priorityPending(state)) releaseClaimPriority(sourceKey);
+  renderClaimBoxes();
+}
+
+function markPriorityWin(sourceKey, seat, result) {
+  const state = claimPriorityState(sourceKey);
+  if (!state) return;
+  const candidate = state.candidates.get(seat);
+  if (candidate) {
+    // The 牌王 pressed a winning claim: no held press may settle this tile.
+    candidate.claimed = true;
+    releaseClaimPriority(sourceKey, { replay: false });
+    return;
+  }
+  releaseClaimPriority(sourceKey);
+}
+
+/** Every device derives the same 十三幺 priority queue from the public offer.
+ *  The host supplies the candidate seats; a guest additionally registers itself
+ *  because only that device knows its concealed hand. */
+function ensurePriorityForBox(entry) {
+  const sourceKey = entry.sourceKey;
+  if (!sourceKey) return;
+  const kind = entry.kind === 'kong' ? 'kong' : 'discard';
+  if (!game.claimPriorities.has(sourceKey)) {
+    const thirteenSeats = Array.isArray(entry.thirteenSeats)
+      ? entry.thirteenSeats
+      : ((net.isHost || game.mode !== 'multi')
+        ? thirteenSeatsForTile(entry.tileId, entry.seat) : []);
+    startClaimPriority({
+      sourceKey, tileId: entry.tileId, kind, declarerSeat: entry.seat,
+      deadline: entry.expiresAt ?? Date.now() + MULTI_CLAIM_SECONDS * 1000,
+      graceUntil: entry.priorityGraceUntil
+        ? claimDeadline({ deadline: entry.priorityGraceUntil }) : undefined,
+      thirteenSeats,
+    });
+  }
+  sendPriorityRegistration(sourceKey, entry.tileId, kind);
+}
+
+function makeKongMeld(tileId, sourceKey, open = false) {
+  return {
+    tile: tileId, type: 'kong', tiles: Array(4).fill(tileId), open, sourceKey,
+  };
+}
+
+function beginKongOpportunity({ seat, tileId, concealed = false, sourceKey,
+  removed = [], meld = null, lastDraw = null, restoreDiscard = concealed,
+  deadline = Date.now() + MULTI_CLAIM_SECONDS * 1000,
+  priorityGraceUntil = Date.now() + PRIORITY_GRACE_MS, thirteenSeats = null }) {
+  if (!sourceKey || game.cancelledKongKeys.has(sourceKey)) return;
+  const already = game.pendingKongs.has(sourceKey);
+  if (!already) {
+    game.pendingKongs.set(sourceKey, {
+      seat, tileId, concealed, sourceKey,
+      removed: removed.map((tile) => ({ ...tile })),
+      lastDraw: lastDraw ? { ...lastDraw } : null,
+      restoreDiscard,
+      meld: meld ?? makeKongMeld(tileId, sourceKey, !concealed),
+    });
+  }
+  const candidates = thirteenSeats ?? thirteenSeatsForTile(tileId, seat);
+  startClaimPriority({
+    sourceKey, tileId, kind: 'kong', declarerSeat: seat, concealed,
+    deadline, graceUntil: priorityGraceUntil, thirteenSeats: candidates,
+  });
+  addClaimBox({
+    t: 'kongOffer', sourceKey, claimId: `kong:${sourceKey}`, seat, tileId,
+    kind: 'kong', concealed, deadline, priorityGraceUntil, thirteenSeats: candidates,
+    name: seatName(seat), wind: seatWindOf(seat), isBot: isAiSeat(seat),
+  });
+  if (!already) {
+    if (seat === game.seat && game.state === S.AWAIT_CAST) {
+      setStatus('等待其他玩家是否搶槓…');
+    }
+    scheduleAiKongRob(game.pendingKongs.get(sourceKey));
+  }
+}
+
+/** A robbed kong is undone on every device: tiles return to the declarer, its
+ *  meld disappears and there is never a replacement draw. */
+function finishKongOpportunity(sourceKey) {
+  const kong = game.pendingKongs.get(sourceKey);
+  if (!kong) return;
+  game.pendingKongs.delete(sourceKey);
+  game.claimPriorities.delete(sourceKey);
+  if (kong.seat === game.seat && game.state === S.AWAIT_CAST) {
+    setState(S.AWAIT_CAST);
+  }
+}
+
+function cancelKongBySource(sourceKey, kongSeat = null) {
+  if (!sourceKey) return;
+  game.cancelledKongKeys.add(sourceKey);
+  const kong = game.pendingKongs.get(sourceKey);
+  const seat = kongSeat ?? kong?.seat ?? null;
+  const withoutKong = (list = []) => list.filter((meld) => meld.sourceKey !== sourceKey);
+  if (seat === game.seat) {
+    game.melds = withoutKong(game.melds);
+    if (kong) {
+      game.hand.push(...kong.removed);
+      sortHand();
+      game.lastDraw = kong.lastDraw ? { ...kong.lastDraw } : null;
+      game.kongChain = 0;
+      game.mustDiscard = Boolean(kong.restoreDiscard);
+      game.grabPending = false;
+      clearSelfWin();
+      if (![S.WIN, S.DRAW_GAME].includes(game.state)) {
+        setState(kong.restoreDiscard ? S.AWAIT_DISCARD : S.AWAIT_CAST);
+      }
+    }
+  } else if (game.aiStates[seat]) {
+    const state = game.aiStates[seat];
+    state.melds = withoutKong(state.melds);
+    if (kong) {
+      state.hand.push(...kong.removed);
+      state.hand.sort((a, b) => TILE_IDS.indexOf(a.id) - TILE_IDS.indexOf(b.id));
+      state.kongChain = 0;
+      state.lastDraw = kong.lastDraw ? { ...kong.lastDraw } : null;
+      state.mustDiscard = Boolean(kong.restoreDiscard);
+      state.discardTimer = kong.restoreDiscard ? 0.6 : 0;
+      resetAiRod(state);
+    }
+  }
+  if (seat !== null && game.seatMelds[seat]) {
+    game.seatMelds[seat] = withoutKong(game.seatMelds[seat]);
+  }
+  if (kong) game.pendingKongs.delete(sourceKey);
+  game.claimBoxes = game.claimBoxes.filter((box) => box.sourceKey !== sourceKey);
+  game.claimPriorities.delete(sourceKey);
+  renderMeldsPanel();
+  renderClaimBoxes();
+}
+
 /** Winning off a discard is never 自摸 or 門前清; open calls remove it too.
  *  地胡 is only added when a non-dealer claims the dealer's first discard. */
-function claimWinResultFor(seat, discardId, tiles = null, { firstDiscard = false, discarderSeat = null } = {}) {
+function claimWinResultFor(seat, discardId, tiles = null,
+  { firstDiscard = false, discarderSeat = null, qianggang = false } = {}) {
   const dihuClaim = Boolean(firstDiscard)
     && discarderSeat === game.match?.dealerSeat
     && seat !== game.match?.dealerSeat;
-  const context = seatWinContext(seat, { selfDraw: false, dihuClaim });
+  const context = seatWinContext(seat, { selfDraw: false, dihuClaim, qianggang });
   const concealed = tiles ? tiles.map((tile) => tile.id) : handIdsForSeat(seat);
   return withFlowers(evaluateHand({
     concealed: [...concealed, discardId],
@@ -1252,20 +1542,33 @@ function canDeclareMeld() {
  *  visible and only becomes clickable once the hook is home and the hand is
  *  ready again. */
 function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass = false,
-  { potential = false, firstDiscard = false, discarderSeat = null } = {}) {
+  { potential = false, firstDiscard = false, discarderSeat = null,
+    kong = false, concealed = false, sourceKey = null } = {}) {
   const tiles = potential ? claimReadyTiles() : game.hand;
   const hand = tiles.map((tile) => tile.id);
   const counts = countTiles(hand);
   const actions = [];
-  const win = claimWinResult(discardId, tiles, { firstDiscard, discarderSeat });
-  if (qualifyingWin(win)) {
+  const win = claimWinResult(discardId, tiles, kong
+    ? { discarderSeat, qianggang: true }
+    : { firstDiscard, discarderSeat });
+  if (qualifyingWin(win) && (!kong || !concealed
+    || win.patterns.some((pattern) => pattern.id === '十三幺'))) {
     actions.push({
-      label: '胡牌', type: 'win', result: win,
+      label: kong ? '搶槓' : '胡牌', type: kong ? 'rob' : 'win', result: win,
       // A completed hand always ends the game when pressed; it must not be
       // greyed out just because a fish is in flight or a tile was just drawn.
       disabled: false,
-      onClick: () => commitWin(win, { selfDraw: false }),
+      sourceKey,
+      declarerSeat: discarderSeat,
+      concealed,
+      onClick: () => (kong
+        ? robKong(sourceKey, win, discarderSeat)
+        : commitWin(win, { discarder: discarderSeat, selfDraw: false })),
     });
+  }
+  if (kong) {
+    if (includePass) actions.push({ label: '過', primary: false, onClick: passClaim });
+    return actions;
   }
 
   // `callShape` decides whether the box should list a call at all; `canCall`
@@ -1283,7 +1586,7 @@ function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass 
       label: `明槓 ${tileName(discardId)}`,
       type: 'kong', kinds,
       disabled: !canCall,
-      onClick: () => declareOpenMeld('kong', discardId, kinds),
+      onClick: () => declareOpenMeld('kong', discardId, kinds, sourceKey),
     });
   }
   if (callShape && (counts[discardId] ?? 0) >= 2) {
@@ -1308,6 +1611,33 @@ function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass 
   // button in renderClaimBoxes so it only dismisses that one box.
   if (includePass) actions.push({ label: '過', primary: false, onClick: passClaim });
   return actions;
+}
+
+/** Rob a kong: cancel the kong and its replacement fish, then settle as a claim
+ *  whose 出銃 is the kong declarer. 十三幺 alone may rob a concealed kong. */
+function robKong(sourceKey, result, kongSeat) {
+  if (!qualifyingWin(result) || priorityBlocksAction(sourceKey, game.seat, 'rob')) return;
+  const kong = game.pendingKongs.get(sourceKey);
+  if (!kong || (kong.concealed
+    && !result.patterns.some((pattern) => pattern.id === '十三幺'))) return;
+  cancelKongBySource(sourceKey, kong.seat);
+  markPriorityWin(sourceKey, game.seat, result);
+  if (game.mode === 'multi') {
+    sendClaimMessage({
+      t: 'claim',
+      sourceKey,
+      claimId: `rob:${sourceKey}`,
+      seat: game.seat,
+      tileId: kong.tileId,
+      type: 'rob',
+      result: compactWinResult(result),
+      fanTotal: game.fanTotal + result.totalFan,
+      discarderSeat: kong.seat,
+      qianggang: true,
+      concealed: kong.concealed,
+    });
+  }
+  commitWin(result, { discarder: kong.seat, selfDraw: false });
 }
 
 /** Test helper: make the next AI discard immediately from its own hand. */
@@ -1435,21 +1765,35 @@ function prepareAiDealerOpening() {
 }
 
 function aiDeclareConcealedKong(state, kind) {
-  let removed = 0;
+  const sourceKey = `${state.seat}:kong:${kind}:${game.nextUid++}`;
+  if (game.cancelledKongKeys.has(sourceKey)) return;
+  const taken = [];
   state.hand = state.hand.filter((tile) => {
-    if (tile.id === kind && removed < 4) { removed += 1; return false; }
+    if (tile.id === kind && taken.length < 4) { taken.push(tile); return false; }
     return true;
   });
-  if (removed !== 4) return;
-  const meld = { tile: kind, type: 'kong', tiles: Array(4).fill(kind), open: false };
+  if (taken.length !== 4) return;
+  const meld = { tile: kind, type: 'kong', tiles: Array(4).fill(kind), open: false, sourceKey };
   state.melds.push(meld);
   addSeatMeld(state.seat, meld);
-  if (game.mode === 'multi' && net.isHost) broadcastOrSend({ t: 'meld', seat: state.seat, meld });
+  const lastDraw = state.lastDraw ? { ...state.lastDraw } : null;
   state.kongChain += 1;
   state.lastDraw = null;
   state.mustDiscard = false;
   state.discardTimer = 0;
   resetAiRod(state);
+  beginKongOpportunity({
+    seat: state.seat, tileId: kind, concealed: true, sourceKey,
+    removed: taken, meld, lastDraw, restoreDiscard: true,
+  });
+  if (game.mode === 'multi' && net.isHost) {
+    net.broadcast({
+      t: 'meld', seat: state.seat, meld,
+      deadline: Date.now() + MULTI_CLAIM_SECONDS * 1000,
+      priorityGraceUntil: Date.now() + PRIORITY_GRACE_MS,
+      thirteenSeats: thirteenSeatsForTile(kind, state.seat),
+    });
+  }
 }
 
 function canChowFromSeat(seat, discarderSeat) {
@@ -1513,7 +1857,8 @@ function finishAiReel(state) {
     else resetAiRod(state);
     return;
   }
-  state.hand.push(newTile(tileId));
+  const drawnTile = newTile(tileId);
+  state.hand.push(drawnTile);
   state.hand.sort((a, b) => TILE_IDS.indexOf(a.id) - TILE_IDS.indexOf(b.id));
   const kongReplacement = state.kongChain > 0;
   const firstFish = !state.firstFished && !kongReplacement && seat !== game.match?.dealerSeat;
@@ -1538,19 +1883,35 @@ function finishAiReel(state) {
     ? Object.keys(handCounts).find((id) => handCounts[id] >= 4)
     : null;
   if (kongTile) {
-    let removed = 0;
-    state.hand = state.hand.filter((tile) => {
-      if (tile.id === kongTile && removed < 4) { removed += 1; return false; }
-      return true;
-    });
-    const meld = { tile: kongTile, type: 'kong', tiles: Array(4).fill(kongTile), open: false };
-    state.melds.push(meld);
-    addSeatMeld(seat, meld);
-    if (game.mode === 'multi' && net.isHost) broadcastOrSend({ t: 'meld', seat, meld });
-    state.kongChain += 1;
-    // Like the human seat, a kong owes a replacement draw before any discard.
-    resetAiRod(state);
-    return;
+    const sourceKey = `${seat}:kong:${kongTile}:${game.nextUid++}`;
+    if (!game.cancelledKongKeys.has(sourceKey)) {
+      const taken = [];
+      state.hand = state.hand.filter((tile) => {
+        if (tile.id === kongTile && taken.length < 4) { taken.push(tile); return false; }
+        return true;
+      });
+      if (taken.length === 4) {
+        const meld = { tile: kongTile, type: 'kong', tiles: Array(4).fill(kongTile), open: false, sourceKey };
+        state.melds.push(meld);
+        addSeatMeld(seat, meld);
+        state.kongChain += 1;
+        // Like the human seat, a kong owes a replacement draw before any discard.
+        resetAiRod(state);
+        beginKongOpportunity({
+          seat, tileId: kongTile, concealed: true, sourceKey,
+          removed: taken, meld, lastDraw: drawnTile, restoreDiscard: true,
+        });
+        if (game.mode === 'multi' && net.isHost) {
+          net.broadcast({
+            t: 'meld', seat, meld,
+            deadline: Date.now() + MULTI_CLAIM_SECONDS * 1000,
+            priorityGraceUntil: Date.now() + PRIORITY_GRACE_MS,
+            thirteenSeats: thirteenSeatsForTile(kongTile, seat),
+          });
+        }
+        return;
+      }
+    }
   }
   state.mustDiscard = true;
   state.discardTimer = 0.6 + Math.random() * 1.2;
@@ -1597,6 +1958,8 @@ function publishDiscard(seat, tile, isBot) {
     // Host wall-clock deadline; every device converts it to its own clock so
     // the five-second claim boxes expire at the same moment everywhere.
     deadline: Date.now() + MULTI_CLAIM_SECONDS * 1000,
+    priorityGraceUntil: Date.now() + PRIORITY_GRACE_MS,
+    thirteenSeats: thirteenSeatsForTile(tile.id, seat),
     claimId: sourceKey,
     sourceKey,
     seat,
@@ -1664,6 +2027,37 @@ function scheduleAiClaims(tile, discarderSeat, sharedSourceKey = null, firstDisc
   }
 }
 
+/** AI seats may rob an open kong with any winning hand, but a concealed kong
+ *  only with 十三幺. The same 十三幺 priority queue applies before any call. */
+function scheduleAiKongRob(kong) {
+  if (!kong || !Object.keys(game.aiStates).length
+    || game.state === S.WIN || game.state === S.DRAW_GAME) return;
+  for (const seat of Object.keys(game.aiStates).map(Number)) {
+    if (seat === kong.seat) continue;
+    const state = game.aiStates[seat];
+    if (!state || state.mustDiscard || state.caught || state.lastDraw || state.kongChain > 0) continue;
+    if (state.hand.length !== Math.max(0, 13 - state.melds.length * 3)) continue;
+    const result = claimWinResultFor(seat, kong.tileId, null, {
+      discarderSeat: kong.seat, qianggang: true,
+    });
+    if (!qualifyingWin(result)) continue;
+    if (kong.concealed && !result.patterns.some((pattern) => pattern.id === '十三幺')) continue;
+    game.pendingAiClaims.push({
+      type: 'rob',
+      result,
+      fanTotal: state.fanTotal + result.totalFan,
+      seat,
+      tileId: kong.tileId,
+      sourceKey: kong.sourceKey,
+      claimId: `ai:${seat}:${kong.sourceKey}`,
+      discarderSeat: kong.seat,
+      qianggang: true,
+      concealed: kong.concealed,
+      time: AI_CLAIM_DELAY_MIN + Math.random() * AI_CLAIM_DELAY_RANGE,
+    });
+  }
+}
+
 /** Re-check an AI reaction when its delay expires: it may have hooked a tile
  *  or completed a meld in the meantime, which must invalidate the old claim. */
 function aiClaimStillValid(claim) {
@@ -1676,6 +2070,18 @@ function aiClaimStillValid(claim) {
     // still-waiting 13-tile hand against the old discard one more time.
     const fresh = claimWinResultFor(claim.seat, claim.tileId, null, {
       firstDiscard: claim.firstDiscard, discarderSeat: claim.discarderSeat,
+    });
+    if (!qualifyingWin(fresh)) return false;
+    claim.result = fresh;
+    claim.fanTotal = state.fanTotal + fresh.totalFan;
+    return true;
+  }
+  if (claim.type === 'rob') {
+    const kong = game.pendingKongs.get(claim.sourceKey);
+    if (!kong || kong.seat === claim.seat) return false;
+    if (kong.concealed && !claim.result?.patterns?.some((p) => p.id === '十三幺')) return false;
+    const fresh = claimWinResultFor(claim.seat, claim.tileId, null, {
+      discarderSeat: kong.seat, qianggang: true,
     });
     if (!qualifyingWin(fresh)) return false;
     claim.result = fresh;
@@ -1712,6 +2118,8 @@ function aiClaimTick(dt) {
       fanTotal: claim.fanTotal ?? null,
       discarderSeat: claim.discarderSeat,
       firstDiscard: claim.firstDiscard ?? false,
+      qianggang: claim.qianggang ?? false,
+      concealed: claim.concealed ?? false,
     });
   }
 }
@@ -1727,6 +2135,7 @@ function applyAiMeldClaim(msg) {
     type: msg.type,
     tiles: [...removed.map((tile) => tile.id), msg.tileId],
     open: true,
+    sourceKey: msg.sourceKey ?? null,
   };
   state.melds.push(meld);
   addSeatMeld(msg.seat, meld);
@@ -1735,6 +2144,12 @@ function applyAiMeldClaim(msg) {
   if (msg.type === 'kong') {
     // 明槓 also needs a replacement fish before the forced discard.
     state.kongChain += 1;
+    beginKongOpportunity({
+      seat: msg.seat, tileId: msg.tileId, concealed: false,
+      sourceKey: msg.sourceKey, removed, meld, restoreDiscard: false,
+      deadline: msg.deadline, priorityGraceUntil: msg.priorityGraceUntil,
+      thirteenSeats: msg.thirteenSeats ?? null,
+    });
     return;
   }
   state.mustDiscard = true;
@@ -1769,6 +2184,7 @@ function aiTick(dt) {
   if (!Object.keys(game.aiStates).length || game.state === S.WIN || game.state === S.DRAW_GAME) return;
   const hookRate = game.hookSpeed * paceFactor();
   for (const state of Object.values(game.aiStates)) {
+    if (seatHasPendingKong(state.seat)) continue;
     const rod = state.rod;
     if (state.mustDiscard) {
       state.discardTimer -= dt;
@@ -1828,7 +2244,7 @@ function aiTick(dt) {
   }
 }
 
-function declareOpenMeld(type, discardId, handKinds) {
+function declareOpenMeld(type, discardId, handKinds, sourceKey = game.pendingClaim?.sourceKey ?? null) {
   if (!canDeclareMeld()) return;
   cancelAiClaimsForTile(discardId);
   const removed = takeHandTiles(handKinds);
@@ -1839,10 +2255,10 @@ function declareOpenMeld(type, discardId, handKinds) {
     type,
     tiles: [...removed.map((tile) => tile.id), discardId],
     open: true,
+    sourceKey: type === 'kong' ? sourceKey : null,
   };
   game.melds.push(meld);
   addSeatMeld(game.seat, meld);
-  if (game.mode === 'multi') broadcastOrSend({ t: 'meld', seat: game.seat, meld });
   clearClaim();
   clearSelfWin();
   game.lastDraw = null;
@@ -1853,9 +2269,21 @@ function declareOpenMeld(type, discardId, handKinds) {
   if (type === 'kong') {
     game.kongChain = 1;
     setState(S.AWAIT_CAST);
+    beginKongOpportunity({
+      seat: game.seat, tileId: discardId, concealed: false, sourceKey,
+      removed, meld, restoreDiscard: false,
+    });
   } else {
     setState(S.AWAIT_DISCARD);
     setStatus(`${type === 'pung' ? '碰' : '上'}成功！請選一張牌打出。`);
+  }
+  if (game.mode === 'multi') {
+    broadcastOrSend({
+      t: 'meld', seat: game.seat, meld,
+      deadline: Date.now() + MULTI_CLAIM_SECONDS * 1000,
+      priorityGraceUntil: Date.now() + PRIORITY_GRACE_MS,
+      thirteenSeats: type === 'kong' ? thirteenSeatsForTile(discardId, game.seat) : [],
+    });
   }
 }
 
@@ -2311,6 +2739,8 @@ function commitWin(result, { discarder = null, selfDraw = null } = {}) {
   save('mf-fantotal', game.fanTotal);
   clearClaim();
   clearSelfWin();
+  game.claimPriorities.clear();
+  game.pendingKongs.clear();
   setState(S.WIN);
   setStatus(`胡牌！${result.totalFan} 番`);
   showWinEnd(game.seat, result, log);
@@ -2319,6 +2749,8 @@ function commitWin(result, { discarder = null, selfDraw = null } = {}) {
 function endDrawGame() {
   clearClaim();
   clearSelfWin();
+  game.claimPriorities.clear();
+  game.pendingKongs.clear();
   const log = recordRoundResult({ winner: null });
   game.timeLeft = 0;
   setState(S.DRAW_GAME);
@@ -3068,6 +3500,7 @@ function addClaimBox(entry) {
     expiresAt: claimDeadline(entry),
     timeLeft: MULTI_CLAIM_SECONDS, resolved: false, awaiting: false, passed: false,
   });
+  ensurePriorityForBox(game.claimBoxes[game.claimBoxes.length - 1]);
   renderClaimBoxes();
 }
 
@@ -3094,11 +3527,16 @@ function claimFromBox(box, action) {
   // never spend tiles we no longer hold, and a newly completed 胡 is offered.
   const fresh = buildClaimActions(box.tileId, bot, false, {
     potential: true, firstDiscard: box.firstDiscard, discarderSeat: box.seat,
+    kong: box.kind === 'kong', concealed: Boolean(box.concealed), sourceKey: box.sourceKey,
   }).find((item) => item.type === action.type
     && (item.kinds ?? []).join(',') === (action.kinds ?? []).join(','));
-  // 胡 is always actionable: a rod in flight or a just-fished tile must never
-  // turn the button into a no-op. 碰／上／明槓 keep the normal live checks.
-  if (!fresh || (fresh.type !== 'win' && (fresh.disabled || !canDeclareMeld()))) {
+  // 胡 and 搶槓 are always actionable: a rod in flight or a just-fished tile
+  // must never turn those buttons into no-ops. 碰／上／明槓 keep live checks.
+  if (!fresh || (!['win', 'rob'].includes(fresh.type) && (fresh.disabled || !canDeclareMeld()))) {
+    renderClaimBoxes();
+    return;
+  }
+  if (priorityBlocksAction(box.sourceKey, game.seat, fresh.type)) {
     renderClaimBoxes();
     return;
   }
@@ -3107,7 +3545,13 @@ function claimFromBox(box, action) {
   // then broadcast the win so every other device ends the same hand too.
   if (fresh.type === 'win') {
     box.resolved = true;
+    markPriorityWin(box.sourceKey, game.seat, fresh.result);
     commitWin(fresh.result, { discarder: box.seat, selfDraw: false });
+    return;
+  }
+  if (fresh.type === 'rob') {
+    box.resolved = true;
+    robKong(box.sourceKey, fresh.result, box.seat);
     return;
   }
   box.awaiting = true;
@@ -3126,7 +3570,8 @@ function claimFromBox(box, action) {
   sendClaimMessage(msg);
 }
 
-function declareOpenMeldMulti(type, discardId, kinds) {
+function declareOpenMeldMulti(type, discardId, kinds, sourceKey = null,
+  { deadline = null, priorityGraceUntil = null, thirteenSeats = null } = {}) {
   if (!canDeclareMeld() || !Array.isArray(kinds) || !kinds.length) return;
   const removed = takeHandTiles(kinds);
   if (!removed) return;
@@ -3136,6 +3581,7 @@ function declareOpenMeldMulti(type, discardId, kinds) {
     type,
     tiles: [...removed.map((tile) => tile.id), discardId],
     open: true,
+    sourceKey: type === 'kong' ? sourceKey : null,
   };
   game.melds.push(meld);
   addSeatMeld(game.seat, meld);
@@ -3148,7 +3594,13 @@ function declareOpenMeldMulti(type, discardId, kinds) {
   game.mustDiscard = type !== 'kong';
   game.grabPending = true;
   setState(type === 'kong' ? S.AWAIT_CAST : S.AWAIT_DISCARD);
-  if (type === 'kong') setStatus('明槓成功！再釣一張牌補槓。');
+  if (type === 'kong') {
+    beginKongOpportunity({
+      seat: game.seat, tileId: discardId, concealed: false, sourceKey,
+      removed, meld, restoreDiscard: false, deadline, priorityGraceUntil, thirteenSeats,
+    });
+  }
+  if (type === 'kong') setStatus('明槓成功！等待是否搶槓…');
   else setStatus(`${type === 'pung' ? '碰' : '上'}成功！請選一張牌打出。`);
 }
 
@@ -3158,40 +3610,67 @@ function handleClaim(msg) {
   const box = game.claimBoxes.find((item) => msg.sourceKey
     ? item.sourceKey === msg.sourceKey
     : item.claimId === msg.claimId);
+  const sourceKey = msg.sourceKey ?? box?.sourceKey ?? null;
   // A late press must not win a tile whose five-second window has already
-  // closed — but a 胡 is a finished hand, so a few milliseconds of network
-  // latency must not drop it and leave every device playing with no settlement.
-  // Only a claim that another seat already won may still be rejected.
+  // closed — but 胡／搶槓 are finished hands, so a few milliseconds of network
+  // latency must not drop them and leave every device still fishing.
   const expired = box && box.expiresAt !== undefined && box.expiresAt <= Date.now();
-  if (expired && msg.type !== 'win') return;
+  if (expired && !['win', 'rob'].includes(msg.type)) return;
   if (game.mode === 'multi' && box?.resolved) return;
-  if (game.mode === 'multi' && !box && msg.type !== 'win') return;
-  if (!box && !game.aiStates[msg.seat] && msg.type !== 'win') return;
-  if (msg.sourceKey) {
-    if (game.claimedKeys.has(msg.sourceKey)) return;
-    game.claimedKeys.add(msg.sourceKey);
+  if (game.mode === 'multi' && !box && !['win', 'rob'].includes(msg.type)) return;
+  if (!box && !game.aiStates[msg.seat] && !['win', 'rob'].includes(msg.type)) return;
+  const kong = msg.type === 'rob' ? game.pendingKongs.get(sourceKey) : null;
+  if (msg.type === 'rob' && (!kong || kong.seat === msg.seat)) return;
+  if (msg.type === 'rob' && kong.concealed
+    && !msg.result?.patterns?.some((pattern) => pattern.id === '十三幺')) return;
+
+  // 十三幺牌王 is absolute: until its candidate wins or presses 過, every other
+  // 胡／槓／碰／上 press is held in arrival order and replayed afterwards.
+  const priority = refreshClaimPriority(sourceKey);
+  let releaseAfter = false;
+  if (priorityPending(priority)) {
+    const candidate = priority.candidates.get(msg.seat);
+    if (['win', 'rob'].includes(msg.type) && candidate && !candidate.passed) {
+      candidate.claimed = true;
+      releaseAfter = true;
+    } else {
+      priority.queued.push({ ...msg });
+      return;
+    }
+  }
+  if (sourceKey) {
+    if (game.claimedKeys.has(sourceKey)) return;
+    game.claimedKeys.add(sourceKey);
   }
   if (box) box.resolved = true;
-  const tileId = msg.tileId ?? box?.tileId;
-  const meld = msg.type === 'win' ? null : {
+  // A winning 十三幺 claim is absolute: held presses from other seats must not
+  // settle the same tile after it.
+  if (releaseAfter) releaseClaimPriority(sourceKey, { replay: false });
+  const tileId = msg.tileId ?? box?.tileId ?? kong?.tileId;
+  const meld = ['win', 'rob'].includes(msg.type) ? null : {
     tile: tileId,
     type: msg.type,
     tiles: [...(msg.kinds ?? []), tileId],
     open: true,
+    sourceKey,
   };
   const result = {
     t: 'claimResult',
     claimId: msg.claimId,
-    sourceKey: msg.sourceKey ?? box?.sourceKey ?? null,
+    sourceKey,
     seat: msg.seat,
     tileId,
     type: msg.type,
     meld,
     kinds: msg.kinds ?? null,
-    result: msg.result ?? null,
+    result: msg.type === 'rob' ? compactWinResult(msg.result) : (msg.result ?? null),
     fanTotal: msg.fanTotal ?? null,
-    discarderSeat: msg.discarderSeat ?? box?.seat ?? null,
+    discarderSeat: msg.discarderSeat ?? kong?.seat ?? box?.seat ?? null,
     firstDiscard: msg.firstDiscard ?? box?.firstDiscard ?? false,
+    concealed: kong?.concealed ?? msg.concealed ?? false,
+    deadline: box?.deadline ?? msg.deadline ?? null,
+    priorityGraceUntil: box?.priorityGraceUntil ?? msg.priorityGraceUntil ?? null,
+    thirteenSeats: box?.thirteenSeats ?? msg.thirteenSeats ?? null,
   };
   if (game.mode === 'multi') net.broadcast(result);
   applyClaimResult(result);
@@ -3202,6 +3681,17 @@ function applyClaimResult(msg) {
     ? item.sourceKey === msg.sourceKey
     : item.claimId === msg.claimId);
   if (box) box.resolved = true;
+  if (msg.type === 'rob') {
+    cancelKongBySource(msg.sourceKey, msg.discarderSeat ?? null);
+    const winMeta = { discarder: msg.discarderSeat ?? null, selfDraw: false };
+    if (msg.seat === game.seat && game.mode === 'multi') return; // already settled locally
+    if (game.aiStates[msg.seat] && (net.isHost || game.mode !== 'multi')) {
+      commitAiWin(msg.seat, msg.result, msg.fanTotal, winMeta);
+    } else {
+      finishMultiWin(msg.seat, msg.result, msg.fanTotal, winMeta);
+    }
+    return;
+  }
   if (msg.type === 'win') {
     const winMeta = { discarder: msg.discarderSeat ?? null, selfDraw: false };
     if (msg.seat === game.seat && game.mode !== 'multi') {
@@ -3214,12 +3704,25 @@ function applyClaimResult(msg) {
     return;
   }
   if (msg.seat === game.seat) {
-    declareOpenMeldMulti(msg.type, msg.tileId, msg.kinds ?? []);
+    declareOpenMeldMulti(msg.type, msg.tileId, msg.kinds ?? [], msg.sourceKey, {
+      deadline: msg.deadline, priorityGraceUntil: msg.priorityGraceUntil,
+      thirteenSeats: msg.thirteenSeats,
+    });
     speakAction(msg.type);
   } else if (game.aiStates[msg.seat]) {
     applyAiMeldClaim(msg);
   } else if (msg.meld) {
     addSeatMeld(msg.seat, msg.meld);
+    if (msg.meld.type === 'kong' && msg.meld.sourceKey) {
+      beginKongOpportunity({
+        seat: msg.seat, tileId: msg.meld.tile, concealed: msg.meld.open === false,
+        sourceKey: msg.meld.sourceKey,
+        removed: (msg.kinds ?? []).map((id) => ({ id })),
+        meld: msg.meld, restoreDiscard: false,
+        deadline: msg.deadline, priorityGraceUntil: msg.priorityGraceUntil,
+        thirteenSeats: msg.thirteenSeats ?? null,
+      });
+    }
   }
   renderClaimBoxes();
 }
@@ -3561,6 +4064,8 @@ function finishMultiWin(seat, result, fanTotal, meta = {}) {
   clearClaim();
   clearSelfWin();
   game.claimBoxes = [];
+  game.claimPriorities.clear();
+  game.pendingKongs.clear();
   renderClaimBoxes();
   const name = winnerName(seat);
   setStatus(`${name} 胡牌！${result?.totalFan ?? 0} 番`);
@@ -3574,6 +4079,8 @@ function applyMultiDraw() {
   clearClaim();
   clearSelfWin();
   game.claimBoxes = [];
+  game.claimPriorities.clear();
+  game.pendingKongs.clear();
   renderClaimBoxes();
   game.timeLeft = 0;
   setStatus('時間到，流局。');
@@ -3602,6 +4109,9 @@ function resetMultiState() {
   game.players = [];
   game.claimBoxes = [];
   game.claimedKeys = new Set();
+  game.claimPriorities = new Map();
+  game.pendingKongs = new Map();
+  game.cancelledKongKeys = new Set();
   game.seenWins = new Set();
   for (const timer of game.winTimers) clearTimeout(timer);
   game.winTimers = new Set();
@@ -3804,6 +4314,10 @@ function wireNetEvents() {
       // A guest's message reaches us after its own deadline was stamped; use
       // the host's clock from this point on so arbitration stays consistent.
       msg.deadline = Date.now() + MULTI_CLAIM_SECONDS * 1000;
+      // Only the host knows every concealed hand, so it alone names the
+      // 十三幺牌王 candidates that block all other claims during this window.
+      msg.priorityGraceUntil = Date.now() + PRIORITY_GRACE_MS;
+      msg.thirteenSeats = thirteenSeatsForTile(msg.tileId, msg.seat);
       // Only the host decides whether this is the dealer's opening discard, so
       // every device sees the same 地胡 window even if another seat discarded first.
       msg.firstDiscard = msg.seat === game.match?.dealerSeat && !game.dealerDiscarded;
@@ -3863,10 +4377,45 @@ function wireNetEvents() {
     if (net.isHost) handleClaim(msg);
   });
 
-  net.on('claimResult', (msg) => applyClaimResult(msg));
+  net.on('claimResult', (msg, conn) => {
+    if (net.isHost && msg.type === 'rob' && msg.seat !== game.seat) {
+      net.broadcast(msg, conn?.peer ?? null);
+    }
+    applyClaimResult(msg);
+  });
 
-  net.on('meld', (msg) => {
+  net.on('priority', (msg, conn) => {
+    if (net.isHost) {
+      if (!msg.relayed) net.broadcast({ ...msg, t: 'priority', relayed: true }, conn?.peer ?? null);
+      applyPriorityRegistration(msg);
+    } else {
+      applyPriorityRegistration(msg);
+    }
+  });
+
+  net.on('priorityPass', (msg, conn) => {
+    if (net.isHost && !msg.relayed) {
+      net.broadcast({ ...msg, t: 'priorityPass', relayed: true }, conn?.peer ?? null);
+    }
+    applyPriorityPass(msg);
+  });
+
+  net.on('meld', (msg, conn) => {
+    if (net.isHost && msg.seat !== game.seat) {
+      net.broadcast(msg, conn?.peer ?? null);
+    }
     if (msg.seat !== game.seat && msg.meld) addSeatMeld(msg.seat, msg.meld);
+    if (msg.meld?.sourceKey && !game.cancelledKongKeys.has(msg.meld.sourceKey)) {
+      beginKongOpportunity({
+        seat: msg.seat,
+        tileId: msg.meld.tile,
+        concealed: msg.meld.open === false,
+        sourceKey: msg.meld.sourceKey,
+        deadline: msg.deadline,
+        priorityGraceUntil: msg.priorityGraceUntil,
+        thirteenSeats: Array.isArray(msg.thirteenSeats) ? msg.thirteenSeats : null,
+      });
+    }
   });
 
   net.on('win', (msg, conn) => {
@@ -4057,8 +4606,12 @@ function renderClaimBoxes() {
   // buttons are disabled. An empty box for an unclaimable tile is still noise.
   const actionsFor = (box) => buildClaimActions(
     box.tileId, { name: box.name, wind: box.wind }, false,
-    { potential: true, firstDiscard: box.firstDiscard, discarderSeat: box.seat },
+    {
+      potential: true, firstDiscard: box.firstDiscard, discarderSeat: box.seat,
+      kong: box.kind === 'kong', concealed: Boolean(box.concealed), sourceKey: box.sourceKey,
+    },
   );
+  for (const box of game.claimBoxes) refreshClaimPriority(box.sourceKey);
   const boxes = game.claimBoxes
     .filter((box) => box.seat !== game.seat && !box.resolved && !box.passed)
     .map((box) => ({ box, actions: actionsFor(box) }))
@@ -4068,7 +4621,7 @@ function renderClaimBoxes() {
   for (const { box, actions: available } of boxes) {
     // A discard you can win on gets the same enlarged prompt as a self-draw,
     // still anchored on the right side of the screen.
-    const canWin = available.some((action) => action.type === 'win');
+    const canWin = available.some((action) => action.type === 'win' || action.type === 'rob');
     const node = document.createElement('div');
     node.className = canWin ? 'claim-box win-claim' : 'claim-box';
     if (canWin) {
@@ -4079,7 +4632,8 @@ function renderClaimBoxes() {
     }
     const who = document.createElement('span');
     who.className = 'claim-label';
-    who.textContent = `${withAiTag(box.name, box.isBot)}（${TILE_INFO[box.wind]?.name ?? box.wind}）打出`;
+    const verb = box.kind === 'kong' ? (box.concealed ? '暗槓' : '明槓') : '打出';
+    who.textContent = `${withAiTag(box.name, box.isBot)}（${TILE_INFO[box.wind]?.name ?? box.wind}）${verb}`;
     const tile = document.createElement('span');
     tile.className = 'claim-tile';
     addTileTo(tile, box.tileId);
@@ -4092,18 +4646,22 @@ function renderClaimBoxes() {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = action.label;
-      button.disabled = action.disabled || box.awaiting;
+      button.disabled = action.disabled || box.awaiting
+        || priorityBlocksAction(box.sourceKey, game.seat, action.type);
       button.addEventListener('click', () => claimFromBox(box, action));
       actions.appendChild(button);
     }
-    // 過 is a local dismissal, not a claim: it never blocks other seats or AI
-    // claims on the same discard, and stays usable while the rod is out.
+    // 過 dismisses this box locally. A 十三幺 candidate's pass is also sent to
+    // the host, because it releases every other seat's blocked claim buttons.
     const pass = document.createElement('button');
     pass.type = 'button';
     pass.textContent = '過';
     pass.dataset.pass = 'true';
     pass.disabled = box.awaiting;
-    pass.addEventListener('click', () => passClaimBox(box));
+    pass.addEventListener('click', () => {
+      passClaimBox(box);
+      passPriority(box.sourceKey, game.seat);
+    });
     actions.appendChild(pass);
     const progress = document.createElement('span');
     progress.className = 'claim-progress';
@@ -4209,7 +4767,25 @@ function tickClaimBoxes() {
     box.timeLeft = Math.max(0, (box.expiresAt - now) / 1000);
     if (box.timerEl) box.timerEl.textContent = `${box.timeLeft.toFixed(1)} 秒`;
     if (box.progressEl) box.progressEl.style.width = `${box.timeLeft / MULTI_CLAIM_SECONDS * 100}%`;
-    if (box.timeLeft <= 0) { box.resolved = true; expired = true; }
+    const state = claimPriorityState(box.sourceKey);
+    if (state && priorityPending(state)) {
+      // An AI 十三幺 candidate with no winning claim must pass for the others;
+      // a human candidate keeps the queue open until it presses 過.
+      if (state.graceUntil <= now) {
+        for (const [seat, candidate] of state.candidates) {
+          if (!isAiSeat(seat) || candidate.passed || candidate.claimed) continue;
+          const waiting = game.pendingAiClaims.some((claim) => claim.sourceKey === box.sourceKey
+            && claim.seat === seat && ['win', 'rob'].includes(claim.type));
+          if (!waiting) passPriority(box.sourceKey, seat);
+        }
+      }
+    }
+    if (box.timeLeft <= 0) {
+      box.resolved = true;
+      expired = true;
+      if (box.kind === 'kong') finishKongOpportunity(box.sourceKey);
+      if (claimPriorityState(box.sourceKey)) releaseClaimPriority(box.sourceKey);
+    }
   }
   if (expired) renderClaimBoxes();
 }
@@ -5893,6 +6469,10 @@ if (new URLSearchParams(location.search).has('test')) {
     currentRoundKey, announceWin,
     hintRawFan, hintSelfDrawResult, hintKongGroups, hintTips, hintWaitInfo,
     renderClaimBoxes, leaveMultiRoom, notifyOthersOnExit, resetUnloadNotice, showHostLeft, deadRooms,
+    PRIORITY_GRACE_MS, claimPriorityState, isThirteenWaitForSeat, thirteenSeatsForTile,
+    startClaimPriority, priorityPending, priorityBlocksAction, passPriority, applyPriorityRegistration,
+    applyPriorityPass, beginKongOpportunity, finishKongOpportunity, cancelKongBySource,
+    scheduleAiKongRob, seatHasPendingKong, robKong,
     commitRoomDurationText, renderRoom,
     syncHostSeaPause, stepHostSea, updateFish, broadcastSeaSnapshot, paused, simulationPaused, modalOpen, keepsSeaMoving,
     renderGhostRods, HOOK_BROADCAST_INTERVAL,

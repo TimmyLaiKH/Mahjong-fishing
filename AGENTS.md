@@ -101,7 +101,12 @@ not keep stale sounds or scoring.
   substitute. 七對子 is the intentional exception: four identical tiles may supply two pairs.
 - **Every fished tile is a self-draw.** `evaluateHand` defaults `context.selfDraw` to `true`;
   claim wins pass `selfDraw: false`. 門前清 needs that flag and no meld at all — 碰／上／明槓／暗槓
-  all break it, as does winning off a discard. 坎坎胡 also requires no melds and is 13 fan.
+  all break it, as does winning off a discard. 九子連環 may be claimed from another player's
+  discard while still 門前清; it still never adds 自摸／門前清. 坎坎胡 also requires no melds and is
+  13 fan, but a discard claim only counts when the claimed tile completes the 單騎 pair; claiming a
+  completed triplet downgrades to 對對糊. 搶槓 is a claim-only 1-fan bonus; 明槓 may be robbed by any
+  winning hand and 暗槓 only by 十三幺, with the kong declarer as 出銃 and the kong plus its
+  replacement draw cancelled.
 - **Opening wins.** The dealer starts with 14 tiles and checks 天胡; other seats are dealt exactly
   13 and fish immediately, with no virtual fourteenth tile. 人胡 (13 fan) is a non-dealer's first
   fished non-flower tile; a flower caught first is only revealed and does not burn the chance.
@@ -141,7 +146,7 @@ Node-importable by keeping DOM access inside functions.
 Key exports:
 
 - Tile groups: `WINDS`, `DRAGONS`, `TERMINALS`, `ORPHANS`.
-- Scoring tables: `FAN_VALUES` (fan dictionary), `PATTERN_TABLE` (28 ordinary patterns with
+- Scoring tables: `FAN_VALUES` (fan dictionary), `PATTERN_TABLE` (29 ordinary patterns with
   `desc` and executable `example`), `FLOWER_PATTERN_TABLE` (5 flower patterns), `ABSORBS`
   (transitive higher-pattern → absorbed-pattern map, including `番子:*` pseudo-keys), `FAN_CAP`.
 - Core: `countTiles`, `normalizeMelds`, `decompose`, `isValidWinningHand`, `isThirteenOrphans`,
@@ -227,13 +232,18 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   disappear instead of spending tiles that are no longer held. While the rod is out, the box
   stays visible but every button is disabled; it unlocks when the hook returns empty or when a
   caught tile has been discarded. 胡／碰／明槓 can target any opponent; 上 only the previous
-  wind's 上家 (label prefix `上家・`). First valid claim wins; a claimant must discard before
-  claiming again; timeout implicitly passes. `canDeclareClaim()` requires a 13-tile-equivalent
-  hand with the rod home, no pending kong replacement or forced discard; `canDeclareMeld()` adds
-  the four-meld limit.
+  wind's 上家 (label prefix `上家・`). **Only a 十三幺 wait is 牌王:** while that player's wait is
+  valid for the tile, every other seat's 胡／槓／碰／上 button is disabled until the 十三幺 player
+  wins, sends `過`, or the window closes. The host relays `priority` registrations and
+  `priorityPass` messages and queues other presses in arrival order. Among multiple 十三幺 players,
+  and among every other action, it is still strictly first-press-wins. Otherwise first valid claim
+  wins; a claimant must discard before claiming again; timeout implicitly passes.
+  `canDeclareClaim()` requires a 13-tile-equivalent hand with the rod home, no pending kong
+  replacement or forced discard; `canDeclareMeld()` adds the four-meld limit.
   Delayed AI claims are revalidated at execution for the same conditions and recomputed as wins.
-  Opponent claim boxes include a local `過` button that only marks that box `passed` and hides it;
-  it sends no network message and never cancels AI or other seats' claims on the same discard.
+  Opponent claim boxes include a local `過` button that marks that box `passed` and hides it; it
+  never cancels AI or other seats' claims on the same discard. A 十三幺 candidate's `過` is also
+  sent to the host and relayed to every device, because it releases the blocked claims.
   `claimFromBox()` also ignores a passed box. A 胡 never enters the wait-for-ruling path: it calls
   `commitWin()` at once, settling locally and broadcasting `{t:'win'}` so every device ends the
   hand even if the claim message or host relay is late. `announceWin()` gives the win a unique
@@ -346,7 +356,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   device that missed `win` entirely.
 - **Message types.** `welcome`, `full`, `players`, `name`, `settings`, `start`, `discard`, `sea`,
   `time`, `hook`, `catch`, `catchRejected`, `fishCaught`, `flowers`, `claim`, `claimResult`,
-  `meld`, `win`, `winAck`, `match`, `draw`, `emoji`, `rematch`, `rematchStatus`, `backToRoom`, `restartRequest`,
+  `priority`, `priorityPass`, `meld`, `win`, `winAck`, `match`, `draw`, `emoji`, `rematch`,
+  `rematchStatus`, `backToRoom`, `restartRequest`,
   `restartVote`, `restartCancel`, `restartStatus`, `restartNow`, `leave`, `hostGone`, `notice`.
   `backToRoom` carries the host's current `settings` and returns every device to the read-only
   waiting room so the host can pick settings again for a new match. Host re-stamps guest

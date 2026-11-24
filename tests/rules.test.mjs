@@ -81,6 +81,15 @@ test('B2：坎張、邊張、單騎聽', () => {
 test('九子連環 1112345678999萬 有九面聽', () => {
   const hand = tiles('m1 m1 m1 m2 m3 m4 m5 m6 m7 m8 m9 m9 m9');
   assert.deepEqual(findWaits(hand), TILE_IDS.slice(0, 9));
+  // 門前清聽牌時可直接吃胡別人打出的牌，不必自摸。
+  const claim = evaluateHand({
+    concealed: tiles('m1 m1 m1 m2 m3 m4 m5 m6 m7 m8 m9 m9 m9 m5'),
+    winningTile: 'm5',
+    context: { selfDraw: false },
+  });
+  assert.ok(names(claim).includes('九子連環'));
+  assert.ok(!names(claim).includes('自摸'));
+  assert.ok(!names(claim).includes('門前清'));
 });
 
 test('findWaits 尊重牌牆剩餘張數', () => {
@@ -171,14 +180,30 @@ test('胡對手打出牌不算自摸或門前清，連暗刻胡牌也不顯示�
   assert.ok(!names(result).includes('自摸'));
   assert.equal(result.totalFan, 1);
 
-  const fourPungs = evaluateHand({
+  // 胡他人打出牌要湊成單騎才算坎坎胡；吃胡別人的刻子只得對對糊。
+  const tripletClaim = evaluateHand({
     concealed: tiles('m1 m1 m1 p2 p2 p2 s3 s3 s3 E E m4 m4 m4'),
     winningTile: 'm4',
     context: { selfDraw: false },
   });
-  assert.ok(names(fourPungs).includes('坎坎胡'), names(fourPungs).join(','));
-  assert.ok(!names(fourPungs).includes('門前清'));
-  assert.doesNotMatch(formatWinBreakdown(fourPungs), /門前清/);
+  assert.ok(names(tripletClaim).includes('對對糊'), names(tripletClaim).join(','));
+  assert.ok(!names(tripletClaim).includes('坎坎胡'), names(tripletClaim).join(','));
+  assert.ok(!names(tripletClaim).includes('門前清'));
+  assert.doesNotMatch(formatWinBreakdown(tripletClaim), /門前清/);
+
+  const pairClaim = evaluateHand({
+    concealed: tiles('m1 m1 m1 p2 p2 p2 s3 s3 s3 m4 m4 m4 E E'),
+    winningTile: 'E',
+    context: { selfDraw: false },
+  });
+  assert.ok(names(pairClaim).includes('坎坎胡'), names(pairClaim).join(','));
+  assert.ok(!names(pairClaim).includes('門前清'));
+
+  const selfDraw = evaluateHand({
+    concealed: tiles('m1 m1 m1 p2 p2 p2 s3 s3 s3 E E m4 m4 m4'),
+    winningTile: 'm4',
+  });
+  assert.ok(names(selfDraw).includes('坎坎胡'));
 });
 
 test('B3：111222333萬 + 789筒 + 將牌 取最高番的分解（平糊）', () => {
@@ -335,8 +360,21 @@ test('B11：九子連環／十三幺必須門前清', () => {
   const thirteen = tiles('m1 m9 p1 p9 s1 s9 E S W N C F B B');
   assert.equal(evaluateHand({ concealed: nine }).isWin, true);
   assert.equal(evaluateHand({ concealed: nine, melds: [kong('m1')] }).isWin, false);
+  const nineClaim = evaluateHand({
+    concealed: nine, winningTile: 'm5', context: { selfDraw: false },
+  });
+  assert.ok(names(nineClaim).includes('九子連環'));
+  assert.ok(!names(nineClaim).includes('自摸'));
   assert.equal(evaluateHand({ concealed: thirteen }).isWin, true);
   assert.equal(evaluateHand({ concealed: thirteen, melds: [kong('m1')] }).isWin, false);
+  const rob = evaluateHand({
+    concealed: thirteen,
+    winningTile: 'B',
+    context: { selfDraw: false, qianggang: true },
+  });
+  assert.deepEqual(names(rob).sort(), ['十三幺', '搶槓'].sort());
+  assert.equal(rob.totalFan, 14);
+  assert.ok(!names(evaluateHand({ concealed: thirteen, context: { qianggang: true } })).includes('搶槓'));
   const dupOrphans = tiles('m1 m1 m1 m9 p1 p9 s1 s9 E S W N C B');
   assert.equal(isThirteenOrphans(dupOrphans), false);
   assert.equal(isNineGates(tiles('m1 m1 m1 m2 m2 m2 m4 m5 m6 m7 m8 m9 m9 m9')), false);
@@ -415,7 +453,10 @@ test('牌型說明與番數依據新定義', () => {
   const byId = Object.fromEntries(PATTERN_TABLE.map((p) => [p.id, p]));
   assert.equal(byId['門前清'].desc, '沒有上、碰、槓（包括暗槓），而且胡牌是自己摸到的。');
   assert.equal(byId['坎坎胡'].desc,
-    '沒有碰、槓過的對對胡（又稱四暗刻；已含對對糊、門前清）。');
+    '沒有碰、槓過的對對胡（又稱四暗刻；已含對對糊、門前清）。自摸成立；胡他人打出牌時必須是單騎。');
+  assert.equal(byId['搶槓'].fan, 1);
+  assert.equal(FAN_VALUES['搶槓'], 1);
+  assert.match(byId['搶槓'].desc, /暗槓只有十三幺可搶/);
   assert.equal(byId['地胡'].desc, '開局後，閒家食莊家打出的第一隻牌。');
   assert.equal(byId['人胡'].desc, '閒家於開局第一輪即自摸；必為門前清，不另計自摸。');
   assert.equal(byId['對對糊'].desc, '只有刻子的牌型。');

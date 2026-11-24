@@ -40,6 +40,7 @@ export const FAN_VALUES = Object.freeze({
   '一檯花': 2,
   '花糊': 3,          // 七花：三番，已含自摸
   '槓上開花': 2,
+  '搶槓': 1,          // 聽牌者搶別家槓出的牌；被搶者視作出銃
   '混一色': 3,
   '花幺九': 4,
   '小三元': 5,
@@ -109,6 +110,14 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
+    id: '搶槓', fan: 1, desc: '聽牌時別家槓出自己所聽之牌即可胡牌並加 1 番；暗槓只有十三幺可搶，被搶槓者視作出銃。',
+    example: {
+      concealed: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'p2', 'p3', 'p4', 's7', 's8', 's9', 'p9', 'p9'],
+      melds: [],
+      context: { selfDraw: false, qianggang: true },
+    },
+  },
+  {
     id: '混一色', fan: 3, desc: '一門花色加字牌組成的胡牌。',
     example: { concealed: ['m1', 'm1', 'm1', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'E', 'E', 'E', 'S', 'S'], melds: [], context: {} },
   },
@@ -137,7 +146,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['C', 'C', 'C', 'F', 'F', 'F', 'B', 'B', 'B', 'm1', 'm2', 'm3', 'm9', 'm9'], melds: [], context: {} },
   },
   {
-    id: '坎坎胡', fan: 13, desc: '沒有碰、槓過的對對胡（又稱四暗刻；已含對對糊、門前清）。',
+    id: '坎坎胡', fan: 13, desc: '沒有碰、槓過的對對胡（又稱四暗刻；已含對對糊、門前清）。自摸成立；胡他人打出牌時必須是單騎。',
     example: { concealed: ['m1', 'm1', 'm1', 'p2', 'p2', 'p2', 's3', 's3', 's3', 'E', 'E', 'E', 'C', 'C'], melds: [], context: {} },
   },
   {
@@ -168,7 +177,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['m1', 'm1', 'm1', 'p1', 'p1', 'p1', 's9', 's9', 's9', 'm9', 'm9', 'm9', 'p9', 'p9'], melds: [], context: {} },
   },
   {
-    id: '九子連環', fan: 10, desc: '門前清，同一花色 1112345678999 再加任意一張同花色牌（已含清一色、門前清）。',
+    id: '九子連環', fan: 10, desc: '門前清，同一花色 1112345678999 再加任意一張同花色牌（已含清一色、門前清）；聽牌時也可胡他人打出牌。',
     example: { concealed: ['m1', 'm1', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm9', 'm9', 'm5'], melds: [], context: {} },
   },
   {
@@ -259,7 +268,7 @@ const FLOWER_PATTERN_BY_ID = Object.fromEntries(
 /** Small patterns that may stack with a main hand pattern. 番子 is deliberately
  *  not here: a hand whose only fan are 番子 is not 雞糊. */
 const BONUS_IDS = new Set([
-  '門前清', '自摸', '海底撈月', '槓上開花', '連槓開花',
+  '門前清', '自摸', '海底撈月', '槓上開花', '連槓開花', '搶槓',
   '無花', '正花', '一檯花', '花糊', '大花糊',
 ]);
 
@@ -524,9 +533,14 @@ function evaluateDecomposition(concealed, groups, melds, context) {
 
   if (sets.length === 4 && sets.every(isPung)) {
     // 對對糊 is the plain all-pung hand; 坎坎胡 is its fully concealed (四暗刻)
-    // form and absorbs it. Any meld, including 暗槓, breaks 坎坎胡.
+    // form and absorbs it. Any meld, including 暗槓, breaks 坎坎胡. A discard
+    // claim only counts when the claimed tile completes the single pair (單騎);
+    // claiming a completed triplet is just 對對糊.
     add('對對糊');
-    if (melds.length === 0) add('坎坎胡');
+    const singlePairClaim = context.selfDraw
+      || !context.winningTile
+      || Boolean(pair?.includes(context.winningTile));
+    if (melds.length === 0 && singlePairClaim) add('坎坎胡');
   }
   if (sets.length === 4 && sets.every((s) => s.type === 'sequence') && pair && !TILE_INFO[pair[0]].isHonor) add('平糊');
 
@@ -570,6 +584,8 @@ function evaluateDecomposition(concealed, groups, melds, context) {
   // 海底撈月 applies to both self-draws and claim wins; 自摸 below is scored
   // separately whenever context.selfDraw is true.
   if (!isTiangu && context.haidi) add('海底撈月');
+  // 搶槓 is a claim-only bonus; the kong declarer becomes the 出銃 seat.
+  if (context.qianggang && !context.selfDraw) add('搶槓');
   // 門前清 needs a fully concealed hand (no 碰／上／槓, including 暗槓) and a
   // self-draw. Winning on someone else's discard is never 門前清 either.
   if (context.selfDraw && melds.length === 0) add('門前清');
@@ -725,16 +741,19 @@ export function flowerWinResult(flowers = [], seatWind = 'E', fanCap = FAN_CAP, 
 
 /**
  * The single entry point used by the game, the hints and all tests.
- * context: { selfDraw, kongReplacementChain, haidi, tiangu, dihuClaim, renhu, roundWind, seatWind }
+ * context: { selfDraw, winningTile, kongReplacementChain, haidi, tiangu, dihuClaim,
+ *   renhu, qianggang, roundWind, seatWind }
  * melds: { tile, type: 'kong'|'pung'|'chow', tiles, open } — any meld, including
  * 暗槓, suppresses 門前清; a claim win (selfDraw: false) suppresses it too.
- * 自摸 depends only on context.selfDraw, and 坎坎胡 also needs no melds at all.
+ * 自摸 depends only on context.selfDraw; 坎坎胡 also needs no melds, and a claim
+ * must complete the single pair. 搶槓 is a claim-only 1-fan bonus.
  * fanCap 仍可選擇性傳入以配合自訂屋規，但遊戲預設為無上限。
  */
 export function evaluateHand({ concealed = [], melds = [], winningTile = null, context = {} } = {}) {
   const normalizedMelds = normalizeMelds(melds);
   const ctx = {
     selfDraw: true,             // every fished tile is a self-draw (documented design decision)
+    winningTile,
     kongReplacementChain: 0,
     haidi: false,
     roundWind: 'E',
