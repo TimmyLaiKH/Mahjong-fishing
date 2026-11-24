@@ -3,16 +3,18 @@
 ## 規則來源
 
 - 番數名稱與番數以[香港麻雀協會《香港麻雀總例》](https://www.hkmahjong.org/rules)為唯一依據；中文全文可參考[《香港麻雀總例》Google Doc](https://docs.google.com/document/d/1TgdYpE_5Qiht_lBco3BqN_ijZJDRWugwzRzv946raq0/edit?usp=sharing)。此處不複製全文。
-- `花幺九` 沿用本遊戲既有名稱，在總例稱「花么」並計 4 番；`七對子`、`人胡`、`綠一色`、`藍一色` 為本遊戲保留的自訂牌型，不屬總例番種。
+- `花么九` 沿用本遊戲既有名稱，在總例稱「花么」並計 4 番；`七對子`、`人胡`、`綠一色`、`藍一色` 為本遊戲保留的自訂牌型，不屬總例番種。
 - 維基百科與麻將百科僅作次要背景參考，不取代總例。
 
 ## 牌面圖片
 
 - 來源：[FluffyStuff / riichi-mahjong-tiles](https://github.com/FluffyStuff/riichi-mahjong-tiles)，`Export/Regular` 目錄。
 - 授權：**CC0 1.0**（公有領域貢獻）。
-- 處理方式：透明牌面疊加在 `Front.png` 上，再縮放為 120×160 的 `assets/tiles/faces/*.png`。原始下載檔保留在 `assets/tiles/raw/`，以便重新產生。
-- 8 張花牌（春、夏、秋、冬、梅、蘭、菊、竹）改用 [DrCMWither/mahjong-tiles](https://github.com/DrCMWither/mahjong-tiles) 的 `tiles-tmp/1f.svg`–`8f.svg`，作者 **Lilia Chen May Wither**；artwork 延展自上述 FluffyStuff 牌面，並以 **CC0 1.0** 發布。原始 SVG 與預先柵格化的 PNG 存放於 `assets/tiles/raw/flowers/`，再由 `scripts/process_assets.py` 疊在上述 CC0 `Front.png` 底圖上並縮放為 120×160 的 `H1.png`–`H8.png`。
+- 處理方式：透明牌面疊加在 `Front.png` 上，縮放為 120×160，再由 `scripts/restyle_tiles.py` 烘焙成立體邊與柔陰影，輸出 144×205 RGBA 的 `assets/tiles/faces/*.png`。原始下載檔保留在 `assets/tiles/raw/`，`scripts/process_assets.py` 可完整重新產生。
+- 8 張花牌（春、夏、秋、冬、梅、蘭、菊、竹）改用 [DrCMWither/mahjong-tiles](https://github.com/DrCMWither/mahjong-tiles) 的 `tiles-tmp/1f.svg`–`8f.svg`，作者 **Lilia Chen May Wither**；artwork 延展自上述 FluffyStuff 牌面，並以 **CC0 1.0** 發布。原始 SVG 與預先柵格化的 PNG 存放於 `assets/tiles/raw/flowers/`，再由 `scripts/process_assets.py` 疊在上述 CC0 `Front.png` 底圖上、縮放為 120×160 並烘焙為 144×205 RGBA 的 `H1.png`–`H8.png`。
 - 「蘭」牌 `H6.png` 的紅色字樣已由簡體「兰」修正為繁體「蘭」，並改用潦草毛筆風格：以 [Liu Jian Mao Cao](https://fonts.google.com/specimen/Liu+Jian+Mao+Cao)（SIL Open Font License 1.1）的草書「艹」與「兰」組合成繁體字。字形輪廓已轉成路徑內嵌於 `6f.svg`；其餘花牌 artwork 保持原樣。
+
+- 維基百科的香港麻將牌圖頁面只作牌面立體邊的**視覺參考**；其圖片（包括 `hk*.png`）沒有使用、下載或複製到本專案，不適用其 CC BY-SA 授權。最終 43 張牌圖全由上述 CC0 素材烘焙產生。
 
 > Tiles: FluffyStuff / Lilia Chen May Wither, CC0.
 

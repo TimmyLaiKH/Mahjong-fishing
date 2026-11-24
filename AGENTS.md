@@ -35,11 +35,12 @@ node --check js/net.js
 node tests/rules.test.mjs        # must print 64 通過，0 失敗
 node tests/payout.test.mjs       # must print 12 通過，0 失敗
 node tests/net.test.mjs          # must print 2 通過，0 失敗
+node tests/hkma-ui.test.mjs      # must print 8 通過，0 失敗
 git diff --check
 ```
 
-`npm test` currently runs **only** `tests/rules.test.mjs`; always run the payout suite explicitly.
-Both suites use a tiny local harness with `process.exitCode`, not an external test framework.
+`npm test` currently runs **only** `tests/rules.test.mjs`; always run the payout and static suites explicitly.
+All suites use a tiny local harness with `process.exitCode`, not an external test framework.
 
 Regenerating image assets (requires `curl`, `file`, `python3`, Pillow):
 
@@ -48,12 +49,16 @@ bash scripts/fetch_assets.sh
 python3 scripts/process_assets.py
 ```
 
+`scripts/process_assets.py` calls `scripts/restyle_tiles.py` to bake the approved edges and shadow into
+each runtime PNG; the restyle script can also be run alone as
+`python3 scripts/restyle_tiles.py INPUT_FOLDER OUTPUT_FOLDER`.
+
 Deployment is GitHub Pages from `main`. Commit, push, then verify the live site with distinct
 cachebusts (`index.html`, `js/game.js`, `js/payout.js`, `css/style.css`). `index.html` also pins a
 `?v=` version on `css/style.css` and `js/game.js`; bump it whenever those files change so players do
 not keep a stale cached 胡 handler. `js/game.js` also pins `./audio.js?v=...`,
 `./rules.js?v=...` and `./tiles.js?v=...`; bump those imports when the audio helper, rules engine
-or tile drawing helpers change so players do not keep stale sounds, scoring or tile bevels.
+or tile drawing helpers change so players do not keep stale sounds, scoring or tile faces.
 
 ## Repository map
 
@@ -73,6 +78,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
 | `tests/rules.test.mjs` | 64 rule tests: T1–T13, table-driven patterns, flowers, weighted pool, 1000-game simulation. |
 | `tests/payout.test.mjs` | 12 payout/settlement tests. |
 | `tests/net.test.mjs` | 2 tests for PeerJS-safe outgoing message normalisation. |
+| `tests/hkma-ui.test.mjs` | 8 static checks: no old character, three help tabs, jump button, custom-pattern order, baked 144×205 tiles, version cachebusts. |
 | `tests/browser-ai-discard.test.html` | Browser regression page: loads the real game with `?test=1`, forces an AI discard via `aiTick()`, and fails on any exception or missing river tile. |
 | `README.md`, `CHANGELOG.md`, `CREDITS.md`, `AGENTS.md` | Player docs, change history, asset licences, agent instructions. |
 
@@ -98,7 +104,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   needs all eight; duplicates never complete a set.
 - **Combination patterns need distinct tiles.** 大／小三元 require all three dragon kinds (the
   small form's pair must be the missing dragon), and 大／小四喜 require the four wind kinds the
-  same way. 十三幺 needs all 13 distinct orphans plus a duplicate of one of them; 九子連環 needs
+  same way. 十三么 needs all 13 distinct orphans plus a duplicate of one of them; 九子連環 needs
   one suit's `1112345678999` plus one extra tile of that suit. Repeated triplets or pairs cannot
   substitute. 七對子 follows the same distinct-kind rule: exactly seven kinds, each appearing
   twice.
@@ -108,7 +114,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   while still 門前清; it still never adds 自摸 (門前清 is absorbed by the limit hand). 坎坎胡 also
   requires no melds and is 10 fan, but a discard claim only counts when the claimed tile completes
   the 單騎 pair; claiming a completed triplet downgrades to 對對糊 and still scores 門前清. 搶槓 is a
-  claim-only 1-fan bonus; 明槓 may be robbed by any winning hand and 暗槓 only by 十三幺, with the
+  claim-only 1-fan bonus; 明槓 may be robbed by any winning hand and 暗槓 only by 十三么, with the
   kong declarer as 出銃 and the kong plus its replacement draw cancelled. A win after a kong keeps
   its 槓上開花／連槓開花 fan, but settles as 出槓 when the FIRST kong is 明槓: the seat that discarded
   the kong tile pays like 出銃, including through 連槓. A concealed/added first kong stays 自摸 with
@@ -130,7 +136,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   All evaluate/withFlowers/flowerWinResult calls already read that local cap. There is no separate
   point system.
 - **Official fan authority.** HKMA《香港麻雀總例》is the sole authority for pattern names and fan
-  values. `花幺九` keeps its in-game ID but is 4 番 (the 總例 calls it `花么`). `七對子`, `人胡`,
+  values. `花么九` keeps its in-game ID but is 4 番 (the 總例 calls it `花么`). `七對子`, `人胡`,
   `綠一色` and `藍一色` are explicitly in-game custom patterns (`category: '自訂牌型'`) and keep
   their existing fan values; do not present them as official 總例 patterns.
 - **Player-facing strings are contractual.** Waiting-to-cast status is exactly
@@ -140,14 +146,17 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   `所有人加入後，請等待房主按下「開始遊戲」。` at the top of the 聯機 room screen.
   The solo lobby instead shows `三位 AI 對手已自動補位，按下「開始遊戲」即可開始。` and hides all
   room-code/share-link UI.
-- **Help and pattern table.** 玩法說明 has exactly six `<li>` items. Its header has a
-  `前往番數表` button (`#helpFanTableBtn`) that scrolls the modal card to `#fanTableTitle` without
-  adding a list item. Outside the list, a static 0–10 番 payout table (`#payoutTableTitle`) shows
+- **Help and pattern table.** 玩法說明 has three tabs (`data-help-tab` = `rules`/`patterns`/`payout`,
+  panels `#helpTabRules`/`#helpTabPatterns`/`#helpTabPayout`); the `玩法說明` list may exceed six
+  `<li>` items. Its header has a `前往番數表` button (`#helpFanTableBtn`) that first switches to the
+  `牌型一覽` tab and then scrolls the modal card to `#fanTableTitle` without adding a list item.
+  Custom patterns sort to the bottom of the generated table. The separate `派彩計算表` tab has a
+  static 0–10 番 payout table (`#payoutTableTitle`) that shows
   倍率 V/B, 出銃支付, 自摸每家 and 自摸三家合計, followed by a note that B is the host's 金額倍數
   (default 1, range 1–100), 自摸 rounds to an integer and 無限番 continues the same formula. A HKMA
-  source note sits beside it. 牌型一覽 lives inside it and is generated from `PATTERN_TABLE` +
+  source note sits beside it. The `牌型一覽` tab is generated from `PATTERN_TABLE` +
   `FLOWER_PATTERN_TABLE`; every pattern needs a validated `example` there. HKMA《香港麻雀總例》is the
-  sole fan authority; `花幺九` is 4 番 (花么). Patterns carrying `category: '自訂牌型'`
+  sole fan authority; `花么九` is 4 番 (花么). Patterns carrying `category: '自訂牌型'`
   (七對子、人胡、綠一色、藍一色) get a small 自訂牌型 tag in the name cell only; settlement and speech
   never show it. The closing footnote says
   `碰、上、槓才不計門前清，吃胡他人打出的牌仍可計門前清（但不計自摸）。`
@@ -177,6 +186,8 @@ Key exports:
 - Flowers: `evaluateFlowers`, `flowerWin`, `withFlowers`, `flowerWinResult`.
 - Evaluation: `evaluateHand`, `findWaits`, `shanten`, `getUsefulTiles`, `getAssistTiles`.
 - Pool/utilities: `createWall`, `randomTileKind`, `shuffle`, `formatWinBreakdown`.
+- UI helper: `sortPatternRows` keeps 自訂牌型 rows at the bottom of the help pattern table;
+  generate that table with this export instead of sorting inline.
 
 Scoring notes:
 
@@ -190,7 +201,7 @@ Scoring notes:
   absorbs `自摸`; `天胡`/`地胡`/`人胡` absorb 自摸+門前清; any meld (including 暗槓) suppresses
   門前清, but a claim win no longer does. 坎坎胡 is 10 fan and also needs no melds. 平糊 allows an
   honor-pair 將; 七對子 needs seven distinct pairs; 小四喜 absorbs 混一色. 槓上開花／連槓開花 suppress
-  海底撈月. `字一色` absorbs 花幺九, 對對糊 and the seat/round 番子 pseudo-keys; `大四喜` still absorbs
+  海底撈月. `字一色` absorbs 花么九, 對對糊 and the seat/round 番子 pseudo-keys; `大四喜` still absorbs
   對對糊. A 番子-only hand is not 雞糊.
 - `formatWinBreakdown()` is the shared zh-Hant text used by win dialogs; it reports **fan only**
   and must never print money or 分. The game adds payout text separately.
@@ -260,17 +271,17 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   disappear instead of spending tiles that are no longer held. While the rod is out, the box
   stays visible but every button is disabled; it unlocks when the hook returns empty or when a
   caught tile has been discarded. 胡／碰／明槓 can target any opponent; 上 only the previous
-  wind's 上家 (label prefix `上家・`). **Only a 十三幺 wait is 牌王:** while that player's wait is
-  valid for the tile, every other seat's 胡／槓／碰／上 button is disabled until the 十三幺 player
+  wind's 上家 (label prefix `上家・`). **Only a 十三么 wait is 牌王:** while that player's wait is
+  valid for the tile, every other seat's 胡／槓／碰／上 button is disabled until the 十三么 player
   wins, sends `過`, or the window closes. The host relays `priority` registrations and
-  `priorityPass` messages and queues other presses in arrival order. Among multiple 十三幺 players,
+  `priorityPass` messages and queues other presses in arrival order. Among multiple 十三么 players,
   and among every other action, it is still strictly first-press-wins. Otherwise first valid claim
   wins; a claimant must discard before claiming again; timeout implicitly passes.
   `canDeclareClaim()` requires a 13-tile-equivalent hand with the rod home, no pending kong
   replacement or forced discard; `canDeclareMeld()` adds the four-meld limit.
   Delayed AI claims are revalidated at execution for the same conditions and recomputed as wins.
   Opponent claim boxes include a local `過` button that marks that box `passed` and hides it; it
-  never cancels AI or other seats' claims on the same discard. A 十三幺 candidate's `過` is also
+  never cancels AI or other seats' claims on the same discard. A 十三么 candidate's `過` is also
   sent to the host and relayed to every device, because it releases the blocked claims.
   `claimFromBox()` also ignores a passed box. A 胡 never enters the wait-for-ruling path: it calls
   `commitWin()` at once, settling locally and broadcasting `{t:'win'}` so every device ends the
@@ -432,7 +443,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 - The HUD opens with one bar: **設定 → 玩法說明 → 表情** on the left, a large centered timer,
   and **計分 + round block** on the right. The round block stacks `X風第 X 局・X 圈` above
   counters that read only 門風 and 資金 (with a `$` prefix); 巡, 番數 and 最佳 are not shown
-  during play. The main menu appears before any lobby or game starts and shows a legal 十三幺
+  during play. The main menu appears before any lobby or game starts and shows a legal 十三么
   winning hand (all 13 orphans plus one duplicate), but no fan record line. The 設定 panel keeps only
   player name, two switches (背景音樂, 音效與語音), 主音量, 音樂音量, 重來這局 and 回到主選單 —
   鉤速 (default 1.0×) and
@@ -451,10 +462,11 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   comes first: the floor (`WORLD_H`) or the nearest side (`view.width / 2 - TILE_W / 2`), and
   `hookPositionFor()` clamps only at half a tile so the hook still reaches the edge without
   leaving the canvas.
-- Tile faces stay as the existing 43 runtime PNGs with `TILE_ASSET_VERSION = 6`; the subtle 3D
-  look is only a CSS/canvas overlay. `.tile-img` adds `drop-shadow` and a `::before` bevel with
-  `pointer-events: none`, while `drawTile()` adds a gradient and edge strokes without touching
-  PNGs or image paths. `js/game.js` pins `./tiles.js?v=...`; bump it when tile drawing changes.
+- Tile faces are 43 runtime PNGs at 144×205 RGBA with `TILE_ASSET_VERSION = 7`; the subtle 3D
+  edges and soft shadow are baked into the PNGs by `scripts/restyle_tiles.py` (called by
+  `scripts/process_assets.py`). There is no CSS `::before` bevel and no canvas gradient/edge-stroke
+  bevel in `drawTile()`; `.tile-img img` only keeps its separation `drop-shadow`. `js/game.js`
+  pins `./tiles.js?v=...`; bump it when tile drawing changes.
 - `各家副露` sits above your own 副露 (flowers and concealed kongs), below status/toast and above
   the hand; it is always expanded (never collapsible) and lists only the other three seats' live
   `$` purse, melds and flower counts with original tile sizes. `updateScoreUI()` refreshes these
@@ -491,13 +503,14 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   The 設定 modal must not mention AI, 起糊 or 番數上限 — those live in the room lobby; host hook
   speed and duration lock after start; both
   volume sliders save into `mf-volume`, and both switches save into `mf-sound`.
-- Exact waiting status, help count, pattern table source and no-bottom-button rules are listed
+- Exact waiting status, help tabs, pattern table source and no-bottom-button rules are listed
   under **Core game invariants**; keep them in sync with `index.html`.
 
 ## Assets, audio and credits
 
-- Tile faces are 43 runtime PNGs (34 regular, 8 flowers, 1 back) at 120×160, generated from CC0
-  artwork by FluffyStuff and Lilia Chen May Wither. `H6.png` uses 繁體「蘭」.
+- Tile faces are 43 runtime PNGs (34 regular, 8 flowers, 1 back) at 144×205 RGBA, generated from
+  CC0 artwork by FluffyStuff and Lilia Chen May Wither with baked edges from
+  `scripts/restyle_tiles.py`. `H6.png` uses 繁體「蘭」.
 - `assets/bg/underwater.jpg` is under 400 KB, derived from a CC BY 4.0 Wikimedia image by
   Olivier Dugornay / Ifremer; the game draws mountains, houses, bamboo and grass in canvas, so
   no extra scenery images are needed.

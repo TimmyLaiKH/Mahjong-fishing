@@ -6,15 +6,15 @@
 import {
   TILE_IDS, TILE_INFO, FLOWER_IDS, isFlower, loadImages, drawTile,
   createTileElement, tileName,
-} from './tiles.js?v=1.4.96';
+} from './tiles.js?v=1.4.97';
 import { createMusic } from './audio.js?v=1.4.86';
 import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
 import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
-  withFlowers, flowerWin, flowerWinResult,
-} from './rules.js?v=1.4.96';
+  withFlowers, flowerWin, flowerWinResult, sortPatternRows,
+} from './rules.js?v=1.4.97';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -142,7 +142,7 @@ const HOOK_BROADCAST_INTERVAL = 0.05;
 /** AI claims wait briefly so a nearby human press still wins the tile. */
 const AI_CLAIM_DELAY_MIN = 0.25;
 const AI_CLAIM_DELAY_RANGE = 0.6;
-/** 十三幺牌王 may register from any device before ordinary claims are released. */
+/** 十三么牌王 may register from any device before ordinary claims are released. */
 const PRIORITY_GRACE_MS = 250;
 
 const view = { scale: 1, width: REFERENCE_W, dpr: 1 };
@@ -222,7 +222,7 @@ const game = {
   },
   claimBoxes: [],           // multiplayer claim slots (one per recent discard / kong)
   claimedKeys: new Set(),   // solo: one AI claim per played tile
-  claimPriorities: new Map(), // sourceKey -> 十三幺牌王 arbitration for that tile
+  claimPriorities: new Map(), // sourceKey -> 十三么牌王 arbitration for that tile
   pendingKongs: new Map(),  // sourceKey -> kong that can still be robbed
   cancelledKongKeys: new Set(), // late meld messages for robbed kongs are ignored
   seatMelds: {},            // seat -> meld[], used by the 副露 panel
@@ -1268,11 +1268,11 @@ function claimReadyTiles() {
 }
 
 /* ------------------------------------------------------------------ *
- * 十三幺牌王 priority and 搶槓 (rob-the-kong) arbitration
+ * 十三么牌王 priority and 搶槓 (rob-the-kong) arbitration
  *
- * A 十三幺 wait outranks every other 胡／槓／碰／上 claim, including a rob of a
+ * A 十三么 wait outranks every other 胡／槓／碰／上 claim, including a rob of a
  * concealed kong. Every other claim is first-come-first-served. The host holds
- * claims briefly so a guest's 十三幺 registration can arrive, then releases the
+ * claims briefly so a guest's 十三么 registration can arrive, then releases the
  * queue in arrival order once that player wins or presses 過.
  * ------------------------------------------------------------------ */
 
@@ -1329,9 +1329,9 @@ function releaseClaimPriority(sourceKey, { replay = true } = {}) {
   state.graceUntil = 0;
   const queued = state.queued.splice(0);
   renderClaimBoxes();
-  // A 十三幺 win or rob beats every press that was held behind it: those are
+  // A 十三么 win or rob beats every press that was held behind it: those are
   // discarded, not replayed. A 過 or window expiry releases them in arrival
-  // order, preserving first-come-first-served among all non-十三幺 actions.
+  // order, preserving first-come-first-served among all non-十三么 actions.
   if (replay) for (const msg of queued) handleClaim(msg);
 }
 
@@ -1409,7 +1409,7 @@ function markPriorityWin(sourceKey, seat, result) {
   releaseClaimPriority(sourceKey);
 }
 
-/** Every device derives the same 十三幺 priority queue from the public offer.
+/** Every device derives the same 十三么 priority queue from the public offer.
  *  The host supplies the candidate seats; a guest additionally registers itself
  *  because only that device knows its concealed hand. */
 function ensurePriorityForBox(entry) {
@@ -1637,7 +1637,7 @@ function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass 
     ? { discarderSeat, qianggang: true }
     : { firstDiscard, discarderSeat });
   if (qualifyingWin(win) && (!kong || !concealed
-    || win.patterns.some((pattern) => pattern.id === '十三幺'))) {
+    || win.patterns.some((pattern) => pattern.id === '十三么'))) {
     actions.push({
       label: kong ? '搶槓' : '胡牌', type: kong ? 'rob' : 'win', result: win,
       // A completed hand always ends the game when pressed; it must not be
@@ -1699,12 +1699,12 @@ function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass 
 }
 
 /** Rob a kong: cancel the kong and its replacement fish, then settle as a claim
- *  whose 出銃 is the kong declarer. 十三幺 alone may rob a concealed kong. */
+ *  whose 出銃 is the kong declarer. 十三么 alone may rob a concealed kong. */
 function robKong(sourceKey, result, kongSeat) {
   if (!qualifyingWin(result) || priorityBlocksAction(sourceKey, game.seat, 'rob')) return;
   const kong = game.pendingKongs.get(sourceKey);
   if (!kong || (kong.concealed
-    && !result.patterns.some((pattern) => pattern.id === '十三幺'))) return;
+    && !result.patterns.some((pattern) => pattern.id === '十三么'))) return;
   cancelKongBySource(sourceKey, kong.seat);
   markPriorityWin(sourceKey, game.seat, result);
   if (game.mode === 'multi') {
@@ -2129,7 +2129,7 @@ function scheduleAiClaims(tile, discarderSeat, sharedSourceKey = null, firstDisc
 }
 
 /** AI seats may rob an open kong with any winning hand, but a concealed kong
- *  only with 十三幺. The same 十三幺 priority queue applies before any call. */
+ *  only with 十三么. The same 十三么 priority queue applies before any call. */
 function scheduleAiKongRob(kong) {
   if (!kong || !Object.keys(game.aiStates).length
     || game.state === S.WIN || game.state === S.DRAW_GAME) return;
@@ -2142,7 +2142,7 @@ function scheduleAiKongRob(kong) {
       discarderSeat: kong.seat, qianggang: true,
     });
     if (!qualifyingWin(result)) continue;
-    if (kong.concealed && !result.patterns.some((pattern) => pattern.id === '十三幺')) continue;
+    if (kong.concealed && !result.patterns.some((pattern) => pattern.id === '十三么')) continue;
     game.pendingAiClaims.push({
       type: 'rob',
       result,
@@ -2180,7 +2180,7 @@ function aiClaimStillValid(claim) {
   if (claim.type === 'rob') {
     const kong = game.pendingKongs.get(claim.sourceKey);
     if (!kong || kong.seat === claim.seat) return false;
-    if (kong.concealed && !claim.result?.patterns?.some((p) => p.id === '十三幺')) return false;
+    if (kong.concealed && !claim.result?.patterns?.some((p) => p.id === '十三么')) return false;
     const fresh = claimWinResultFor(claim.seat, claim.tileId, null, {
       discarderSeat: kong.seat, qianggang: true,
     });
@@ -3867,9 +3867,9 @@ function handleClaim(msg) {
   const kong = msg.type === 'rob' ? game.pendingKongs.get(sourceKey) : null;
   if (msg.type === 'rob' && (!kong || kong.seat === msg.seat)) return;
   if (msg.type === 'rob' && kong.concealed
-    && !msg.result?.patterns?.some((pattern) => pattern.id === '十三幺')) return;
+    && !msg.result?.patterns?.some((pattern) => pattern.id === '十三么')) return;
 
-  // 十三幺牌王 is absolute: until its candidate wins or presses 過, every other
+  // 十三么牌王 is absolute: until its candidate wins or presses 過, every other
   // 胡／槓／碰／上 press is held in arrival order and replayed afterwards.
   const priority = refreshClaimPriority(sourceKey);
   let releaseAfter = false;
@@ -3888,7 +3888,7 @@ function handleClaim(msg) {
     game.claimedKeys.add(sourceKey);
   }
   if (box) box.resolved = true;
-  // A winning 十三幺 claim is absolute: held presses from other seats must not
+  // A winning 十三么 claim is absolute: held presses from other seats must not
   // settle the same tile after it.
   if (releaseAfter) releaseClaimPriority(sourceKey, { replay: false });
   const tileId = msg.tileId ?? box?.tileId ?? kong?.tileId;
@@ -4561,7 +4561,7 @@ function wireNetEvents() {
       // the host's clock from this point on so arbitration stays consistent.
       msg.deadline = Date.now() + MULTI_CLAIM_SECONDS * 1000;
       // Only the host knows every concealed hand, so it alone names the
-      // 十三幺牌王 candidates that block all other claims during this window.
+      // 十三么牌王 candidates that block all other claims during this window.
       msg.priorityGraceUntil = Date.now() + PRIORITY_GRACE_MS;
       msg.thirteenSeats = thirteenSeatsForTile(msg.tileId, msg.seat);
       // Only the host decides whether this is the dealer's opening discard, so
@@ -4898,7 +4898,7 @@ function renderClaimBoxes() {
       button.addEventListener('click', () => claimFromBox(box, action));
       actions.appendChild(button);
     }
-    // 過 dismisses this box locally. A 十三幺 candidate's pass is also sent to
+    // 過 dismisses this box locally. A 十三么 candidate's pass is also sent to
     // the host, because it releases every other seat's blocked claim buttons.
     const pass = document.createElement('button');
     pass.type = 'button';
@@ -5016,7 +5016,7 @@ function tickClaimBoxes() {
     if (box.progressEl) box.progressEl.style.width = `${box.timeLeft / MULTI_CLAIM_SECONDS * 100}%`;
     const state = claimPriorityState(box.sourceKey);
     if (state && priorityPending(state)) {
-      // An AI 十三幺 candidate with no winning claim must pass for the others;
+      // An AI 十三么 candidate with no winning claim must pass for the others;
       // a human candidate keeps the queue open until it presses 過.
       if (state.graceUntil <= now) {
         for (const [seat, candidate] of state.candidates) {
@@ -6285,9 +6285,29 @@ function showOverlay({
 function openModal(id) { el(id)?.classList.add('show'); }
 function closeModal(id) { el(id)?.classList.remove('show'); }
 
-/** Scroll inside the help card so the pattern table is reachable on phones
- *  without dragging past all six explanation items. */
+/** Show one section of 玩法說明 and reset its scroll position. */
+function switchHelpTab(name) {
+  const panel = el('helpPanel');
+  const tab = panel?.querySelector(`[data-help-tab="${name}"]`);
+  if (!panel || !tab) return;
+  for (const button of panel.querySelectorAll('[data-help-tab]')) {
+    const active = button === tab;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  }
+  for (const section of panel.querySelectorAll('.help-tab-panel')) {
+    const active = section.id === tab.getAttribute('aria-controls');
+    section.hidden = !active;
+    section.setAttribute('aria-hidden', String(!active));
+  }
+  const card = panel.querySelector('.modal-card');
+  if (card) card.scrollTop = 0;
+}
+
+/** Switch to the pattern table and scroll inside the help card so its heading
+ *  is reachable on phones without dragging through the rules list. */
 function jumpToFanTable() {
+  switchHelpTab('patterns');
   const card = el('helpPanel')?.querySelector('.modal-card');
   const title = el('fanTableTitle');
   if (!card || !title) return;
@@ -6307,7 +6327,7 @@ function closeTopModal() {
 function showMenu() {
   if (ui.menuTiles) {
     ui.menuTiles.innerHTML = '';
-    // A legal 十三幺 hand: every orphan once, plus one duplicate as the pair.
+    // A legal 十三么 hand: every orphan once, plus one duplicate as the pair.
     for (const id of [...ORPHANS, ORPHANS[0]]) {
       addTileTo(ui.menuTiles, id);
     }
@@ -6343,7 +6363,7 @@ function quitToMenu() {
 
 function buildPatternTable() {
   ui.patternsBody.innerHTML = '';
-  const rows = [...PATTERN_ROWS, ...FLOWER_PATTERN_TABLE].sort((a, b) => a.fan - b.fan);
+  const rows = sortPatternRows([...PATTERN_ROWS, ...FLOWER_PATTERN_TABLE]);
   for (const pattern of rows) {
     const tr = document.createElement('tr');
     const name = document.createElement('td');
@@ -6573,11 +6593,14 @@ function wireInput() {
     });
   }
   ui.roomGameDurationText.addEventListener('change', commitRoomDurationText);
-  el('menuHelp').addEventListener('click', () => openModal('helpPanel'));
+  el('menuHelp').addEventListener('click', () => { switchHelpTab('rules'); openModal('helpPanel'); });
   el('menuSettings').addEventListener('click', () => openModal('settingsPanel'));
   el('menuCredits').addEventListener('click', () => openModal('creditsPanel'));
   el('restartBtn').addEventListener('click', () => { closeTopModal(); requestRestart(); });
-  el('helpBtn').addEventListener('click', () => openModal('helpPanel'));
+  el('helpBtn').addEventListener('click', () => { switchHelpTab('rules'); openModal('helpPanel'); });
+  for (const button of el('helpPanel').querySelectorAll('[data-help-tab]')) {
+    button.addEventListener('click', () => switchHelpTab(button.dataset.helpTab));
+  }
   el('helpFanTableBtn')?.addEventListener('click', jumpToFanTable);
   el('settingsBtn').addEventListener('click', () => openModal('settingsPanel'));
   ui.emojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.emojiBtn));
