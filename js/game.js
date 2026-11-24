@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult,
-} from './rules.js?v=1.4.89';
+} from './rules.js?v=1.4.90';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -1441,7 +1441,7 @@ function cancelKongBySource(sourceKey, kongSeat = null) {
   renderClaimBoxes();
 }
 
-/** Winning off a discard is never 自摸 or 門前清; open calls remove it too.
+/** Winning off a discard is never 自摸, but a meld is needed to lose 門前清;
  *  地胡 is only added when a non-dealer claims the dealer's first discard. */
 function claimWinResultFor(seat, discardId, tiles = null,
   { firstDiscard = false, discarderSeat = null, qianggang = false } = {}) {
@@ -5827,7 +5827,7 @@ function renderMelds() {
 }
 
 // Hint-only fan calculation: what a discard claim would score right now —
-// no 自摸／門前清／海底／kong bonus, but 無花 stays in the raw value.
+// no 自摸／海底／kong bonus, but 門前清 and 無花 stay in the raw value.
 function hintRawFan(concealed, waitId) {
   const context = seatWinContext(game.seat, {
     selfDraw: false,
@@ -5861,9 +5861,9 @@ function hintKongGroups(concealed) {
 }
 
 function hintTips(concealed) {
-  const tips = ['花牌'];
-  if (game.melds.length === 0) tips.push('門前清');
-  tips.push('自摸');
+  // 門前清 is already counted in the claim rawFan when no meld exists, so it
+  // is not a possible top-up here.
+  const tips = ['花牌', '自摸'];
   tips.push(game.timeLeft <= HAIDI_SECONDS ? '海底撈月（已計入）' : '海底撈月');
   const groups = hintKongGroups(concealed);
   if (groups >= 2) tips.push('連槓開花');

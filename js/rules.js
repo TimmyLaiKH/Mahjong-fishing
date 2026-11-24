@@ -86,7 +86,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'p2', 'p3', 'p4', 's7', 's8', 's9', 'p9', 'p9'], melds: [], context: {} },
   },
   {
-    id: '門前清', fan: 1, desc: '沒有上、碰、槓（包括暗槓），而且胡牌是自己摸到的。',
+    id: '門前清', fan: 1, desc: '沒有上、碰、槓（包括暗槓）；自摸或吃胡他人打出的牌都計。',
     example: { concealed: ['m1', 'm2', 'm3', 'p2', 'p3', 'p4', 's2', 's3', 's4', 's7', 's8', 's9', 'p9', 'p9'], melds: [], context: {} },
   },
   {
@@ -460,8 +460,8 @@ function matchesAbsorbKey(pattern, key, ctx) {
 function resolveOverlaps(found, ctx = {}) {
   const kept = found.filter((pattern) => !found.some((other) => other !== pattern
     && expandAbsorbed(other.id).some((key) => matchesAbsorbKey(pattern, key, ctx))));
-  // Only describe absorbed patterns that were actually scored. A claim win, for
-  // example, never scores 門前清, so it must not appear in the breakdown either.
+  // Only describe absorbed patterns that were actually scored. A hand with a
+  // meld never scores 門前清, so it must not appear in the breakdown either.
   const presentAbsorbed = (pattern) => expandAbsorbed(pattern.id)
     .filter((key) => found.some((p) => matchesAbsorbKey(p, key, ctx)));
 
@@ -586,9 +586,9 @@ function evaluateDecomposition(concealed, groups, melds, context) {
   if (!isTiangu && context.haidi) add('海底撈月');
   // 搶槓 is a claim-only bonus; the kong declarer becomes the 出銃 seat.
   if (context.qianggang && !context.selfDraw) add('搶槓');
-  // 門前清 needs a fully concealed hand (no 碰／上／槓, including 暗槓) and a
-  // self-draw. Winning on someone else's discard is never 門前清 either.
-  if (context.selfDraw && melds.length === 0) add('門前清');
+  // 門前清 needs a fully concealed hand (no 碰／上／槓, including 暗槓), but
+  // the winning tile may be self-drawn or claimed from another player.
+  if (melds.length === 0) add('門前清');
   if (context.selfDraw) add('自摸');
 
   let patterns = resolveOverlaps(found, {
@@ -744,7 +744,7 @@ export function flowerWinResult(flowers = [], seatWind = 'E', fanCap = FAN_CAP, 
  * context: { selfDraw, winningTile, kongReplacementChain, haidi, tiangu, dihuClaim,
  *   renhu, qianggang, roundWind, seatWind }
  * melds: { tile, type: 'kong'|'pung'|'chow', tiles, open } — any meld, including
- * 暗槓, suppresses 門前清; a claim win (selfDraw: false) suppresses it too.
+ * 暗槓, suppresses 門前清; a claim win (selfDraw: false) still counts it.
  * 自摸 depends only on context.selfDraw; 坎坎胡 also needs no melds, and a claim
  * must complete the single pair. 搶槓 is a claim-only 1-fan bonus.
  * fanCap 仍可選擇性傳入以配合自訂屋規，但遊戲預設為無上限。
