@@ -221,7 +221,7 @@ test('B3：111222333萬 + 789筒 + 將牌 取最高番的分解（平糊）', ()
   assert.ok(names(evalTiles('m1 m1 m1 p2 p2 p2 s3 s3 s3 E E E C C')).includes('坎坎胡'));
 });
 
-test('特殊牌型仍需要合法牌型（B4）', () => {
+test('自訂牌型仍需要合法牌型（B4）', () => {
   const junk = evalTiles('C C C F F F B B B m1 m2 m3 m4 m5');
   assert.equal(junk.isWin, false);
   assert.equal(junk.totalFan, 0);
@@ -467,18 +467,29 @@ test('牌型說明與番數依據新定義', () => {
   assert.equal(FAN_VALUES['搶槓'], 1);
   assert.match(byId['搶槓'].desc, /暗槓只有十三幺可搶/);
   assert.equal(byId['地胡'].desc, '開局後，閒家食莊家打出的第一隻牌。');
-  assert.equal(byId['人胡'].desc, '閒家於開局第一輪即自摸；必為門前清，不另計自摸。');
+  assert.equal(
+    byId['人胡'].desc,
+    '自訂牌型：閒家於開局第一輪即自摸；必為門前清，不另計自摸。香港麻雀協會《香港麻雀總例》沒有此番種。',
+  );
   assert.equal(byId['對對糊'].desc, '只有刻子的牌型。');
   assert.equal(byId['對對糊'].fan, 3);
   assert.equal(FAN_VALUES['對對糊'], 3);
   assert.equal(byId['自摸'].desc, '自己摸到胡牌。');
-  assert.equal(byId['花幺九'].desc, '全部由幺九牌及字牌的刻子／槓子與一對將組成；基本 2 番另加對對糊 3 番，合計 5 番。');
+  assert.equal(
+    byId['花幺九'].desc,
+    '全部由幺九牌及字牌的刻子／槓子與一對將組成；基本 1 番另加對對糊 3 番，合計 4 番（香港麻雀協會《香港麻雀總例》稱「花么」）。',
+  );
   assert.equal(byId['海底撈月'].desc, '倒數剩餘 5 秒內胡牌。');
   assert.equal(byId['十三幺'].desc, '集齊六種么九牌及七種字牌牌，再加其中一張。');
   assert.equal(byId['大三元'].desc, '集齊中、發、白三個刻子（已含小三元及中、發、白番子）。');
   assert.equal(byId['小三元'].desc, '以全部三種三元牌組成兩副刻子加一對將（已含兩組番子）。');
-  assert.deepEqual(PATTERN_TABLE.filter((p) => p.category === '特殊牌型').map((p) => p.id),
-    ['七對子', '綠一色', '藍一色']);
+  assert.match(byId['連槓開花'].desc, /槓上槓自摸/);
+  assert.match(byId['字一色'].desc, /全番子/);
+  assert.deepEqual(
+    PATTERN_TABLE.filter((p) => p.category === '自訂牌型').map((p) => p.id),
+    ['七對子', '人胡', '綠一色', '藍一色'],
+  );
+  assert.equal(PATTERN_TABLE.filter((p) => p.category === '特殊牌型').length, 0);
 });
 
 test('對對糊 3 番，坎坎胡 10 番且碰／槓（包括暗槓）都不計', () => {
@@ -505,7 +516,7 @@ test('對對糊 3 番，坎坎胡 10 番且碰／槓（包括暗槓）都不計'
   assert.ok(!names(open).includes('門前清'));
 });
 
-test('綠一色與藍一色各計 10 番，並列為特殊牌型', () => {
+test('綠一色與藍一色各計 10 番，並列為自訂牌型', () => {
   const green = evalTiles('s2 s3 s4 s2 s3 s4 s6 s6 s6 F F F s8 s8');
   assert.ok(names(green).includes('綠一色'), names(green).join(','));
   assert.equal(FAN_VALUES['綠一色'], 10);
@@ -913,7 +924,7 @@ test('T3：坎坎胡與花幺九共用對對糊，只扣一次 3 番', () => {
   const overlap = result.patterns.find((p) => p.id === '重疊扣減');
   assert.equal(overlap.detail, '對對糊');
   assert.equal(overlap.fan, -3);
-  assert.equal(result.totalFan, 13);
+  assert.equal(result.totalFan, 12);
   assert.match(formatWinBreakdown(result), /重疊扣減（與多個牌型共用 對對糊）（-3 番）/);
 });
 
