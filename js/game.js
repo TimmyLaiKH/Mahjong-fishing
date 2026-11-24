@@ -2037,7 +2037,7 @@ function aiChooseAndDiscard(state) {
   const [discarded] = state.hand.splice(index, 1);
   state.river.push(discarded);
   state.lastDraw = null;
-  resetKongChain(seat);
+  resetKongChain(state.seat);
   state.mustDiscard = false;
   state.discardTimer = 0;
   // A claimed fish keeps `caught` and the line extended until the forced

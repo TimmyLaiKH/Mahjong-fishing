@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <title>AI 出牌回歸測試</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    #result { font-weight: 700; white-space: pre-wrap; }
+    iframe { width: 960px; height: 640px; border: 1px solid #999; }
+  </style>
+</head>
+<body>
+  <pre id="result">測試中…</pre>
+  <iframe id="game" src="../index.html?test=1&v=browser-ai-discard-2" title="遊戲"></iframe>
+  <script>
+    const output = document.getElementById('result');
+    const frame = document.getElementById('game');
+
+    frame.addEventListener('load', () => {
+      const waitForHook = () => {
+        const win = frame.contentWindow;
+        if (!win?.__mf) { setTimeout(waitForHook, 50); return; }
+        run(win);
+      };
+      waitForHook();
+    });
+
+    function run(win) {
+      const mf = win.__mf;
+      const errors = [];
+      win.addEventListener('error', (event) => errors.push(event.message));
+      const state = mf.createAiState(1);
+      mf.game.aiStates = { 1: state };
+      state.mustDiscard = true;
+      state.discardTimer = 0;
+      const before = state.hand.length;
+      try {
+        mf.aiTick(0.1);
+      } catch (error) {
+        errors.push(String(error));
+      }
+      const after = mf.game.aiStates[1].hand.length;
+      const river = mf.game.aiStates[1].river.length;
+      const ok = errors.length === 0 && after === before - 1 && river === 1;
+      output.textContent = ok
+        ? '測試通過：AI 強制出牌後手牌減少且河牌增加，沒有例外。'
+        : `測試失敗：${errors.join('；') || '沒有捕獲例外'}（手牌 ${before} → ${after}，河牌 ${river}）`;
+    }
+  </script>
+</body>
+</html>

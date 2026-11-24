@@ -73,6 +73,7 @@ not keep stale sounds or scoring.
 | `tests/rules.test.mjs` | 64 rule tests: T1–T13, table-driven patterns, flowers, weighted pool, 1000-game simulation. |
 | `tests/payout.test.mjs` | 12 payout/settlement tests. |
 | `tests/net.test.mjs` | 2 tests for PeerJS-safe outgoing message normalisation. |
+| `tests/browser-ai-discard.test.html` | Browser regression page: loads the real game with `?test=1`, forces an AI discard via `aiTick()`, and fails on any exception or missing river tile. |
 | `README.md`, `CHANGELOG.md`, `CREDITS.md`, `AGENTS.md` | Player docs, change history, asset licences, agent instructions. |
 
 ## Core game invariants
@@ -242,7 +243,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   the next ordinary tile is no longer a kong replacement. Ordinary/kong tiles enter the hand only
   when the hook returns, then `resolveDraw()` checks win → inline kong prompt → `AWAIT_DISCARD`.
 - **Discard and claims.** `discard()` bumps the turn, publishes a 5-second claim window with a
-  shared `sourceKey`, and returns the human to fishing. `claimBoxes[]` gives each opponent one
+  shared `sourceKey`, and returns the human to fishing. AI forced discards go through
+  `aiChooseAndDiscard(state)`; it must use `state.seat` when resetting the kong chain — using an
+  undefined `seat` threw inside `gameLoop()` and permanently stopped the sea. `claimBoxes[]` gives each opponent one
   box; `renderClaimBoxes()` renders a box whenever `buildClaimActions({ potential: true })` is
   non-empty, even while the hook is out. Potential actions are rebuilt from the live
   13-tile-equivalent hand, so a tile that becomes winning after the player fishes and discards
@@ -500,8 +503,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   exclusive session and stopped the background track whenever speech began. Announcements go
   through a small queue: `speakCantonese()` speaks a cached voice immediately when idle (to keep
   the iOS user gesture), otherwise lines wait their turn. `speakVoiceNow()` never calls
-  `speechSynthesis.cancel()`/`resume()` when a new line arrives; those calls wedge the engine and
-  freeze the page on some mobile browsers. It schedules `music.resume()` 250 ms after
+  `speechSynthesis.cancel()`/`resume()` when a new line arrives; those calls can interrupt a line
+  and are avoided for safety, but diagnostics proved they were not the cause of the reported
+  freeze. It schedules `music.resume()` 250 ms after
   `onend`/`onerror` so the audio session has settled; a queued utterance cancels that timer so
   music does not restart mid-speech. A watchdog releases the queue if an engine never fires
   `onend`, and the unavoidable audio pause itself cannot be prevented from a web page.
