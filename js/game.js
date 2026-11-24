@@ -500,6 +500,10 @@ const paceFactor = () => {
   const elapsed = Math.max(0, duration - game.timeLeft);
   return difficulty() * (1 + elapsed / duration * 0.5);
 };
+// Test-only instrumentation for diagnosing a frozen animation loop. Enabled by
+// ?test=1&voice=1, never shown during normal play.
+const diagnostic = { frames: 0, lastFrameAt: 0, errors: [], speechCalls: [] };
+
 const modalOpen = () => [...document.querySelectorAll('.modal.show')]
   .some((m) => m !== ui.loading);
 // These in-game panels are informational only: opening 設定, 玩法說明, 計分 or a
@@ -2689,7 +2693,53 @@ function showVoiceDebug() {
   button.textContent = '測試粵語語音';
   box.append(text, button);
   document.body.appendChild(box);
-  const refresh = () => { text.textContent = JSON.stringify(voiceStatus(), null, 2); };
+  const recordError = (kind, detail) => {
+    diagnostic.errors.push({ kind, detail: String(detail), at: Date.now() });
+    if (diagnostic.errors.length > 20) diagnostic.errors.shift();
+  };
+  window.addEventListener('error', (event) => {
+    recordError('error', `${event.message} @${event.filename}:${event.lineno}`);
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    recordError('unhandledrejection', event.reason?.stack ?? event.reason);
+  });
+  if (typeof speechSynthesis !== 'undefined' && !speechSynthesis.__mfDiagnosticWrapped) {
+    const rawSpeak = speechSynthesis.speak.bind(speechSynthesis);
+    speechSynthesis.speak = function diagnosticSpeak(utterance) {
+      const record = {
+        at: Date.now(),
+        text: String(utterance?.text ?? ''),
+        lang: String(utterance?.lang ?? ''),
+        voice: utterance?.voice?.name ?? null,
+        startedAt: performance.now(),
+        endedAt: null,
+        durationMs: null,
+      };
+      diagnostic.speechCalls.push(record);
+      if (diagnostic.speechCalls.length > 20) diagnostic.speechCalls.shift();
+      try { return rawSpeak(utterance); }
+      finally {
+        record.endedAt = performance.now();
+        record.durationMs = Math.round(record.endedAt - record.startedAt);
+      }
+    };
+    speechSynthesis.__mfDiagnosticWrapped = true;
+  }
+  const refresh = () => {
+    text.textContent = JSON.stringify({
+      voice: voiceStatus(),
+      diagnostic: {
+        frames: diagnostic.frames,
+        lastFrameAgeMs: diagnostic.lastFrameAt
+          ? Math.round(performance.now() - diagnostic.lastFrameAt) : null,
+        state: game.state,
+        timeLeft: Math.round(game.timeLeft),
+        paused: paused(),
+        errors: diagnostic.errors,
+        recentSpeech: diagnostic.speechCalls.slice(-6),
+      },
+    }, null, 2);
+  };
   button.addEventListener('click', () => {
     unlockSpeechEngine();
     game.settings.soundEnabled = true;
@@ -2710,7 +2760,7 @@ function showVoiceDebug() {
     primeDeviceVoice();
     refresh();
   });
-  setTimeout(refresh, 1500);
+  setInterval(refresh, 500);
 }
 
 /** getVoices() can be empty until voiceschanged fires on the first load. */
@@ -5454,6 +5504,8 @@ function syncHostSeaPause() {
 }
 
 function gameLoop(timestamp) {
+  diagnostic.frames += 1;
+  diagnostic.lastFrameAt = performance.now();
   const dt = lastFrame ? Math.min((timestamp - lastFrame) / 1000, 0.05) : 0;
   lastFrame = timestamp;
   stepHostSea();
@@ -6656,7 +6708,7 @@ async function boot() {
    Normal play never exposes internal state. */
 if (new URLSearchParams(location.search).has('test')) {
   window.__mf = {
-    game, S, view,
+    game, S, view, diagnostic,
     handFrom: (ids) => ids.map((id) => ({ id, uid: game.nextUid++ })),
     setState, resolveDraw, declareKong, commitWin, commitAiWin, endDrawGame, startGame,
     renderHand, renderTarget, updateHUD, findKongTile, hookPosition, music,
