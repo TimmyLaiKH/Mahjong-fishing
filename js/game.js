@@ -2588,6 +2588,11 @@ let lastSpeechText = '';
 let lastSpeechAt = 0;
 let lastSpeechError = '';
 let speechUnlocked = false;
+const speechQueue = [];
+let speechScheduled = false;
+let speechActive = false;
+let speechFallbackTimer = null;
+let voiceWaitPending = false;
 
 function cantoneseVoiceRank(voice) {
   const lang = String(voice?.lang ?? '').replace(/_/g, '-').toLowerCase();
@@ -2611,6 +2616,9 @@ function isCantoneseVoice(voice) {
  *  empty voice list until then, and want speak() called in the same gesture. */
 function cantoneseVoice() {
   if (typeof speechSynthesis === 'undefined') return null;
+  // getVoices() can block on mobile. Once a voice is cached, keep using it
+  // instead of calling getVoices() again from the game loop or a click handler.
+  if (preferredVoice) return preferredVoice;
   try {
     const found = (speechSynthesis.getVoices() ?? [])
       .filter(isCantoneseVoice)
@@ -2629,6 +2637,7 @@ function primeDeviceVoice() {
 function unlockSpeechEngine() {
   if (speechUnlocked || typeof speechSynthesis === 'undefined'
     || typeof SpeechSynthesisUtterance === 'undefined') return;
+  primeDeviceVoice();
   try {
     const unlock = new SpeechSynthesisUtterance(' ');
     unlock.volume = 0;
@@ -2658,6 +2667,8 @@ function voiceStatus() {
     })),
     speaking: Boolean(speechSynthesis.speaking),
     pending: Boolean(speechSynthesis.pending),
+    active: speechActive,
+    queued: speechQueue.length,
     lastText: lastSpeechText,
     lastAt: lastSpeechAt,
     lastError: lastSpeechError,
@@ -2683,8 +2694,8 @@ function showVoiceDebug() {
     unlockSpeechEngine();
     game.settings.soundEnabled = true;
     game.settings.mainVolume = Math.max(game.settings.mainVolume, 0.5);
-    const voice = primeDeviceVoice();
-    if (voice) speakVoiceNow(voice, '流局 時間到，沒有胡牌。', game.settings.mainVolume);
+    primeDeviceVoice();
+    speakCantonese('流局 時間到，沒有胡牌。');
     refresh();
     setTimeout(refresh, 300);
   });
@@ -2746,45 +2757,91 @@ function scheduleMusicResumeAfterVoice() {
   voiceResumeTimer = setTimeout(resumeMusicAfterVoice, 250);
 }
 
+/** Utterances are spoken one at a time. Calling cancel() or resume() when a
+ *  new announcement arrives wedges the speech engine on several mobile
+ *  browsers and can stall the whole page, so never interrupt the current one. */
+function finishVoiceUtterance() {
+  if (!speechActive) return;
+  speechActive = false;
+  clearTimeout(speechFallbackTimer);
+  speechFallbackTimer = null;
+  scheduleMusicResumeAfterVoice();
+  scheduleVoiceDrain();
+}
+
 function speakVoiceNow(voice, text, volume) {
   lastSpeechText = text;
   lastSpeechAt = Date.now();
   clearTimeout(voiceResumeTimer);
+  speechActive = true;
   try {
-    if (speechSynthesis.paused) speechSynthesis.resume();
-    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.voice = voice;
     utterance.lang = voice.lang || 'zh-HK';
     utterance.rate = 0.95;
     utterance.volume = clampVolume(volume, 0);
-    utterance.onend = scheduleMusicResumeAfterVoice;
-    utterance.onerror = scheduleMusicResumeAfterVoice;
+    utterance.onend = finishVoiceUtterance;
+    utterance.onerror = finishVoiceUtterance;
     speechSynthesis.speak(utterance);
+    // Some engines never fire onend; recover without touching the live engine.
+    const watchdogMs = Math.min(15000, 2500 + String(text).length * 180);
+    speechFallbackTimer = setTimeout(finishVoiceUtterance, watchdogMs);
     lastSpeechError = '';
   } catch (error) {
     lastSpeechError = String(error);
+    finishVoiceUtterance();
   }
+}
+
+function scheduleVoiceDrain() {
+  if (speechScheduled) return;
+  speechScheduled = true;
+  setTimeout(drainVoiceQueue, 0);
+}
+
+function drainVoiceQueue() {
+  speechScheduled = false;
+  if (speechActive || !speechQueue.length) return;
+  if (!game.settings.soundEnabled || typeof SpeechSynthesisUtterance === 'undefined'
+    || typeof speechSynthesis === 'undefined') {
+    speechQueue.length = 0;
+    return;
+  }
+  const item = speechQueue.shift();
+  const voice = item.voice ?? primeDeviceVoice();
+  if (!voice) {
+    if (voiceWaitPending) return;
+    voiceWaitPending = true;
+    waitForCantoneseVoice().then((found) => {
+      voiceWaitPending = false;
+      if (found) preferredVoice = found;
+      else speechQueue.length = 0; // no Mandarin fallback; drop the pending lines
+      scheduleVoiceDrain();
+    });
+    return;
+  }
+  speakVoiceNow(voice, item.text, item.volume);
 }
 
 /** Announcements use the device's own Hong Kong / Cantonese voice. Speech is
  *  optional: without an explicit Cantonese voice the line is simply skipped,
- *  never read by a Mandarin voice. */
+ *  never read by a Mandarin voice. Lines are queued instead of interrupting
+ *  one another so an announcement cannot freeze the game. */
 function speakCantonese(text) {
   if (!text || !game.settings.soundEnabled
     || typeof SpeechSynthesisUtterance === 'undefined'
     || typeof speechSynthesis === 'undefined') return;
-  const volume = game.settings.mainVolume;
-  const voice = cantoneseVoice();
-  // On iOS the speak() call must stay inside the user gesture that triggered
-  // the action, so use a cached voice synchronously whenever one exists.
-  if (voice) {
-    speakVoiceNow(voice, text, volume);
+  const item = { text, volume: game.settings.mainVolume, voice: preferredVoice };
+  speechQueue.push(item);
+  if (speechQueue.length > 12) speechQueue.shift();
+  // Keep a cached voice inside the same user gesture when nothing is playing;
+  // queued lines continue after the current utterance ends.
+  if (!speechActive && !speechScheduled && item.voice) {
+    speechQueue.shift();
+    speakVoiceNow(item.voice, item.text, item.volume);
     return;
   }
-  waitForCantoneseVoice().then((found) => {
-    if (found) speakVoiceNow(found, text, volume);
-  });
+  scheduleVoiceDrain();
 }
 
 /** Read the hand heading at the start of every deal. */
@@ -6175,6 +6232,19 @@ function showOverlay({
 
 function openModal(id) { el(id)?.classList.add('show'); }
 function closeModal(id) { el(id)?.classList.remove('show'); }
+
+/** Scroll inside the help card so the pattern table is reachable on phones
+ *  without dragging past all six explanation items. */
+function jumpToFanTable() {
+  const card = el('helpPanel')?.querySelector('.modal-card');
+  const title = el('fanTableTitle');
+  if (!card || !title) return;
+  const top = card.scrollTop + title.getBoundingClientRect().top
+    - card.getBoundingClientRect().top - 12;
+  if (typeof card.scrollTo === 'function') card.scrollTo({ top, behavior: 'smooth' });
+  else card.scrollTop = top;
+  title.focus({ preventScroll: true });
+}
 function closeTopModal() {
   const open = [...document.querySelectorAll('.modal.show')]
     .filter((m) => m !== ui.loading && m !== ui.menu);
@@ -6336,6 +6406,7 @@ function setMusicEnabled(value) {
 function setEffectsEnabled(value) {
   game.settings.soundEnabled = Boolean(value);
   music.setEffectsEnabled(game.settings.soundEnabled);
+  if (!game.settings.soundEnabled) speechQueue.length = 0;
   if (game.settings.soundEnabled) {
     unlockSpeechEngine();
     primeDeviceVoice();
@@ -6455,6 +6526,7 @@ function wireInput() {
   el('menuCredits').addEventListener('click', () => openModal('creditsPanel'));
   el('restartBtn').addEventListener('click', () => { closeTopModal(); requestRestart(); });
   el('helpBtn').addEventListener('click', () => openModal('helpPanel'));
+  el('helpFanTableBtn')?.addEventListener('click', jumpToFanTable);
   el('settingsBtn').addEventListener('click', () => openModal('settingsPanel'));
   ui.emojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.emojiBtn));
   ui.roomEmojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.roomEmojiBtn));
@@ -6600,7 +6672,7 @@ if (new URLSearchParams(location.search).has('test')) {
     showMenu, startFromMenu, openSoloRoom, startRoomGame, quitToMenu, net, openRoom, joinRoom,
     askRoomCode, setPlayerName, leaveRoom,
     voteRematch, showMultiEndOverlay, showHandEndOverlay, readySoloNextHand, handEndMessage,
-    handEndTitle, handEndTiles, showOverlay, matchEndMessage, isTouchOnly, selectDiscard,
+    handEndTitle, handEndTiles, showOverlay, jumpToFanTable, matchEndMessage, isTouchOnly, selectDiscard,
     roundInfoText, getHudRoundInfo: () => hudRoundInfo, moneyText, renderStandings,
     requestRestart, startRestartVote, voteRestart, cancelRestart,
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,
@@ -6610,7 +6682,8 @@ if (new URLSearchParams(location.search).has('test')) {
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
     EMOJIS, sendEmoji, showEmojiBubble, toggleEmojiPanel, closeEmojiPanel,
-    fanInCantonese, speakCantonese, speakRoundStart, speakAction, speakWin, speakDraw, showWinEnd,
+    fanInCantonese, speakCantonese, speakVoiceNow, speakRoundStart, speakAction, speakWin, speakDraw,
+    showWinEnd, speechQueue,
     isCantoneseVoice, cantoneseVoice, waitForCantoneseVoice, voiceStatus, showVoiceDebug,
     primeDeviceVoice, setMainVolume, setMusicVolume, setMusicEnabled, setEffectsEnabled,
     currentRoundKey, announceWin,

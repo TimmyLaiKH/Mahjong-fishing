@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/style.css?v=1.4.92" />
+<link rel="stylesheet" href="css/style.css?v=1.4.93" />
 </head>
 <body>
 <canvas id="game" aria-label="釣魚遊戲畫面"></canvas>
@@ -203,7 +203,10 @@
   <div class="modal-card wide">
     <div class="modal-head">
       <h2>玩法說明</h2>
-      <button class="close-btn" data-close="helpPanel" type="button" aria-label="關閉">✕</button>
+      <div class="modal-head-actions">
+        <button id="helpFanTableBtn" class="jump-btn" type="button">前往番數表</button>
+        <button class="close-btn" data-close="helpPanel" type="button" aria-label="關閉">✕</button>
+      </div>
     </div>
     <ol class="help-list">
       <li>開始時有 13 張手牌。點擊畫面或按 <kbd>空白鍵</kbd> 拋竿；鉤子出去或收回時碰到魚都會鉤起牌。約每七張魚有一張會在出現三秒後翻到背面、三秒後再翻回正面考驗記憶；鉤起時一定是正面。</li>
@@ -214,7 +217,7 @@
       <li>畫面會顯示胡牌聽牌；打牌階段會顯示目前選中的牌打出後的聽牌。設定的每局時間到仍未胡牌即為「流局」。累計番數會記錄在本機瀏覽器中。點「計分」可看四家資金與每局派彩紀錄；單機在開始前、聯機由房主在大廳設定起始資金、圈子數、金額倍數、起糊（預設 3 番，可選 0–10 番）與上限番數（預設 10 番，亦可選無限）。有人破產或打完指定圈數即結束，資金最多者勝；莊家胡牌可連莊。</li>
     </ol>
     <p class="hint-text">派彩以房主設定的金額倍數 B 計算：V = 2^番 × B（番 ≤ 4）；番 ≥ 5 時每兩番加倍，單數番先乘 1.5。出銃時由出銃者支付 V；自摸時其餘三家各付 V／2（四捨五入），胡牌者共得 1.5 × V，自摸至少計 1 番。流局不派彩；連莊不推進圈數。</p>
-    <h3>常見香港麻雀牌型一覽</h3>
+    <h3 id="fanTableTitle" tabindex="-1">常見香港麻雀牌型一覽</h3>
     <p class="hint-text">範例牌型由規則引擎產生並經測試驗證；上限番數由房主設定，預設 10 番，亦可選無限。</p>
     <div class="table-scroll">
       <table>
@@ -297,6 +300,6 @@
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js" onerror="this.onerror=null;this.src='js/vendor/peerjs.min.js'"></script>
-<script type="module" src="js/game.js?v=1.4.92"></script>
+<script type="module" src="js/game.js?v=1.4.93"></script>
 </body>
 </html>

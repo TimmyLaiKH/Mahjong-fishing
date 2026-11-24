@@ -535,6 +535,9 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
   gap: 12px;
   margin-bottom: 10px;
 }
+.modal-head-actions { display: flex; align-items: center; gap: 8px; }
+.jump-btn { background: #fff; color: #8c1d1d; border-color: #8c1d1d; padding: 5px 10px; font-size: 0.9em; }
+.jump-btn:hover { background: #fff3e0; }
 .close-btn { background: #c62828; color: #fff; border: none; }
 .modal-card p { margin: 0.5em 0; }
 .modal-card a { color: #8c1d1d; }

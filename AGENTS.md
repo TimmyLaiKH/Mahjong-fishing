@@ -135,8 +135,9 @@ not keep stale sounds or scoring.
   `所有人加入後，請等待房主按下「開始遊戲」。` at the top of the 聯機 room screen.
   The solo lobby instead shows `三位 AI 對手已自動補位，按下「開始遊戲」即可開始。` and hides all
   room-code/share-link UI.
-- **Help and pattern table.** 玩法說明 has exactly six `<li>` items. A footnote outside the list
-  explains the payout using 金額倍數 `B`: `V = 2^番 × B` for 番 ≤ 4, then every two 番 doubles with
+- **Help and pattern table.** 玩法說明 has exactly six `<li>` items. Its header has a
+  `前往番數表` button (`#helpFanTableBtn`) that scrolls the modal card to `#fanTableTitle` without
+  adding a list item. A footnote outside the list explains the payout using 金額倍數 `B`: `V = 2^番 × B` for 番 ≤ 4, then every two 番 doubles with
   a 1.5× factor for odd 番; 出銃 pays `V`, 自摸 pays `V／2` each, 流局 pays nothing. 牌型一覽 lives
   inside it and is generated from `PATTERN_TABLE` + `FLOWER_PATTERN_TABLE`; every pattern needs a
   validated `example` there. Patterns carrying `category: '特殊牌型'` (七對子、綠一色、藍一色) get a
@@ -295,7 +296,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   locally declared 上／碰／槓, and `speakDraw()` reads `流局 時間到，沒有胡牌。` from both
   draw paths. Only an explicit Hong Kong/Cantonese voice is accepted: `zh-TW`, `zh-CN` and generic
   `zh` voices are Mandarin and are never used as a fallback, so a device without one stays silent.
-  Voice failures never affect settlement. The overlay leads with
+  Voice failures never affect settlement, and utterances are queued one at a time without
+  cancelling the current one so speech cannot stall the game loop. The overlay leads with
   `X風第 X 局・X 圈`, then `ICON ID 胡牌!` and
   `formatWinBreakdown()` with its leading `胡牌！` line stripped (the heading already says `胡牌!`);
   `showOverlay({ inlineTiles })` inserts `handEndTiles(result)` between
@@ -495,10 +497,14 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   A device without one stays silent instead of falling back to Mandarin; the iPhone silent switch
   still mutes `speechSynthesis`, so the switch must be off (or Chrome on iOS used). Do not set
   `navigator.audioSession.type = 'playback'`: on iPhone it made speech and music share an
-  exclusive session and stopped the background track whenever speech began. `speakVoiceNow()`
-  schedules `music.resume()` 250 ms after `onend`/`onerror` so the audio session has settled;
-  cancelling the timer on a new utterance avoids restarting music mid-speech. Calling it during
-  the utterance makes iOS stutter, and the unavoidable pause cannot be prevented from a web page.
+  exclusive session and stopped the background track whenever speech began. Announcements go
+  through a small queue: `speakCantonese()` speaks a cached voice immediately when idle (to keep
+  the iOS user gesture), otherwise lines wait their turn. `speakVoiceNow()` never calls
+  `speechSynthesis.cancel()`/`resume()` when a new line arrives; those calls wedge the engine and
+  freeze the page on some mobile browsers. It schedules `music.resume()` 250 ms after
+  `onend`/`onerror` so the audio session has settled; a queued utterance cancels that timer so
+  music does not restart mid-speech. A watchdog releases the queue if an engine never fires
+  `onend`, and the unavoidable audio pause itself cannot be prevented from a web page.
 - `CREDITS.md` is the licence source of truth. The in-game 資料來源 panel must show the required
   attribution strings and links. Do not add assets with unclear licences.
 
