@@ -1,5 +1,11 @@
 # 素材來源與授權
 
+## 規則來源
+
+- 番數名稱與番數以[香港麻雀協會《香港麻雀總例》](https://www.hkmahjong.org/rules)為唯一依據；中文全文可參考[《香港麻雀總例》Google Doc](https://docs.google.com/document/d/1TgdYpE_5Qiht_lBco3BqN_ijZJDRWugwzRzv946raq0/edit?usp=sharing)。此處不複製全文。
+- `花幺九` 沿用本遊戲既有名稱，在總例稱「花么」並計 4 番；`七對子`、`人胡`、`綠一色`、`藍一色` 為本遊戲保留的自訂牌型，不屬總例番種。
+- 維基百科與麻將百科僅作次要背景參考，不取代總例。
+
 ## 牌面圖片
 
 - 來源：[FluffyStuff / riichi-mahjong-tiles](https://github.com/FluffyStuff/riichi-mahjong-tiles)，`Export/Regular` 目錄。
@@ -40,7 +46,7 @@
 - 授權：**CC0 1.0**（公有領域貢獻）。
 - 處理方式：從 HQ MP3 預覽檔截取一次清晰的牌張撞擊，正規化音量並加上極短淡入淡出，輸出為 `assets/audio/mahjong-tile-strike.mp3`；按鈕點擊音仍由 WebAudio 合成。
 
-## 規則資料
+## 次要規則參考
 
 - 花牌、正花、一檯花、花糊與大花糊的番數及風位對應，參考[維基百科「香港麻雀番牌列表」](https://zh.wikipedia.org/wiki/%E9%A6%99%E6%B8%AF%E9%BA%BB%E9%9B%80%E8%83%A1%E7%89%8C%E5%88%97%E8%A1%A8)。
 - 天胡的定義（開局補花後立即自摸、13 番例牌、不另計自摸／門前清）參考[維基百科「香港麻雀胡牌列表」](https://zh.wikipedia.org/zh-hant/%E9%A6%99%E6%B8%AF%E9%BA%BB%E9%9B%80%E8%83%A1%E7%89%8C%E5%88%97%E8%A1%A8)。

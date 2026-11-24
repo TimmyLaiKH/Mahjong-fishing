@@ -51,9 +51,9 @@ python3 scripts/process_assets.py
 Deployment is GitHub Pages from `main`. Commit, push, then verify the live site with distinct
 cachebusts (`index.html`, `js/game.js`, `js/payout.js`, `css/style.css`). `index.html` also pins a
 `?v=` version on `css/style.css` and `js/game.js`; bump it whenever those files change so players do
-not keep a stale cached 胡 handler. `js/game.js` also pins `./audio.js?v=...` and
-`./rules.js?v=...`; bump those imports when the audio helper or rules engine changes so players do
-not keep stale sounds or scoring.
+not keep a stale cached 胡 handler. `js/game.js` also pins `./audio.js?v=...`,
+`./rules.js?v=...` and `./tiles.js?v=...`; bump those imports when the audio helper, rules engine
+or tile drawing helpers change so players do not keep stale sounds, scoring or tile bevels.
 
 ## Repository map
 
@@ -129,6 +129,10 @@ not keep stale sounds or scoring.
   (`false` = 無限) and every device derives `game.settings.fanCap = 10` or `Infinity` locally.
   All evaluate/withFlowers/flowerWinResult calls already read that local cap. There is no separate
   point system.
+- **Official fan authority.** HKMA《香港麻雀總例》is the sole authority for pattern names and fan
+  values. `花幺九` keeps its in-game ID but is 4 番 (the 總例 calls it `花么`). `七對子`, `人胡`,
+  `綠一色` and `藍一色` are explicitly in-game custom patterns (`category: '自訂牌型'`) and keep
+  their existing fan values; do not present them as official 總例 patterns.
 - **Player-facing strings are contractual.** Waiting-to-cast status is exactly
   `拋竿釣起你需要的牌吧！(點擊屏幕)`. Other fixed strings include `房主已離開`,
   `房主已離開，請重新開房間`, `房間已滿，請換一個房間。`,
@@ -138,11 +142,14 @@ not keep stale sounds or scoring.
   room-code/share-link UI.
 - **Help and pattern table.** 玩法說明 has exactly six `<li>` items. Its header has a
   `前往番數表` button (`#helpFanTableBtn`) that scrolls the modal card to `#fanTableTitle` without
-  adding a list item. A footnote outside the list explains the payout using 金額倍數 `B`: `V = 2^番 × B` for 番 ≤ 4, then every two 番 doubles with
-  a 1.5× factor for odd 番; 出銃 pays `V`, 自摸 pays `V／2` each, 流局 pays nothing. 牌型一覽 lives
-  inside it and is generated from `PATTERN_TABLE` + `FLOWER_PATTERN_TABLE`; every pattern needs a
-  validated `example` there. Patterns carrying `category: '特殊牌型'` (七對子、綠一色、藍一色) get a
-  small 特殊牌型 tag in the name cell only; settlement and speech never show it. The closing footnote says
+  adding a list item. Outside the list, a static 0–10 番 payout table (`#payoutTableTitle`) shows
+  倍率 V/B, 出銃支付, 自摸每家 and 自摸三家合計, followed by a note that B is the host's 金額倍數
+  (default 1, range 1–100), 自摸 rounds to an integer and 無限番 continues the same formula. A HKMA
+  source note sits beside it. 牌型一覽 lives inside it and is generated from `PATTERN_TABLE` +
+  `FLOWER_PATTERN_TABLE`; every pattern needs a validated `example` there. HKMA《香港麻雀總例》is the
+  sole fan authority; `花幺九` is 4 番 (花么). Patterns carrying `category: '自訂牌型'`
+  (七對子、人胡、綠一色、藍一色) get a small 自訂牌型 tag in the name cell only; settlement and speech
+  never show it. The closing footnote says
   `碰、上、槓才不計門前清，吃胡他人打出的牌仍可計門前清（但不計自摸）。`
 - **No bottom `釣魚` button.** Click/tap the canvas or press Space to cast. Hints are always on;
   terminology is 聽牌, not a hint toggle. Wait hints are advisory and never gate settlement: for
@@ -444,6 +451,10 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   comes first: the floor (`WORLD_H`) or the nearest side (`view.width / 2 - TILE_W / 2`), and
   `hookPositionFor()` clamps only at half a tile so the hook still reaches the edge without
   leaving the canvas.
+- Tile faces stay as the existing 43 runtime PNGs with `TILE_ASSET_VERSION = 6`; the subtle 3D
+  look is only a CSS/canvas overlay. `.tile-img` adds `drop-shadow` and a `::before` bevel with
+  `pointer-events: none`, while `drawTile()` adds a gradient and edge strokes without touching
+  PNGs or image paths. `js/game.js` pins `./tiles.js?v=...`; bump it when tile drawing changes.
 - `各家副露` sits above your own 副露 (flowers and concealed kongs), below status/toast and above
   the hand; it is always expanded (never collapsible) and lists only the other three seats' live
   `$` purse, melds and flower counts with original tile sizes. `updateScoreUI()` refreshes these
