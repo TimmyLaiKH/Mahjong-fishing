@@ -186,6 +186,8 @@ Key exports:
 - Flowers: `evaluateFlowers`, `flowerWin`, `withFlowers`, `flowerWinResult`.
 - Evaluation: `evaluateHand`, `findWaits`, `shanten`, `getUsefulTiles`, `getAssistTiles`.
 - Pool/utilities: `createWall`, `randomTileKind`, `shuffle`, `formatWinBreakdown`.
+- UI helper: `sortPatternRows` keeps 自訂牌型 rows at the bottom of the help pattern table;
+  generate that table with this export instead of sorting inline.
 
 Scoring notes:
 

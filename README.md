@@ -14,15 +14,17 @@ python3 -m http.server 8000
 # 開啟 http://localhost:8000/index.html
 ```
 
-執行規則與賠率測試：
+執行規則、賠率、連線與介面靜態測試：
 
 ```bash
 node tests/rules.test.mjs
 node tests/payout.test.mjs
-# 或：npm test
+node tests/net.test.mjs
+node tests/hkma-ui.test.mjs
+# 或：npm test（目前只執行規則測試，仍需另外執行上述三項）
 ```
 
-> Node 不在全域 PATH 時，可使用 `/home/timmy/.local/node/bin/node tests/rules.test.mjs`。
+> Node 不在全域 PATH 時，可使用 `/home/timmy/.local/node/bin/node`。
 
 重新下載／重新產生圖片素材（需要 `curl`、`file`、`python3` 與 Pillow）：
 
@@ -51,6 +53,8 @@ assets/audio/*.mp3       CC0 中國風器樂
 scripts/                素材下載與處理腳本
 tests/rules.test.mjs    64 項規則測試（含 T1–T13 與 1000 場模擬）
 tests/payout.test.mjs   12 項賠率與結算測試
+tests/net.test.mjs      2 項 PeerJS 訊息安全測試
+tests/hkma-ui.test.mjs  8 項介面靜態檢查（分頁、牌圖與版本）
 CREDITS.md              圖片與音樂來源及授權
 CHANGELOG.md            修正記錄與待確認事項
 ```

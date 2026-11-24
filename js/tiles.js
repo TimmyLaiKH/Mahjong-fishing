@@ -159,8 +159,13 @@ export function drawTile(ctx, id, x, y, width, height, options = {}) {
     ctx.shadowBlur = 10;
     ctx.shadowOffsetY = 5;
   }
-  if (image?.complete && image.naturalWidth) {
-    ctx.drawImage(image, -width / 2, -height / 2, width, height);
+  if (image?.complete && image.naturalWidth && image.naturalHeight) {
+    // Runtime PNGs have a fixed natural aspect; fit it inside the requested
+    // canvas box so baked corners stay round instead of being stretched.
+    const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+    const drawnWidth = image.naturalWidth * scale;
+    const drawnHeight = image.naturalHeight * scale;
+    ctx.drawImage(image, -drawnWidth / 2, -drawnHeight / 2, drawnWidth, drawnHeight);
   } else {
     ctx.shadowColor = 'transparent';
     ctx.fillStyle = '#f6f1e6';

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { sortPatternRows } from '../js/rules.js';
+import { drawTile } from '../js/tiles.js';
 
 let passed = 0;
 let failed = 0;
@@ -81,6 +82,24 @@ test('43 張牌圖都是 RGBA 144x205', () => {
     assert.equal(buf.readUInt32BE(20), 205, file);
     assert.equal(buf[25], 6, `${file} must be RGBA`);
   }
+
+  // Canvas tiles must keep the PNG's natural aspect, like DOM tiles do.
+  const drawn = [];
+  const ctx = {
+    save() {}, translate() {}, restore() {},
+    drawImage(...args) { drawn.push(args); },
+  };
+  const image = { complete: true, naturalWidth: 144, naturalHeight: 205 };
+  drawTile(ctx, 'T1', 0, 0, 132, 176, { images: { T1: image } });
+  assert.equal(drawn.length, 1);
+  const [, dx, dy, dw, dh] = drawn[0];
+  const expectedHeight = 176;
+  const expectedWidth = 144 * expectedHeight / 205;
+  assert.ok(Math.abs(dh - expectedHeight) < 1e-6, `drawImage height ${dh}`);
+  assert.ok(Math.abs(dw - expectedWidth) < 1e-6, `drawImage width ${dw}`);
+  assert.ok(Math.abs(dw / dh - 144 / 205) < 1e-6, 'drawImage must keep the PNG aspect');
+  assert.ok(Math.abs(dx + dw / 2) < 1e-6 && Math.abs(dy + dh / 2) < 1e-6,
+    'drawImage must centre the fitted tile');
 });
 
 test('玩家版本與 cachebust 已更新', () => {
