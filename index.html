@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/style.css?v=1.4.95" />
+<link rel="stylesheet" href="css/style.css?v=1.4.96" />
 </head>
 <body>
 <canvas id="game" aria-label="釣魚遊戲畫面"></canvas>
@@ -212,11 +212,31 @@
       <li>開始時有 13 張手牌。點擊畫面或按 <kbd>空白鍵</kbd> 拋竿；鉤子出去或收回時碰到魚都會鉤起牌。約每七張魚有一張會在出現三秒後翻到背面、三秒後再翻回正面考驗記憶；鉤起時一定是正面。</li>
       <li>打牌階段滑鼠移過手牌即可選牌，也可按 <kbd>←</kbd> <kbd>→</kbd> 選擇、按 <kbd>Enter</kbd> 打出，或直接點手牌。</li>
       <li>允行、一心、念慈三位對手（聯機時為其他玩家或 AI）各有自己的手牌與釣竿，和大家在同一片海裡搶魚，也能自己胡牌。他們打出的牌會展示五秒；該牌的圖片、出牌者與門風，以及胡／碰／上／明槓按鈕會顯示在釣竿右側（每位對手各有一欄），桿子仍會繼續擺動，你可照常拋竿與打牌。胡、碰、明槓可向任一對手宣告；上只能向你的上家（前一個門風）宣告；逾時自動放棄。<strong>只有聽十三幺的玩家是「牌王」：在該牌的五秒視窗內，其他人的胡／槓／碰／上都會被鎖住，直到牌王胡牌、按「過」或視窗結束；多位十三幺牌王同時聽牌時先按先贏。除此之外，所有胡／槓／碰／上完全先按先贏，沒有其他優先順序。</strong>任何人開啟「設定」、「玩法說明」、「重來這局」投票或「計分」時，魚群、計時、鉤子與 AI 仍會繼續。</li>
-      <li>自己釣牌成胡時，釣竿左側會出現「胡牌／過」提示：選「胡牌」才會結算，選「過」則打出一張牌繼續。集齊七張花牌時也可選「過」拒絕花糊，之後只接受八花胡牌，並於手牌胡牌時加計花糊番。一開牌或第一次補花已滿七花時，莊家另計天胡、閒家另計地胡；槓後補花則只計槓上開花／連槓開花。兩槓之間不可補花：補到花即中斷連槓。槓上開花與連槓開花不另計海底撈月。明槓後補牌胡牌由當初打出被槓牌的人「出槓」付款；連槓以第一槓為準，第一槓是暗槓／加槓仍按自摸三家支付。平糊可用字牌作將；七對子必須七種不同牌，四張相同牌不可當兩對；小四喜不再另計混一色。番數依香港麻雀常見表：花幺九 5 番；小四喜、大四喜、坎坎胡、十三幺、十八羅漢、連槓開花、天胡、地胡、人胡、綠一色、藍一色與大花糊都是 10 番。七對子維持 3 番；七對子、綠一色與藍一色在牌型一覽標示為「特殊牌型」。</li>
+      <li>自己釣牌成胡時，釣竿左側會出現「胡牌／過」提示：選「胡牌」才會結算，選「過」則打出一張牌繼續。集齊七張花牌時也可選「過」拒絕花糊，之後只接受八花胡牌，並於手牌胡牌時加計花糊番。一開牌或第一次補花已滿七花時，莊家另計天胡、閒家另計地胡；槓後補花則只計槓上開花／連槓開花。兩槓之間不可補花：補到花即中斷連槓。槓上開花與連槓開花不另計海底撈月。明槓後補牌胡牌由當初打出被槓牌的人「出槓」付款；連槓以第一槓為準，第一槓是暗槓／加槓仍按自摸三家支付。平糊可用字牌作將；七對子必須七種不同牌，四張相同牌不可當兩對；小四喜不再另計混一色。番數以香港麻雀協會《香港麻雀總例》為準：花幺九 4 番；小四喜、大四喜、坎坎胡、十三幺、十八羅漢、連槓開花、天胡、地胡、字一色、清幺九、九子連環與大花糊均為 10 番。七對子、人胡、綠一色與藍一色為本遊戲保留的自訂牌型，在牌型一覽標示。門前清則沿用本遊戲既有花牌制計 1 番。</li>
       <li>所有玩家共用同一片無限魚海：魚的牌種隨機產生，普通牌與花牌維持 4：1 加權；沒有發牌輔助，也沒有四張上限，四家都可能同時搶同一種牌。</li>
       <li>畫面會顯示胡牌聽牌；打牌階段會顯示目前選中的牌打出後的聽牌。設定的每局時間到仍未胡牌即為「流局」。累計番數會記錄在本機瀏覽器中。點「計分」可看四家資金與每局派彩紀錄；單機在開始前、聯機由房主在大廳設定起始資金、圈子數、金額倍數、起糊（預設 3 番，可選 0–10 番）與上限番數（預設 10 番，亦可選無限）。有人破產或打完指定圈數即結束，資金最多者勝；莊家胡牌可連莊。</li>
     </ol>
-    <p class="hint-text">派彩以房主設定的金額倍數 B 計算：V = 2^番 × B（番 ≤ 4）；番 ≥ 5 時每兩番加倍，單數番先乘 1.5。出銃時由出銃者支付 V；自摸時其餘三家各付 V／2（四捨五入），胡牌者共得 1.5 × V，自摸至少計 1 番。流局不派彩；連莊不推進圈數。</p>
+    <p class="hint-text">番數以香港麻雀協會《香港麻雀總例》為準；標示「自訂牌型」者為本遊戲保留的變體，門前清則沿用本遊戲既有花牌制計 1 番。</p>
+    <h3 id="payoutTableTitle" tabindex="-1">金錢派彩計算表</h3>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>番數</th><th>倍率 V/B</th><th>出銃支付（單家）</th><th>自摸每家</th><th>自摸三家合計</th></tr></thead>
+        <tbody>
+          <tr><td>0</td><td>1B</td><td>1B</td><td>1B</td><td>3B</td></tr>
+          <tr><td>1</td><td>2B</td><td>2B</td><td>1B</td><td>3B</td></tr>
+          <tr><td>2</td><td>4B</td><td>4B</td><td>2B</td><td>6B</td></tr>
+          <tr><td>3</td><td>8B</td><td>8B</td><td>4B</td><td>12B</td></tr>
+          <tr><td>4</td><td>16B</td><td>16B</td><td>8B</td><td>24B</td></tr>
+          <tr><td>5</td><td>24B</td><td>24B</td><td>12B</td><td>36B</td></tr>
+          <tr><td>6</td><td>32B</td><td>32B</td><td>16B</td><td>48B</td></tr>
+          <tr><td>7</td><td>48B</td><td>48B</td><td>24B</td><td>72B</td></tr>
+          <tr><td>8</td><td>64B</td><td>64B</td><td>32B</td><td>96B</td></tr>
+          <tr><td>9</td><td>96B</td><td>96B</td><td>48B</td><td>144B</td></tr>
+          <tr><td>10</td><td>128B</td><td>128B</td><td>64B</td><td>192B</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint-text">B 為房主開局前設定的金額倍數，預設 1、範圍 1–100；每局起始資金預設 20。表中金額為 B = 1 的倍數，實際支付按公式四捨五入至整數：番 ≤ 4 時 V = 2^番 × B，番 ≥ 5 時每兩番加倍、單數番先乘 1.5。出銃由出銃者支付 V；自摸由其餘三家各付 V／2，胡牌者共得 1.5 × V，自摸至少計 1 番。流局不派彩；選擇無限番時，10 番以上依同一公式繼續計算。連莊不推進圈數。</p>
     <h3 id="fanTableTitle" tabindex="-1">常見香港麻雀牌型一覽</h3>
     <p class="hint-text">範例牌型由規則引擎產生並經測試驗證；上限番數由房主設定，預設 10 番，亦可選無限。</p>
     <div class="table-scroll">
@@ -294,12 +314,12 @@
     <p>背景音樂：四段 CC0 中國風器樂，來自 Freesound（neolein、f-r-a-g-i-l-e、Ehved）。</p>
     <p>打牌音效：<a href="https://freesound.org/s/785585/" target="_blank" rel="noopener noreferrer">tiles fall on corkboard（Detective_Lemons）</a>，CC0；截取單次麻將牌撞擊聲。</p>
     <p><a href="https://freesound.org/s/573972/" target="_blank" rel="noopener noreferrer">A ride through chinese valley</a>　·　<a href="https://freesound.org/s/521367/" target="_blank" rel="noopener noreferrer">blossom valley in paradise</a>　·　<a href="https://freesound.org/s/666269/" target="_blank" rel="noopener noreferrer">lotus guzheng chops Cm</a>　·　<a href="https://freesound.org/s/565196/" target="_blank" rel="noopener noreferrer">Erhu Melodic Loop</a>　·　<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0 1.0</a></p>
-    <p>花牌與番數規則：<a href="https://zh.wikipedia.org/wiki/%E9%A6%99%E6%B8%AF%E9%BA%BB%E9%9B%80%E8%83%A1%E7%89%8C%E5%88%97%E8%A1%A8" target="_blank" rel="noopener noreferrer">香港麻雀番牌列表（維基百科）</a>、<a href="https://mahjongwiki.miraheze.org/wiki/%E9%A6%99%E6%B8%AF%E9%BA%BB%E5%B0%87" target="_blank" rel="noopener noreferrer">香港麻將（麻將百科）</a>。</p>
+    <p>花牌與番數規則：<a href="https://www.hkmahjong.org/rules" target="_blank" rel="noopener noreferrer">香港麻雀協會《香港麻雀總例》</a>、<a href="https://zh.wikipedia.org/wiki/%E9%A6%99%E6%B8%AF%E9%BA%BB%E9%9B%80%E8%83%A1%E7%89%8C%E5%88%97%E8%A1%A8" target="_blank" rel="noopener noreferrer">香港麻雀番牌列表（維基百科）</a>、<a href="https://mahjongwiki.miraheze.org/wiki/%E9%A6%99%E6%B8%AF%E9%BA%BB%E5%B0%87" target="_blank" rel="noopener noreferrer">香港麻將（麻將百科）</a>。</p>
     <p>詳見 <code>CREDITS.md</code>。</p>
   </div>
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js" onerror="this.onerror=null;this.src='js/vendor/peerjs.min.js'"></script>
-<script type="module" src="js/game.js?v=1.4.95"></script>
+<script type="module" src="js/game.js?v=1.4.96"></script>
 </body>
 </html>
