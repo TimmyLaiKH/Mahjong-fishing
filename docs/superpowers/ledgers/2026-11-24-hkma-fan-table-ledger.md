@@ -31,7 +31,7 @@
 - [x] Task 1 — HKMA 番數與自訂牌型（TDD）
 - [x] Task 2 — 玩法說明派彩表與來源標示
 - [x] Task 3 — 牌面立體感（CSS 與 canvas）
-- [ ] Task 4 — 文件同步、完整驗證與部署
+- [x] Task 4 — 文件同步、完整驗證與部署
 
 ## Ledger log
 
@@ -42,4 +42,7 @@
 - 2026-11-24: Task 1 RED observed (62/64; 人胡 desc, 花幺九 desc/category, T3 total). GREEN after `js/rules.js` data changes: 64/12/2 passing; four `node --check` and `git diff --check` clean.
 - 2026-11-24: Task 2 static-check RED (`要有派彩表標題`) then GREEN. Browser check on port 8124 with fresh `?test=1&v=1.4.96-task2-c`: six `<li>`, payout rows 0–10 exact, four `自訂牌型` tags, no `特殊牌型`, no bottom 釣魚 button, `#helpFanTableBtn` focuses/scrolls to `#fanTableTitle`, HUD/canvas unchanged, no console errors/warnings, no overflow. `.gitignore` gap with main noted for final reconciliation.
 - 2026-11-24: Task 3 static-check RED (`要有 relative 定位`) then GREEN. Browser check on port 8124 with fresh `?test=1&v=1.4.96-task3-b`: solo game reached `AWAIT_CAST`; DOM tile bevel applied with `pointer-events:none` pseudo-element; canvas non-blank; no bottom 釣魚 button, no horizontal overflow; frames advanced 37→38; no console errors/warnings; no 4xx/5xx requests.
-- 2026-11-24: Task 4 docs synced across `README.md`, `CHANGELOG.md`, `AGENTS.md`, `CREDITS.md`; four `node --check`, suites 64/12/2 and `git diff --check` clean; stale-tag grep found only intentional test strings. Fresh browser check `?test=1&v=1.4.96-task4-b`: six `<li>`, exact 0–10 payout rows, four `自訂牌型` tags, no bottom 釣魚 button, DOM/canvas bevel visible, geometry unchanged, frames advancing, no 4xx/5xx requests; only a probe-induced `getImageData` warning. Live deployment verification still pending.
+- 2026-11-24: Task 4 docs synced across `README.md`, `CHANGELOG.md`, `AGENTS.md`, `CREDITS.md`; four `node --check`, suites 64/12/2 and `git diff --check` clean; stale-tag grep found only intentional test strings. Fresh browser check `?test=1&v=1.4.96-task4-b`: six `<li>`, exact 0–10 payout rows, four `自訂牌型` tags, no bottom 釣魚 button, DOM/canvas bevel visible, geometry unchanged, frames advancing, no 4xx/5xx requests; only a probe-induced `getImageData` warning.
+- 2026-11-24: Rebased all four task commits onto main, re-ran four `node --check`, suites 64/12/2 and `git diff --check` clean, then pushed and fast-forwarded `main` to `b8de194`.
+- 2026-11-24: Live cachebust verification caught stale `rules.js?v=1.4.92` in live `js/game.js`; TDD static check went RED then GREEN after changing the import to `./rules.js?v=1.4.96`. Committed and pushed as `5aaa0de`, fast-forwarded `main` again.
+- 2026-11-24: Final live cachebust verification passed with fresh query strings for `index.html`, `js/game.js`, `js/rules.js`, `js/tiles.js` and `css/style.css`; all expected 1.4.96 strings present. Play link: `https://timmylaikh.github.io/Mahjong-fishing/?v=1.4.96`.
