@@ -78,7 +78,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
 | `tests/rules.test.mjs` | 64 rule tests: T1–T13, table-driven patterns, flowers, weighted pool, 1000-game simulation. |
 | `tests/payout.test.mjs` | 12 payout/settlement tests. |
 | `tests/net.test.mjs` | 2 tests for PeerJS-safe outgoing message normalisation. |
-| `tests/hkma-ui.test.mjs` | 9 static checks: no old character, three help tabs, HUD min-fan and AI emoji wiring, iOS speech/music guards, custom-pattern order, bands-only 120×181 tiles, version cachebusts. |
+| `tests/hkma-ui.test.mjs` | 9 static checks: no old character, three help tabs, HUD min-fan and AI emoji wiring, iOS speech/music guards, modal/ESC wiring, custom-pattern order, bands-only 120×181 tiles, version cachebusts. |
 | `tests/browser-ai-discard.test.html` | Browser regression page: loads the real game with `?test=1`, forces an AI discard via `aiTick()`, and fails on any exception or missing river tile. |
 | `README.md`, `CHANGELOG.md`, `CREDITS.md`, `AGENTS.md` | Player docs, change history, asset licences, agent instructions. |
 
@@ -497,10 +497,14 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `js/audio.js`. They follow the 音效與語音 switch and the master volume, while the music track
   follows the 背景音樂 switch and master × music volume; both switches share one `mf-sound` value
   (`music,effects` as `1`/`0`) and no storage keys are added.
-- Modals: ordinary modals close on backdrop click, but `overlay`, `loading`, `menuScreen`,
-  `joinScreen` and `roomScreen` never do. The in-game 設定／玩法說明／計分 panels and the
-  `重新開始投票` overlay are informational — they block input but not simulation. In-game
-  `回到主選單` quits the round, clears pending prompts, sets `LOADING`, and shows the menu.
+- Modals: `設定`, `玩法說明`, `計分` and `資料來源` close only with their ✕ button; backdrop clicks
+  and Escape never dismiss them, and they keep blocking input behind them. `overlay`, `loading`,
+  `menuScreen`, `joinScreen` and `roomScreen` also never close on backdrop. Escape in `roomScreen`
+  (solo or multiplayer room) or `joinScreen` opens the `#exitConfirm` dialog asking whether to
+  return to the main menu; confirming calls `quitToMenu()`, cancelling keeps the lobby open. Other
+  ESC behaviour is unchanged. The `重新開始投票` overlay is informational — it blocks input but not
+  simulation. In-game `回到主選單` quits the round, clears pending prompts, sets `LOADING`, and
+  shows the menu.
   The 設定 modal must not mention AI, 起糊 or 番數上限 — those live in the room lobby; host hook
   speed and duration lock after start; both
   volume sliders save into `mf-volume`, and both switches save into `mf-sound`.
