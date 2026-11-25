@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.111';
+} from './rules.js?v=1.4.112';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -2377,6 +2377,8 @@ function commitAiWin(seat, result, fanTotal = null, meta = {}) {
   const log = recordRoundResult({ winner: seat, result, ...winMeta });
   clearClaim();
   clearSelfWin();
+  game.claimPriorities.clear();
+  game.pendingKongs.clear();
   setState(S.WIN);
   const name = seatLabel(seat);
   setStatus(`${name} 胡牌！${result.totalFan} 番`);

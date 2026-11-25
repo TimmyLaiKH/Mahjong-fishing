@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.111/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.111/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.112/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.112/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.111/);
-  assert.match(readme, /\?v=1\.4\.111/);
-  assert.match(changelog, /^## 1\.4\.111/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.112/);
+  assert.match(readme, /\?v=1\.4\.112/);
+  assert.match(changelog, /^## 1\.4\.112/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -347,6 +347,12 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(game, /ui\.customPatternsToggle\.checked = Boolean\(setup\.customPatterns\)/);
   assert.match(game, /ui\.customPatternsToggle\.disabled = !isHost/);
   assert.match(game, /ui\.customPatternsToggle\?\.addEventListener\('change', updateRoomSettings\)/);
+  const aiWin = game.slice(
+    game.indexOf('function commitAiWin('),
+    game.indexOf('function commitWin('),
+  );
+  assert.match(aiWin, /game\.claimPriorities\.clear\(\)/);
+  assert.match(aiWin, /game\.pendingKongs\.clear\(\)/);
   const table = game.slice(
     game.indexOf('function buildPatternTable('),
     game.indexOf('const PATTERN_ROWS'),
