@@ -72,14 +72,14 @@ test('牌圖版本已升級且沒有雙重立體疊圖', () => {
   assert.equal(statSync('scripts/restyle_tiles.py').isFile(), true);
 });
 
-test('43 張牌圖都是 RGBA 144x205', () => {
+test('43 張牌圖都是 RGBA 120x181', () => {
   const files = readdirSync('assets/tiles/faces').filter((f) => f.endsWith('.png'));
   assert.equal(files.length, 43);
   for (const file of files) {
     const buf = readFileSync(`assets/tiles/faces/${file}`);
     assert.equal(buf.subarray(1, 4).toString(), 'PNG');
-    assert.equal(buf.readUInt32BE(16), 144, file);
-    assert.equal(buf.readUInt32BE(20), 205, file);
+    assert.equal(buf.readUInt32BE(16), 120, file);
+    assert.equal(buf.readUInt32BE(20), 181, file);
     assert.equal(buf[25], 6, `${file} must be RGBA`);
   }
 
@@ -89,15 +89,15 @@ test('43 張牌圖都是 RGBA 144x205', () => {
     save() {}, translate() {}, restore() {},
     drawImage(...args) { drawn.push(args); },
   };
-  const image = { complete: true, naturalWidth: 144, naturalHeight: 205 };
+  const image = { complete: true, naturalWidth: 120, naturalHeight: 181 };
   drawTile(ctx, 'T1', 0, 0, 132, 176, { images: { T1: image } });
   assert.equal(drawn.length, 1);
   const [, dx, dy, dw, dh] = drawn[0];
   const expectedHeight = 176;
-  const expectedWidth = 144 * expectedHeight / 205;
+  const expectedWidth = 120 * expectedHeight / 181;
   assert.ok(Math.abs(dh - expectedHeight) < 1e-6, `drawImage height ${dh}`);
   assert.ok(Math.abs(dw - expectedWidth) < 1e-6, `drawImage width ${dw}`);
-  assert.ok(Math.abs(dw / dh - 144 / 205) < 1e-6, 'drawImage must keep the PNG aspect');
+  assert.ok(Math.abs(dw / dh - 120 / 181) < 1e-6, 'drawImage must keep the PNG aspect');
   assert.ok(Math.abs(dx + dw / 2) < 1e-6 && Math.abs(dy + dh / 2) < 1e-6,
     'drawImage must centre the fitted tile');
 });
@@ -113,6 +113,13 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(game, /\.\/rules\.js\?v=1\.4\.97/);
   assert.match(readme, /\?v=1\.4\.97/);
   assert.match(changelog, /^## 1\.4\.97/m);
+
+  const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
+  assert.doesNotMatch(restyle, /add_shadow/);
+  assert.doesNotMatch(restyle, /RECOLOUR_TOLERANCE/);
+  assert.doesNotMatch(restyle, /FACE_TARGET/);
+  const process = readFileSync('scripts/process_assets.py', 'utf8');
+  assert.match(process, /120×181/);
 });
 
 console.log(`結果：${passed} 通過，${failed} 失敗`);
