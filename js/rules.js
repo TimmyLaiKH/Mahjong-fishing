@@ -154,7 +154,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm2', 'm3', 'm4', 'm9', 'm9'], melds: [], context: {} },
   },
   {
-    id: '七對子', fan: 3, category: '自訂牌型', desc: '自訂牌型：門前清七種不同牌各一對（又稱嚦咕嚦咕）；四張相同牌不能當兩對。香港麻雀協會《香港麻雀總例》沒有此番種。',
+    id: '七對子', fan: 3, category: '自訂牌型', desc: '自訂牌型：門前清七種不同牌各一對（又稱嚦咕嚦咕）；四張相同牌不能當兩對。',
     example: { concealed: ['m1', 'm1', 'm3', 'm3', 'p2', 'p2', 'p7', 'p7', 's4', 's4', 'E', 'E', 'C', 'C'], melds: [], context: {} },
   },
   {
@@ -213,7 +213,7 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
-    id: '人胡', fan: 10, category: '自訂牌型', desc: '自訂牌型：閒家於開局第一輪即自摸；必為門前清，不另計自摸。香港麻雀協會《香港麻雀總例》沒有此番種。',
+    id: '人胡', fan: 10, category: '自訂牌型', desc: '自訂牌型：閒家於開局第一輪即自摸；必為門前清，不另計自摸。',
     example: {
       concealed: ['m1', 'm1', 'm1', 'm2', 'm3', 'm4', 'p5', 'p6', 'p7', 's2', 's3', 's4', 'E', 'E'],
       melds: [],
@@ -237,11 +237,11 @@ export const PATTERN_TABLE = Object.freeze([
     },
   },
   {
-    id: '綠一色', fan: 10, category: '自訂牌型', desc: '自訂牌型：全部由二、三、四、六、八索或發財組成。香港麻雀協會《香港麻雀總例》沒有此番種。',
+    id: '綠一色', fan: 10, category: '自訂牌型', desc: '自訂牌型：全部由二、三、四、六、八索或發財組成。',
     example: { concealed: ['s2', 's3', 's4', 's2', 's3', 's4', 's6', 's6', 's6', 'F', 'F', 'F', 's8', 's8'], melds: [], context: {} },
   },
   {
-    id: '藍一色', fan: 10, category: '自訂牌型', desc: '自訂牌型：全部由東、南、西、北、白板或八筒組成。香港麻雀協會《香港麻雀總例》沒有此番種。',
+    id: '藍一色', fan: 10, category: '自訂牌型', desc: '自訂牌型：全部由東、南、西、北、白板或八筒組成。',
     example: { concealed: ['E', 'E', 'E', 'S', 'S', 'S', 'W', 'W', 'W', 'B', 'B', 'B', 'p8', 'p8'], melds: [], context: { roundWind: 'E', seatWind: 'S' } },
   },
   {
