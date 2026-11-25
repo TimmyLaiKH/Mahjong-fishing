@@ -638,14 +638,16 @@ export function detectCustomPatterns({
   const stairRuns = [];
   for (const starts of startsBySuit.values()) {
     const sorted = [...starts].sort((a, b) => a - b);
-    if (!sorted.some((start, i) => i > 0 && start === sorted[i - 1] + 1)) continue;
-    let run = 1;
-    let best = 1;
-    for (let i = 1; i < sorted.length; i += 1) {
-      run = sorted[i] === sorted[i - 1] + 1 ? run + 1 : 1;
-      best = Math.max(best, run);
+    let run = [];
+    const flushRun = () => {
+      if (run.length >= 2) stairRuns.push(run.length);
+      run = [];
+    };
+    for (const start of sorted) {
+      if (run.length && start !== run[run.length - 1] + 1) flushRun();
+      run.push(start);
     }
-    stairRuns.push(best);
+    flushRun();
   }
   if (stairRuns.length >= 2) add('兩般低');
   const maxStep = Math.max(0, ...stairRuns);

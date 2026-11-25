@@ -160,8 +160,8 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   `FLOWER_PATTERN_TABLE`; every pattern needs a validated `example` there. HKMA《香港麻雀總例》is the
   sole fan authority; `花么九` is 4 番 (花么). Patterns carrying `category: '自訂牌型'`
   (all custom patterns above) get a small 自訂牌型 tag in the name cell only; settlement and speech
-  never show it. The host-only `customPatternsToggle` room switch (default OFF) hides these rows and
-  disables their scoring; guests see a read-only `(由房主設定)` note. The closing footnote says
+  never show it. The host-only `customPatternsToggle` room switch (default OFF) disables their scoring, but the
+  牌型一覽 always shows these rows at the bottom; guests see a read-only `(由房主設定)` note. The closing footnote says
   `碰、上、槓才不計門前清，吃胡他人打出的牌仍可計門前清（但不計自摸）。`
 - **No bottom `釣魚` button.** Click/tap the canvas or press Space to cast. Hints are always on;
   terminology is 聽牌, not a hint toggle. Wait hints are advisory and never gate settlement: for

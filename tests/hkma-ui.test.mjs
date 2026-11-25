@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.107/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.107/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.108/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.108/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.107/);
-  assert.match(readme, /\?v=1\.4\.107/);
-  assert.match(changelog, /^## 1\.4\.107/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.108/);
+  assert.match(readme, /\?v=1\.4\.108/);
+  assert.match(changelog, /^## 1\.4\.108/m);
 
   // Host-only 自訂牌型 toggle and engine threading.
   assert.match(html, /id="customPatternsToggle"/);
@@ -332,8 +332,8 @@ test('玩家版本與 cachebust 已更新', () => {
     game.indexOf('function buildPatternTable('),
     game.indexOf('const PATTERN_ROWS'),
   );
-  assert.match(table, /customPatternsEnabled\(\)/);
-  assert.match(table, /category !== '自訂牌型'/);
+  assert.match(table, /sortPatternRows\(\[\.\.\.PATTERN_ROWS, \.\.\.FLOWER_PATTERN_TABLE\]\)/);
+  assert.doesNotMatch(table, /category !== '自訂牌型'/);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
