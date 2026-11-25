@@ -1167,6 +1167,7 @@ function finishReel() {
     // 槓上開花／連槓開花. The rod still owes that next draw before a discard.
     const waitingForKongReplacement = Boolean(game.lastDraw.fromKong);
     if (!waitingForKongReplacement) game.grabPending = false;
+    renderClaimBoxes();
     game.flowers.push(game.lastDraw.id);
     syncSeatFlowers(game.seat, game.flowers);
     const flowerContext = withOpeningFlowerFlags(game.seat, winContext(), {
@@ -1206,6 +1207,7 @@ function finishReel() {
     // draw after 槓 — in that case the next successful catch must be discarded.
     if (game.kongChain === 0) game.grabPending = false;
     setState(S.AWAIT_CAST);
+    renderClaimBoxes();
   }
 }
 
@@ -1705,11 +1707,9 @@ function canDeclareMeld() {
 function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass = false,
   { potential = false, firstDiscard = false, discarderSeat = null,
     kong = false, concealed = false, sourceKey = null } = {}) {
-  // A 槓 replacement must be fished before reacting to anyone else's tile.
-  // 胡／搶槓／碰／上／明槓 are all unavailable in that window.
-  if (game.kongChain > 0 || game.grabPending) {
-    return includePass ? [{ label: '過', primary: false, onClick: passClaim }] : [];
-  }
+  // While a 槓 replacement is pending, every action stays visible but greyed
+  // out: the player can see what is coming but cannot act until fishing.
+  const claimBlocked = game.kongChain > 0 || game.grabPending;
   const tiles = potential ? claimReadyTiles() : game.hand;
   const hand = tiles.map((tile) => tile.id);
   const counts = countTiles(hand);
@@ -1721,9 +1721,9 @@ function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass 
     || win.patterns.some((pattern) => pattern.id === '十三么'))) {
     actions.push({
       label: kong ? '搶槓' : '胡牌', type: kong ? 'rob' : 'win', result: win,
-      // A completed hand always ends the game when pressed; it must not be
-      // greyed out just because a fish is in flight or a tile was just drawn.
-      disabled: false,
+      // A completed hand is normally always actionable, but a 槓 replacement
+      // must be fished first; that block greys out 胡／搶槓 as well.
+      disabled: claimBlocked,
       sourceKey,
       declarerSeat: discarderSeat,
       concealed,
@@ -3895,9 +3895,9 @@ function claimFromBox(box, action) {
     kong: box.kind === 'kong', concealed: Boolean(box.concealed), sourceKey: box.sourceKey,
   }).find((item) => item.type === action.type
     && (item.kinds ?? []).join(',') === (action.kinds ?? []).join(','));
-  // 胡 and 搶槓 are always actionable: a rod in flight or a just-fished tile
-  // must never turn those buttons into no-ops. 碰／上／明槓 keep live checks.
-  if (!fresh || (!['win', 'rob'].includes(fresh.type) && (fresh.disabled || !canDeclareMeld()))) {
+  // Re-check the freshly built action: a disabled action (for example during
+  // 槓 replacement) must never be executable, including 胡／搶槓.
+  if (!fresh || fresh.disabled || (!['win', 'rob'].includes(fresh.type) && !canDeclareMeld())) {
     renderClaimBoxes();
     return;
   }
