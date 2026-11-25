@@ -49,8 +49,8 @@ bash scripts/fetch_assets.sh
 python3 scripts/process_assets.py
 ```
 
-`scripts/process_assets.py` calls `scripts/restyle_tiles.py` to bake the approved edges and shadow into
-each runtime PNG; the restyle script can also be run alone as
+`scripts/process_assets.py` calls `scripts/restyle_tiles.py` to bake the approved smooth edge layers into
+each runtime PNG without a baked shadow or face recolour; the restyle script can also be run alone as
 `python3 scripts/restyle_tiles.py INPUT_FOLDER OUTPUT_FOLDER`.
 
 Deployment is GitHub Pages from `main`. Commit, push, then verify the live site with distinct
@@ -78,7 +78,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
 | `tests/rules.test.mjs` | 64 rule tests: T1–T13, table-driven patterns, flowers, weighted pool, 1000-game simulation. |
 | `tests/payout.test.mjs` | 12 payout/settlement tests. |
 | `tests/net.test.mjs` | 2 tests for PeerJS-safe outgoing message normalisation. |
-| `tests/hkma-ui.test.mjs` | 8 static checks: no old character, three help tabs, jump button, custom-pattern order, baked 144×205 tiles, version cachebusts. |
+| `tests/hkma-ui.test.mjs` | 8 static checks: no old character, three help tabs, jump button, custom-pattern order, bands-only 120×181 tiles, version cachebusts. |
 | `tests/browser-ai-discard.test.html` | Browser regression page: loads the real game with `?test=1`, forces an AI discard via `aiTick()`, and fails on any exception or missing river tile. |
 | `README.md`, `CHANGELOG.md`, `CREDITS.md`, `AGENTS.md` | Player docs, change history, asset licences, agent instructions. |
 
@@ -462,10 +462,11 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   comes first: the floor (`WORLD_H`) or the nearest side (`view.width / 2 - TILE_W / 2`), and
   `hookPositionFor()` clamps only at half a tile so the hook still reaches the edge without
   leaving the canvas.
-- Tile faces are 43 runtime PNGs at 144×205 RGBA with `TILE_ASSET_VERSION = 7`; the subtle 3D
-  edges and soft shadow are baked into the PNGs by `scripts/restyle_tiles.py` (called by
-  `scripts/process_assets.py`). There is no CSS `::before` bevel and no canvas gradient/edge-stroke
-  bevel in `drawTile()`; `.tile-img img` only keeps its separation `drop-shadow`. `js/game.js`
+- Tile faces are 43 runtime PNGs at 120×181 RGBA with `TILE_ASSET_VERSION = 8`; only the two smooth
+  green/grey edge layers and rounded corners are baked into the PNGs by `scripts/restyle_tiles.py`
+  (called by `scripts/process_assets.py`) — there is no baked shadow and no face recolour. There is
+  no CSS `::before` bevel and no canvas gradient/edge-stroke bevel in `drawTile()`; `.tile-img img`
+  only keeps its separation `drop-shadow`. `js/game.js`
   pins `./tiles.js?v=...`; bump it when tile drawing changes.
 - `各家副露` sits above your own 副露 (flowers and concealed kongs), below status/toast and above
   the hand; it is always expanded (never collapsible) and lists only the other three seats' live
@@ -508,9 +509,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 
 ## Assets, audio and credits
 
-- Tile faces are 43 runtime PNGs (34 regular, 8 flowers, 1 back) at 144×205 RGBA, generated from
-  CC0 artwork by FluffyStuff and Lilia Chen May Wither with baked edges from
-  `scripts/restyle_tiles.py`. `H6.png` uses 繁體「蘭」.
+- Tile faces are 43 runtime PNGs (34 regular, 8 flowers, 1 back) at 120×181 RGBA, generated from
+  CC0 artwork by FluffyStuff and Lilia Chen May Wither with only the smooth edge layers baked by
+  `scripts/restyle_tiles.py` (no shadow, no face recolour). `H6.png` uses 繁體「蘭」.
 - `assets/bg/underwater.jpg` is under 400 KB, derived from a CC BY 4.0 Wikimedia image by
   Olivier Dugornay / Ifremer; the game draws mountains, houses, bamboo and grass in canvas, so
   no extra scenery images are needed.

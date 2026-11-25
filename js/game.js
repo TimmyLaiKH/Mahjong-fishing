@@ -6,7 +6,7 @@
 import {
   TILE_IDS, TILE_INFO, FLOWER_IDS, isFlower, loadImages, drawTile,
   createTileElement, tileName,
-} from './tiles.js?v=1.4.97';
+} from './tiles.js?v=1.4.98';
 import { createMusic } from './audio.js?v=1.4.86';
 import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
