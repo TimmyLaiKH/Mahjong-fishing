@@ -21,7 +21,7 @@
 - 選擇 A。
 
 ### 開關傳遞
-- 方案 A（建議）：`evaluateHand()`／`withFlowers()`／`flowerWinResult()` 的 `context` 增加布林 `customPatterns`，預設 `true` 以向後相容現有 64 項規則測試；`false` 時引擎完全不計任何 `category: '自訂牌型'` 的牌型。遊戲端從 `match.customPatterns` 讀取並帶入所有evaluate 呼叫。牌型表也據此過濾。
+- 方案 A（建議）：`evaluateHand()`／`withFlowers()`／`flowerWinResult()` 的 `context` 增加布林 `customPatterns`，引擎預設 `true` 以向後相容現有 64 項規則測試，但遊戲端一律傳入 `match.customPatterns`（房間預設 `false`）；`false` 時引擎完全不計任何 `category: '自訂牌型'` 的牌型。遊戲端從 `match.customPatterns` 讀取並帶入所有 evaluate 呼叫。牌型表也據此過濾。
 - 方案 B：遊戲端拿到 result 後自己濾掉自訂牌型並重算番數。缺點是吸收／重疊扣減／門前清等連鎖會算錯，不採用。
 - 選擇 A。
 
@@ -62,7 +62,7 @@
 
 ## 開關行為
 
-- 房間由房主設定 `自訂牌型` 開關，建議預設 **開**（保留目前行為）；賓客看到不可編輯並標註 `(由房主設定)`。
+- 房間由房主設定 `自訂牌型` 開關，預設 **關**（使用者 2026-11-25 明確指定）；賓客看到不可編輯並標註 `(由房主設定)`。
 - `roomSettings.customPatterns` → `matchSetup.customPatterns` → `match.customPatterns`，並進 `cloneMatch()`／`adoptMatch()`，只傳送布林值，不新增 localStorage key、不傳送 `Infinity`。
 - 開：
   - 引擎照常計所有自訂牌型。
