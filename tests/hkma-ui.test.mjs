@@ -41,8 +41,8 @@ test('玩法說明有三個分頁按鈕與三個面板', () => {
   assert.doesNotMatch(html, /id="helpFanTableBtn"/);
   assert.doesNotMatch(html, /前往番數表/);
 
-  // The four informational panels close only with their ✕ button, and ESC in a
-  // room asks before returning to the menu.
+  // Rooms ask before leaving on ESC. Informational panels are ✕-only on touch
+  // devices, but PC ESC closes them; ESC during play opens 設定.
   assert.match(html, /id="exitConfirm"/);
   assert.match(html, /id="exitConfirmBack"[^>]*>返回主選單<\/button>/);
   const game = readFileSync('js/game.js', 'utf8');
@@ -51,6 +51,9 @@ test('玩法說明有三個分頁按鈕與三個面板', () => {
     assert.match(game, new RegExp(`CLOSE_ONLY_WITH_X[^\\n]*'${id}'`));
   }
   assert.match(game, /function handleEscape\(\)/);
+  const escape = game.slice(game.indexOf('function handleEscape('), game.indexOf('/** Title screen shown'));
+  assert.match(escape, /CLOSE_ONLY_WITH_X\.has\(top\.id\)[\s\S]*?!isTouchOnly\(\)[\s\S]*?closeModal\(top\.id\)/);
+  assert.match(escape, /if \(!open\.length && game\.match\?\.active\) openModal\('settingsPanel'\);/);
   assert.match(game, /event\.key === 'Escape'[\s\S]{0,120}handleEscape\(\)/);
   assert.match(game, /function quitToMenu\([\s\S]*?closeModal\('exitConfirm'\)/);
   const backdrop = game.slice(game.indexOf("modal.addEventListener('pointerdown'"));
@@ -82,6 +85,20 @@ test('HUD 起糊與 AI 表情已接上', () => {
   assert.match(emit, /if \(isAiSeat\(discarder\)\)/);
   assert.doesNotMatch(emit, /else if \(isAiSeat\(discarder\)\)/);
   assert.match(game, /net\.broadcast\(\{ t: 'emoji', seat, emoji \}\)/);
+
+  // A human emoji (in the room or during play) may get a happy AI reply.
+  assert.match(game, /HUMAN_EMOJI_AI_REPLY_CHANCE = 0\.3/);
+  assert.match(game, /function maybeReplyToHumanEmoji\(/);
+  const reply = game.slice(
+    game.indexOf('function maybeReplyToHumanEmoji('),
+    game.indexOf('function emitAiReactions('),
+  );
+  assert.match(reply, /game\.mode === 'multi' && !net\.isHost/);
+  assert.match(reply, /maybeAiEmoji\(seat, HUMAN_EMOJI_AI_REPLY_CHANCE, \['😀', '👍'\]\)/);
+  const send = game.slice(game.indexOf('function sendEmoji('), game.indexOf('function aiEmoji('));
+  assert.match(send, /maybeReplyToHumanEmoji\(\);/);
+  const inbox = game.slice(game.indexOf("net.on('emoji'"), game.indexOf("net.on('catch'"));
+  assert.match(inbox, /net\.isHost && !isAiSeat\(msg\.seat\)\) maybeReplyToHumanEmoji\(\);/);
 });
 
 test('玩法說明清單可多於六項且保留固定入口', () => {
@@ -149,6 +166,11 @@ test('iOS 語音鎖定與音樂恢復有防護', () => {
   );
   assert.match(unlockMusic, /if \(speechBusy\(\)\) return;/);
   assert.match(unlockMusic, /if \(game\.settings\.musicEnabled\) music\.start\(\);/);
+  const clickHandler = game.slice(
+    game.indexOf("document.addEventListener('click', (event) => {"),
+    game.indexOf("el('creditsBtn')"),
+  );
+  assert.match(clickHandler, /button && !button\.disabled && !speechBusy\(\)\) music\.click\(\);/);
   const unlock = game.slice(
     game.indexOf('function unlockSpeechEngine('),
     game.indexOf('function voiceStatus('),
@@ -174,12 +196,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.101/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.101/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.102/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.102/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
   assert.match(game, /\.\/rules\.js\?v=1\.4\.97/);
-  assert.match(readme, /\?v=1\.4\.101/);
-  assert.match(changelog, /^## 1\.4\.101/m);
+  assert.match(readme, /\?v=1\.4\.102/);
+  assert.match(changelog, /^## 1\.4\.102/m);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);

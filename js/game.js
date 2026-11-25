@@ -81,6 +81,7 @@ const BIG_WIN_AI_EMOJI_CHANCE = 0.55;
 const AI_MELD_EMOJI_CHANCE = 0.08;
 const DRAW_EMOJI_CHANCE = 0.3;
 const MATCH_END_EMOJI_CHANCE = 0.7;
+const HUMAN_EMOJI_AI_REPLY_CHANCE = 0.3;
 // Codes that failed to produce a live host this session. PeerJS can leave a
 // stale id registered for a while after the host leaves, so never retry them.
 const deadRooms = new Set();
@@ -622,6 +623,7 @@ function sendEmoji(emoji) {
   if (game.mode === 'multi') broadcastOrSend({ t: 'emoji', seat: game.seat, emoji });
   showEmojiBubble(game.seat, emoji);
   closeEmojiPanel();
+  maybeReplyToHumanEmoji();
 }
 
 function aiEmoji(seat, emoji) {
@@ -635,6 +637,13 @@ function aiEmoji(seat, emoji) {
 function maybeAiEmoji(seat, chance, options) {
   if (!isAiSeat(seat) || Math.random() >= chance) return;
   aiEmoji(seat, options[Math.floor(Math.random() * options.length)]);
+}
+
+function maybeReplyToHumanEmoji() {
+  if (game.mode === 'multi' && !net.isHost) return;
+  for (let seat = 0; seat < 4; seat += 1) {
+    if (isAiSeat(seat)) maybeAiEmoji(seat, HUMAN_EMOJI_AI_REPLY_CHANCE, ['😀', '👍']);
+  }
 }
 
 function emitAiReactions({ winner = null, discarder = null, fan = 0, draw = false } = {}) {
@@ -4685,6 +4694,7 @@ function wireNetEvents() {
   net.on('emoji', (msg) => {
     if (net.isHost && msg.seat !== game.seat) net.broadcast(msg);
     showEmojiBubble(msg.seat, msg.emoji);
+    if (net.isHost && !isAiSeat(msg.seat)) maybeReplyToHumanEmoji();
   });
 
   net.on('catch', (msg) => {
@@ -6406,9 +6416,13 @@ function handleEscape() {
   if (ui.exitConfirm?.classList.contains('show')) { closeModal('exitConfirm'); return; }
   const open = [...document.querySelectorAll('.modal.show')]
     .filter((m) => m !== ui.loading && m !== ui.menu);
+  if (!open.length && game.match?.active) openModal('settingsPanel');
   if (!open.length) return;
   const top = open[open.length - 1];
-  if (CLOSE_ONLY_WITH_X.has(top.id)) return;
+  if (CLOSE_ONLY_WITH_X.has(top.id)) {
+    if (!isTouchOnly()) closeModal(top.id);
+    return;
+  }
   if (top.id === 'joinScreen' || top.id === 'roomScreen') { openModal('exitConfirm'); return; }
   closeModal(top.id);
 }
@@ -6698,7 +6712,7 @@ function wireInput() {
   ui.roomEmojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.roomEmojiBtn));
   document.addEventListener('click', (event) => {
     const button = event.target.closest?.('button');
-    if (button && !button.disabled) music.click();
+    if (button && !button.disabled && !speechBusy()) music.click();
     if (ui.emojiPanel?.hidden) return;
     if (ui.emojiPanel.contains(event.target)
       || ui.emojiBtn?.contains(event.target)
@@ -6853,7 +6867,7 @@ if (new URLSearchParams(location.search).has('test')) {
     canDeclareClaim, canDeclareMeld, handReadyForClaim, claimFromBox, passClaimBox, handleClaim, aiClaimStillValid,
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
-    EMOJIS, sendEmoji, showEmojiBubble, aiEmoji, maybeAiEmoji, emitAiReactions,
+    EMOJIS, sendEmoji, showEmojiBubble, aiEmoji, maybeAiEmoji, maybeReplyToHumanEmoji, emitAiReactions,
     toggleEmojiPanel, closeEmojiPanel,
     fanInCantonese, speakCantonese, speakVoiceNow, speakRoundStart, speakAction, speakWin, speakDraw,
     showWinEnd, speechQueue,
