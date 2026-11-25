@@ -491,7 +491,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `.room-avatar` while `body.waiting-room` is active. The layer sits above modals (`z-index:65`) but
   is `pointer-events:none` so casts, room controls and HUD clicks still work; bubbles remove
   themselves on `animationend`. The picker closes on outside click, Escape, resize or selection.
-- AI seats may react with existing emojis: 30% 😭/😡 on 出銃, 30% 😎/😀 on AI win, a forced 😡 from the 出銃 AI plus 55% 👏/👍/😮/🔥 from other AIs when you win 10+ fan, 8% 😍/🙏 on 上/碰/明槓, 30% 😮/😂 on 流局 and 70% 🎉 at match end. Each human emoji also gives every AI a 30% chance to reply 😀/👍, in the room as well as during play. Empty lobby seats (空位) never react, even if stale `aiStates` linger after a match. Floating bubbles stagger by the number of active bubbles so different seats do not overlap. Only solo/host generates AI emojis and the host broadcasts `{t:'emoji', seat, emoji}`; they never affect scoring.
+- AI seats may react with existing emojis: 30% 😭/😡 on 出銃, 30% 😎/😀 on AI win, a forced 😡 from the 出銃 AI plus 55% 👏/👍/😮/🔥 from other AIs when you win 10+ fan, 8% 😍/🙏 on 上/碰/明槓, 30% 😮/😂 on 流局 and 70% 🎉 at match end. Each human emoji also gives every AI a 30% chance to reply 😀/👍, in the room as well as during play. Empty lobby seats (空位) never react, even if stale `aiStates` linger after a match. A guest ignores the host echo of its own emoji so it appears once on every device. Floating bubbles stagger by the number of active bubbles so different seats do not overlap. Only solo/host generates AI emojis and the host broadcasts `{t:'emoji', seat, emoji}`; they never affect scoring.
 - A document-level click listener plays a short WebAudio click for every enabled `<button>`, while
   `discard()` plays `assets/audio/mahjong-tile-strike.mp3` via `music.tile()`. Both live in
   `js/audio.js`. They follow the 音效與語音 switch and the master volume, while the music track
@@ -537,6 +537,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   the iOS user gesture), otherwise lines wait their turn. `speakVoiceNow()` never calls
    High-frequency gesture guards use the local `speechActive` state only, so tapping fast does
    not synchronously query the native speech engine.
+   A one-time `gestureAudioUnlocked` flag stops repeated taps from re-running audio/voice setup.
   `speechSynthesis.cancel()`/`resume()` when a new line arrives; those calls can interrupt a line
   and are avoided for safety, but diagnostics proved they were not the cause of the reported
   freeze. It schedules `music.resume()` 250 ms after
