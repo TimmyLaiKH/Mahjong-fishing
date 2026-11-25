@@ -4,8 +4,8 @@
 The FluffyStuff face PNGs and the CC0 flower overlays in
 assets/tiles/raw/flowers/ are transparent, so each one is composited onto
 Front.png and downscaled to 120x160. Raw sources are never modified. The
-approved restyle_tiles.py then adds the rounded green/grey bands and an
-alpha-derived shadow, producing 144x205 runtime PNGs. The background is
+approved restyle_tiles.py then adds the two smooth edge layers only, with
+no baked shadow, producing 120×181 runtime PNGs. The background is
 resized/compressed to stay below the 400 KB budget.
 """
 from __future__ import annotations
@@ -77,7 +77,7 @@ def main() -> None:
     back = Image.open(RAW / "Back.png").convert("RGBA").resize(SIZE, Image.LANCZOS)
     green_back(back).save(FACES / "Back.png", optimize=True)
 
-    # Bake the approved rounded bands and alpha-derived shadow into every runtime PNG.
+    # Bake the approved rounded bands only (no baked shadow) into every runtime PNG.
     for path in sorted(FACES.glob("*.png")):
         with Image.open(path) as generated:
             baked = restyle_back(generated) if path.stem == "Back" else restyle(generated)

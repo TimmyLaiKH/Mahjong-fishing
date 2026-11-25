@@ -38,16 +38,31 @@ test('玩法說明有三個分頁按鈕與三個面板', () => {
     assert.match(html, new RegExp(`data-help-tab="${name}"`));
     assert.match(html, new RegExp(`id="helpTab${name[0].toUpperCase()}${name.slice(1)}"`));
   }
+  assert.doesNotMatch(html, /id="helpFanTableBtn"/);
+  assert.doesNotMatch(html, /前往番數表/);
 });
 
-test('前往番數表會先切到牌型一覽分頁', () => {
+test('HUD 起糊與 AI 表情已接上', () => {
   const game = readFileSync('js/game.js', 'utf8');
-  assert.match(game, /function switchHelpTab\(/);
-  assert.match(game, /function jumpToFanTable\(\)[\s\S]{0,400}switchHelpTab\('patterns'\)/);
+  assert.match(html, /id="minFanCount"/);
+  assert.match(game, /ui\.minFanCount/);
+  assert.match(game, /match\.minFan \?\? game\.matchSetup\?\.minFan \?\? 0/);
+  for (const name of [
+    'AI_DISCARD_EMOJI_CHANCE', 'AI_WIN_EMOJI_CHANCE', 'DRAW_EMOJI_CHANCE',
+    'MATCH_END_EMOJI_CHANCE', 'BIG_WIN_AI_EMOJI_CHANCE', 'AI_MELD_EMOJI_CHANCE',
+  ]) {
+    assert.match(game, new RegExp(name));
+  }
+  assert.match(game, /function aiEmoji\(/);
+  assert.match(game, /function maybeAiEmoji\(/);
+  assert.match(game, /function emitAiReactions\(/);
+  assert.match(game, /function recordRoundResult\([\s\S]*?emitAiReactions\(\{/);
+  assert.match(game, /function applyAiMeldClaim\([\s\S]*?maybeAiEmoji\(/);
+  assert.match(game, /game\.mode !== 'multi' \|\| net\.isHost/);
+  assert.match(game, /net\.broadcast\(\{ t: 'emoji', seat, emoji \}\)/);
 });
 
 test('玩法說明清單可多於六項且保留固定入口', () => {
-  assert.match(html, /id="helpFanTableBtn"[^>]*>前往番數表</);
   assert.match(html, /id="payoutTableTitle"/);
   assert.match(html, /id="patternsBody"/);
 });
@@ -66,20 +81,20 @@ test('自訂牌型排在牌型表最底', () => {
 test('牌圖版本已升級且沒有雙重立體疊圖', () => {
   const tiles = readFileSync('js/tiles.js', 'utf8');
   const css = readFileSync('css/style.css', 'utf8');
-  assert.match(tiles, /TILE_ASSET_VERSION = 7;/);
+  assert.match(tiles, /TILE_ASSET_VERSION = 8;/);
   assert.doesNotMatch(tiles, /createLinearGradient\(-width \/ 2, -height \/ 2/);
   assert.doesNotMatch(css, /\.tile-img:not\(\.tile-fallback\)::before/);
   assert.equal(statSync('scripts/restyle_tiles.py').isFile(), true);
 });
 
-test('43 張牌圖都是 RGBA 144x205', () => {
+test('43 張牌圖都是 RGBA 120x181', () => {
   const files = readdirSync('assets/tiles/faces').filter((f) => f.endsWith('.png'));
   assert.equal(files.length, 43);
   for (const file of files) {
     const buf = readFileSync(`assets/tiles/faces/${file}`);
     assert.equal(buf.subarray(1, 4).toString(), 'PNG');
-    assert.equal(buf.readUInt32BE(16), 144, file);
-    assert.equal(buf.readUInt32BE(20), 205, file);
+    assert.equal(buf.readUInt32BE(16), 120, file);
+    assert.equal(buf.readUInt32BE(20), 181, file);
     assert.equal(buf[25], 6, `${file} must be RGBA`);
   }
 
@@ -89,15 +104,15 @@ test('43 張牌圖都是 RGBA 144x205', () => {
     save() {}, translate() {}, restore() {},
     drawImage(...args) { drawn.push(args); },
   };
-  const image = { complete: true, naturalWidth: 144, naturalHeight: 205 };
+  const image = { complete: true, naturalWidth: 120, naturalHeight: 181 };
   drawTile(ctx, 'T1', 0, 0, 132, 176, { images: { T1: image } });
   assert.equal(drawn.length, 1);
   const [, dx, dy, dw, dh] = drawn[0];
   const expectedHeight = 176;
-  const expectedWidth = 144 * expectedHeight / 205;
+  const expectedWidth = 120 * expectedHeight / 181;
   assert.ok(Math.abs(dh - expectedHeight) < 1e-6, `drawImage height ${dh}`);
   assert.ok(Math.abs(dw - expectedWidth) < 1e-6, `drawImage width ${dw}`);
-  assert.ok(Math.abs(dw / dh - 144 / 205) < 1e-6, 'drawImage must keep the PNG aspect');
+  assert.ok(Math.abs(dw / dh - 120 / 181) < 1e-6, 'drawImage must keep the PNG aspect');
   assert.ok(Math.abs(dx + dw / 2) < 1e-6 && Math.abs(dy + dh / 2) < 1e-6,
     'drawImage must centre the fitted tile');
 });
@@ -107,12 +122,19 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.97/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.97/);
-  assert.match(game, /\.\/tiles\.js\?v=1\.4\.97/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.99/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.99/);
+  assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
   assert.match(game, /\.\/rules\.js\?v=1\.4\.97/);
-  assert.match(readme, /\?v=1\.4\.97/);
-  assert.match(changelog, /^## 1\.4\.97/m);
+  assert.match(readme, /\?v=1\.4\.99/);
+  assert.match(changelog, /^## 1\.4\.99/m);
+
+  const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
+  assert.doesNotMatch(restyle, /add_shadow/);
+  assert.doesNotMatch(restyle, /RECOLOUR_TOLERANCE/);
+  assert.doesNotMatch(restyle, /FACE_TARGET/);
+  const process = readFileSync('scripts/process_assets.py', 'utf8');
+  assert.match(process, /120×181/);
 });
 
 console.log(`結果：${passed} 通過，${failed} 失敗`);

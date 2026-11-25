@@ -6,7 +6,7 @@
 import {
   TILE_IDS, TILE_INFO, FLOWER_IDS, isFlower, loadImages, drawTile,
   createTileElement, tileName,
-} from './tiles.js?v=1.4.97';
+} from './tiles.js?v=1.4.99';
 import { createMusic } from './audio.js?v=1.4.86';
 import { createNet, randomPlayerId } from './net.js?v=1.4.69';
 import { settleRound } from './payout.js';
@@ -29,7 +29,7 @@ const ui = {
   selfWinBar: el('selfWinBar'), selfWinLabel: el('selfWinLabel'),
   selfWinTile: el('selfWinTile'), selfWinActions: el('selfWinActions'),
   roundInfo: el('roundInfo'), seatWind: el('seatWind'),
-  scoreBtn: el('scoreBtn'), moneyCount: el('moneyCount'),
+  scoreBtn: el('scoreBtn'), moneyCount: el('moneyCount'), minFanCount: el('minFanCount'),
   emojiBtn: el('emojiBtn'), emojiPanel: el('emojiPanel'), emojiLayer: el('emojiLayer'),
   roomEmojiBtn: el('roomEmojiBtn'),
   scorePanel: el('scorePanel'), scoreRoundInfo: el('scoreRoundInfo'),
@@ -74,6 +74,12 @@ const AVATAR_COLORS = ['#a9e5ff', '#ffd27f', '#c8a9ff', '#ff9b9b'];
 // Full-body icons: neutral player, male 允行, female 一心, female 念慈.
 const AVATAR_ICONS = ['🧍', '🧍‍♂️', '🧍‍♀️', '💃'];
 const EMOJIS = ['😀', '😂', '😍', '😎', '😭', '😡', '😮', '👍', '👏', '🙏', '🎉', '🔥'];
+const AI_DISCARD_EMOJI_CHANCE = 0.3;
+const AI_WIN_EMOJI_CHANCE = 0.3;
+const BIG_WIN_AI_EMOJI_CHANCE = 0.55;
+const AI_MELD_EMOJI_CHANCE = 0.08;
+const DRAW_EMOJI_CHANCE = 0.3;
+const MATCH_END_EMOJI_CHANCE = 0.7;
 // Codes that failed to produce a live host this session. PeerJS can leave a
 // stale id registered for a while after the host leaves, so never retry them.
 const deadRooms = new Set();
@@ -615,6 +621,46 @@ function sendEmoji(emoji) {
   if (game.mode === 'multi') broadcastOrSend({ t: 'emoji', seat: game.seat, emoji });
   showEmojiBubble(game.seat, emoji);
   closeEmojiPanel();
+}
+
+function aiEmoji(seat, emoji) {
+  if (!isAiSeat(seat) || !EMOJIS.includes(emoji)) return;
+  showEmojiBubble(seat, emoji);
+  if (game.mode === 'multi' && net.isHost) {
+    net.broadcast({ t: 'emoji', seat, emoji });
+  }
+}
+
+function maybeAiEmoji(seat, chance, options) {
+  if (!isAiSeat(seat) || Math.random() >= chance) return;
+  aiEmoji(seat, options[Math.floor(Math.random() * options.length)]);
+}
+
+function emitAiReactions({ winner = null, discarder = null, fan = 0, draw = false } = {}) {
+  if (game.mode === 'multi' && !net.isHost) return;
+  const bigWin = winner !== null && winner !== undefined && !isAiSeat(winner) && fan >= 10;
+  if (bigWin) {
+    if (isAiSeat(discarder)) aiEmoji(discarder, '😡');
+    for (let seat = 0; seat < 4; seat += 1) {
+      if (seat !== discarder && isAiSeat(seat)) {
+        maybeAiEmoji(seat, BIG_WIN_AI_EMOJI_CHANCE, ['👏', '👍', '😮', '🔥']);
+      }
+    }
+  } else if (isAiSeat(winner)) {
+    maybeAiEmoji(winner, AI_WIN_EMOJI_CHANCE, ['😎', '😀']);
+  } else if (isAiSeat(discarder)) {
+    maybeAiEmoji(discarder, AI_DISCARD_EMOJI_CHANCE, ['😭', '😡']);
+  }
+  if (draw) {
+    for (let seat = 0; seat < 4; seat += 1) {
+      maybeAiEmoji(seat, DRAW_EMOJI_CHANCE, ['😮', '😂']);
+    }
+  }
+  if (game.match?.over) {
+    for (let seat = 0; seat < 4; seat += 1) {
+      maybeAiEmoji(seat, MATCH_END_EMOJI_CHANCE, ['🎉']);
+    }
+  }
 }
 
 function closeEmojiPanel() {
@@ -2241,6 +2287,7 @@ function applyAiMeldClaim(msg) {
   };
   state.melds.push(meld);
   addSeatMeld(msg.seat, meld);
+  maybeAiEmoji(msg.seat, AI_MELD_EMOJI_CHANCE, ['😍', '🙏']);
   state.caught = null;
   state.caughtFromKong = false;
   resetAiRod(state);
@@ -2485,6 +2532,9 @@ function recordRoundResult({ winner = null, discarder = null, result = null,
   match.lastPayout = settled.log;
   match.over = settled.over;
   match.winner = settled.over ? bestSeats(settled.money) : null;
+  emitAiReactions({
+    winner, discarder, fan: result?.totalFan ?? 0, draw: winner === null,
+  });
   if (game.mode === 'multi' && net.isHost) {
     net.broadcast({ t: 'match', match: cloneMatch(match) });
   }
@@ -5787,6 +5837,9 @@ function updateScoreUI() {
     ui.moneyCount.textContent = game.match
       ? moneyText(game.match.money[game.seat] ?? 0) : '—';
   }
+  if (ui.minFanCount) {
+    ui.minFanCount.textContent = `${game.match?.minFan ?? game.matchSetup?.minFan ?? 0} 番`;
+  }
   if (ui.scoreRoundInfo) {
     const match = game.match;
     if (!match) {
@@ -6304,19 +6357,6 @@ function switchHelpTab(name) {
   if (card) card.scrollTop = 0;
 }
 
-/** Switch to the pattern table and scroll inside the help card so its heading
- *  is reachable on phones without dragging through the rules list. */
-function jumpToFanTable() {
-  switchHelpTab('patterns');
-  const card = el('helpPanel')?.querySelector('.modal-card');
-  const title = el('fanTableTitle');
-  if (!card || !title) return;
-  const top = card.scrollTop + title.getBoundingClientRect().top
-    - card.getBoundingClientRect().top - 12;
-  if (typeof card.scrollTo === 'function') card.scrollTo({ top, behavior: 'smooth' });
-  else card.scrollTop = top;
-  title.focus({ preventScroll: true });
-}
 function closeTopModal() {
   const open = [...document.querySelectorAll('.modal.show')]
     .filter((m) => m !== ui.loading && m !== ui.menu);
@@ -6601,7 +6641,6 @@ function wireInput() {
   for (const button of el('helpPanel').querySelectorAll('[data-help-tab]')) {
     button.addEventListener('click', () => switchHelpTab(button.dataset.helpTab));
   }
-  el('helpFanTableBtn')?.addEventListener('click', jumpToFanTable);
   el('settingsBtn').addEventListener('click', () => openModal('settingsPanel'));
   ui.emojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.emojiBtn));
   ui.roomEmojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.roomEmojiBtn));
@@ -6747,7 +6786,7 @@ if (new URLSearchParams(location.search).has('test')) {
     showMenu, startFromMenu, openSoloRoom, startRoomGame, quitToMenu, net, openRoom, joinRoom,
     askRoomCode, setPlayerName, leaveRoom,
     voteRematch, showMultiEndOverlay, showHandEndOverlay, readySoloNextHand, handEndMessage,
-    handEndTitle, handEndTiles, showOverlay, jumpToFanTable, matchEndMessage, isTouchOnly, selectDiscard,
+    handEndTitle, handEndTiles, showOverlay, matchEndMessage, isTouchOnly, selectDiscard,
     roundInfoText, getHudRoundInfo: () => hudRoundInfo, moneyText, renderStandings,
     requestRestart, startRestartVote, voteRestart, cancelRestart,
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,
@@ -6756,7 +6795,8 @@ if (new URLSearchParams(location.search).has('test')) {
     canDeclareClaim, canDeclareMeld, handReadyForClaim, claimFromBox, passClaimBox, handleClaim, aiClaimStillValid,
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
-    EMOJIS, sendEmoji, showEmojiBubble, toggleEmojiPanel, closeEmojiPanel,
+    EMOJIS, sendEmoji, showEmojiBubble, aiEmoji, maybeAiEmoji, emitAiReactions,
+    toggleEmojiPanel, closeEmojiPanel,
     fanInCantonese, speakCantonese, speakVoiceNow, speakRoundStart, speakAction, speakWin, speakDraw,
     showWinEnd, speechQueue,
     isCantoneseVoice, cantoneseVoice, waitForCantoneseVoice, voiceStatus, showVoiceDebug,
