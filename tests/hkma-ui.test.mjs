@@ -124,17 +124,40 @@ test('43 張牌圖都是 RGBA 120x181', () => {
     'drawImage must centre the fitted tile');
 });
 
+test('iOS 語音鎖定與音樂恢復有防護', () => {
+  const game = readFileSync('js/game.js', 'utf8');
+  assert.match(game, /function speechEngineBusy\(\)/);
+  const unlock = game.slice(
+    game.indexOf('function unlockSpeechEngine('),
+    game.indexOf('function voiceStatus('),
+  );
+  assert.match(unlock, /speechActive \|\| speechEngineBusy\(\)/);
+  const resume = game.slice(
+    game.indexOf('function resumeMusicAfterVoice('),
+    game.indexOf('function scheduleMusicResumeAfterVoice('),
+  );
+  assert.match(resume, /speechEngineBusy\(\)/);
+  assert.match(resume, /voiceResumeAttempts/);
+  const watchdog = game.slice(
+    game.indexOf('function armSpeechWatchdog('),
+    game.indexOf('function finishVoiceUtterance('),
+  );
+  assert.match(watchdog, /speechEngineBusy\(\) && Date\.now\(\) < deadline/);
+  assert.match(watchdog, /armSpeechWatchdog\(deadline\)/);
+  assert.match(game, /armSpeechWatchdog\(Date\.now\(\) \+ watchdogMs\)/);
+});
+
 test('玩家版本與 cachebust 已更新', () => {
   const html = readFileSync('index.html', 'utf8');
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.99/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.99/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.100/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.100/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
   assert.match(game, /\.\/rules\.js\?v=1\.4\.97/);
-  assert.match(readme, /\?v=1\.4\.99/);
-  assert.match(changelog, /^## 1\.4\.99/m);
+  assert.match(readme, /\?v=1\.4\.100/);
+  assert.match(changelog, /^## 1\.4\.100/m);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);

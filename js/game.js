@@ -2689,10 +2689,19 @@ function primeDeviceVoice() {
   return cantoneseVoice();
 }
 
+function speechEngineBusy() {
+  return typeof speechSynthesis !== 'undefined'
+    && Boolean(speechSynthesis.speaking || speechSynthesis.pending);
+}
+
 /** iOS only allows speech after a user gesture. A silent utterance unlocks the
- *  engine without adding any audible announcement. */
+ *  engine without adding any audible announcement. Never issue it while a real
+ *  line is playing: on iOS it can interrupt the line, and because it has no
+ *  completion handlers the speech queue then stays busy forever. Leave
+ *  speechUnlocked false so a later, idle gesture retries the unlock. */
 function unlockSpeechEngine() {
-  if (speechUnlocked || typeof speechSynthesis === 'undefined'
+  if (speechUnlocked || speechActive || speechEngineBusy()
+    || typeof speechSynthesis === 'undefined'
     || typeof SpeechSynthesisUtterance === 'undefined') return;
   primeDeviceVoice();
   try {
@@ -2847,11 +2856,20 @@ function waitForCantoneseVoice(timeout = 2000) {
 }
 
 let voiceResumeTimer = null;
+let voiceResumeAttempts = 0;
 
 /** iOS briefly pauses other page audio while an utterance is active. Calling
  *  play() the instant onend fires can still catch the audio session while it
  *  is switching back, so wait a moment for a cleaner restart. */
 function resumeMusicAfterVoice() {
+  // iOS keeps the audio session exclusive while an utterance is still active.
+  // Retry briefly instead of resuming music under the remaining speech.
+  if (speechEngineBusy() && voiceResumeAttempts < 40) {
+    voiceResumeAttempts += 1;
+    scheduleMusicResumeAfterVoice();
+    return;
+  }
+  voiceResumeAttempts = 0;
   if (!document.hidden && game.settings.musicEnabled) music.resume();
 }
 
@@ -2863,6 +2881,19 @@ function scheduleMusicResumeAfterVoice() {
 /** Utterances are spoken one at a time. Calling cancel() or resume() when a
  *  new announcement arrives wedges the speech engine on several mobile
  *  browsers and can stall the whole page, so never interrupt the current one. */
+function armSpeechWatchdog(deadline) {
+  const delay = Math.min(5000, Math.max(1, deadline - Date.now()));
+  speechFallbackTimer = setTimeout(() => {
+    // A long Cantonese line can outlive the original estimate. Keep waiting
+    // while the engine is genuinely speaking, but never hang the queue forever.
+    if (speechEngineBusy() && Date.now() < deadline) {
+      armSpeechWatchdog(deadline);
+      return;
+    }
+    finishVoiceUtterance();
+  }, delay);
+}
+
 function finishVoiceUtterance() {
   if (!speechActive) return;
   speechActive = false;
@@ -2876,6 +2907,7 @@ function speakVoiceNow(voice, text, volume) {
   lastSpeechText = text;
   lastSpeechAt = Date.now();
   clearTimeout(voiceResumeTimer);
+  voiceResumeAttempts = 0;
   speechActive = true;
   try {
     const utterance = new SpeechSynthesisUtterance(text);
@@ -2888,7 +2920,7 @@ function speakVoiceNow(voice, text, volume) {
     speechSynthesis.speak(utterance);
     // Some engines never fire onend; recover without touching the live engine.
     const watchdogMs = Math.min(15000, 2500 + String(text).length * 180);
-    speechFallbackTimer = setTimeout(finishVoiceUtterance, watchdogMs);
+    armSpeechWatchdog(Date.now() + watchdogMs);
     lastSpeechError = '';
   } catch (error) {
     lastSpeechError = String(error);
