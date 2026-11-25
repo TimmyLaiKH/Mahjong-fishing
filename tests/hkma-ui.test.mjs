@@ -168,14 +168,21 @@ test('槓後補牌前不能吃別人的牌', () => {
     game.indexOf('function buildClaimActions('),
     game.indexOf('function robKong('),
   );
-  // No claim action at all — including 胡／搶槓／碰／上／明槓 — until the
-  // replacement tile after a 槓 has been fished.
-  assert.match(build, /game\.kongChain > 0 \|\| game\.grabPending/);
+  // Actions stay visible but disabled until the 槓 replacement is fished.
+  assert.match(build, /const claimBlocked = game\.kongChain > 0 \|\| game\.grabPending;/);
+  assert.match(build, /disabled: claimBlocked/);
+  assert.doesNotMatch(build, /return includePass \? \[/);
   const claim = game.slice(
     game.indexOf('function claimFromBox('),
     game.indexOf('function declareOpenMeldMulti('),
   );
   assert.match(claim, /!fresh \|\|/);
+  assert.match(claim, /fresh\.disabled/);
+  const reel = game.slice(
+    game.indexOf('function finishReel('),
+    game.indexOf('function resolveDraw('),
+  );
+  assert.match(reel, /renderClaimBoxes\(\);/);
 });
 
 test('玩法說明清單可多於六項且保留固定入口', () => {
@@ -277,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.105/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.105/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.106/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.106/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
   assert.match(game, /\.\/rules\.js\?v=1\.4\.97/);
-  assert.match(readme, /\?v=1\.4\.105/);
-  assert.match(changelog, /^## 1\.4\.105/m);
+  assert.match(readme, /\?v=1\.4\.106/);
+  assert.match(changelog, /^## 1\.4\.106/m);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);

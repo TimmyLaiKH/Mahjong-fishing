@@ -278,8 +278,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   wins; a claimant must discard before claiming again; timeout implicitly passes.
   `canDeclareClaim()` requires a 13-tile-equivalent hand with the rod home, no pending kong
   replacement or forced discard; `canDeclareMeld()` adds the four-meld limit. After a 槓 the replacement
-  tile must be fished first: `buildClaimActions()` returns no 胡／搶槓／碰／上／明槓 actions at all while
-  `game.kongChain > 0 || game.grabPending`.
+  tile must be fished first: while `game.kongChain > 0 || game.grabPending`, `buildClaimActions()`
+  keeps every action visible but sets `disabled: claimBlocked` on 胡／搶槓／碰／上／明槓 (the panel is not
+  hidden), and `finishReel()` re-renders as soon as the lock clears so buttons unlock promptly.
   Delayed AI claims are revalidated at execution for the same conditions and recomputed as wins.
   Opponent claim boxes include a local `過` button that marks that box `passed` and hides it; it
   never cancels AI or other seats' claims on the same discard. A 十三么 candidate's `過` is also
