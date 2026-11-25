@@ -40,6 +40,21 @@ test('玩法說明有三個分頁按鈕與三個面板', () => {
   }
   assert.doesNotMatch(html, /id="helpFanTableBtn"/);
   assert.doesNotMatch(html, /前往番數表/);
+
+  // The four informational panels close only with their ✕ button, and ESC in a
+  // room asks before returning to the menu.
+  assert.match(html, /id="exitConfirm"/);
+  assert.match(html, /id="exitConfirmBack"[^>]*>返回主選單<\/button>/);
+  const game = readFileSync('js/game.js', 'utf8');
+  assert.match(game, /CLOSE_ONLY_WITH_X/);
+  for (const id of ['helpPanel', 'settingsPanel', 'scorePanel', 'creditsPanel']) {
+    assert.match(game, new RegExp(`CLOSE_ONLY_WITH_X[^\\n]*'${id}'`));
+  }
+  assert.match(game, /function handleEscape\(\)/);
+  assert.match(game, /event\.key === 'Escape'[\s\S]{0,120}handleEscape\(\)/);
+  assert.match(game, /function quitToMenu\([\s\S]*?closeModal\('exitConfirm'\)/);
+  const backdrop = game.slice(game.indexOf("modal.addEventListener('pointerdown'"));
+  assert.match(backdrop, /CLOSE_ONLY_WITH_X\.has\(modal\.id\)/);
 });
 
 test('HUD 起糊與 AI 表情已接上', () => {
@@ -127,6 +142,13 @@ test('43 張牌圖都是 RGBA 120x181', () => {
 test('iOS 語音鎖定與音樂恢復有防護', () => {
   const game = readFileSync('js/game.js', 'utf8');
   assert.match(game, /function speechEngineBusy\(\)/);
+  assert.match(game, /const speechBusy = \(\) => speechActive \|\| speechEngineBusy\(\);/);
+  const unlockMusic = game.slice(
+    game.indexOf('function unlockMusic('),
+    game.indexOf('function setMainVolume('),
+  );
+  assert.match(unlockMusic, /if \(speechBusy\(\)\) return;/);
+  assert.match(unlockMusic, /if \(game\.settings\.musicEnabled\) music\.start\(\);/);
   const unlock = game.slice(
     game.indexOf('function unlockSpeechEngine('),
     game.indexOf('function voiceStatus('),
@@ -152,12 +174,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.100/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.100/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.101/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.101/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
   assert.match(game, /\.\/rules\.js\?v=1\.4\.97/);
-  assert.match(readme, /\?v=1\.4\.100/);
-  assert.match(changelog, /^## 1\.4\.100/m);
+  assert.match(readme, /\?v=1\.4\.101/);
+  assert.match(changelog, /^## 1\.4\.101/m);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);

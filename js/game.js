@@ -46,6 +46,7 @@ const ui = {
   joinSubmit: el('joinSubmit'), joinBack: el('joinBack'),
   room: el('roomScreen'), roomTitle: el('roomTitle'), roomWaitHint: el('roomWaitHint'),
   roomShareBlock: el('roomShareBlock'), roomCode: el('roomCode'), roomLink: el('roomLink'),
+  exitConfirm: el('exitConfirm'), exitConfirmBack: el('exitConfirmBack'),
   roomPlayerName: el('roomPlayerName'), settingsPlayerName: el('settingsPlayerName'),
   roomCopy: el('roomCopy'), roomPlayers: el('roomPlayers'), roomAvatars: el('roomAvatars'),
   roomHostControls: el('roomHostControls'), roomGuestInfo: el('roomGuestInfo'),
@@ -2693,6 +2694,8 @@ function speechEngineBusy() {
   return typeof speechSynthesis !== 'undefined'
     && Boolean(speechSynthesis.speaking || speechSynthesis.pending);
 }
+
+const speechBusy = () => speechActive || speechEngineBusy();
 
 /** iOS only allows speech after a user gesture. A silent utterance unlocks the
  *  engine without adding any audible announcement. Never issue it while a real
@@ -6398,6 +6401,18 @@ function closeTopModal() {
   if (open.length) closeModal(open[open.length - 1].id);
 }
 
+const CLOSE_ONLY_WITH_X = new Set(['helpPanel', 'settingsPanel', 'scorePanel', 'creditsPanel']);
+function handleEscape() {
+  if (ui.exitConfirm?.classList.contains('show')) { closeModal('exitConfirm'); return; }
+  const open = [...document.querySelectorAll('.modal.show')]
+    .filter((m) => m !== ui.loading && m !== ui.menu);
+  if (!open.length) return;
+  const top = open[open.length - 1];
+  if (CLOSE_ONLY_WITH_X.has(top.id)) return;
+  if (top.id === 'joinScreen' || top.id === 'roomScreen') { openModal('exitConfirm'); return; }
+  closeModal(top.id);
+}
+
 /** Title screen shown after assets load, before the first round is dealt. */
 function showMenu() {
   if (ui.menuTiles) {
@@ -6417,6 +6432,7 @@ function startFromMenu() {
 
 /** Quit the current round from settings and return to the title screen. */
 function quitToMenu() {
+  closeModal('exitConfirm');
   closeModal('settingsPanel');
   closeModal('joinScreen');
   closeModal('roomScreen');
@@ -6562,6 +6578,7 @@ function setEffectsEnabled(value) {
 }
 
 function unlockMusic() {
+  if (speechBusy()) return;
   if (game.settings.musicEnabled) music.start();
   if (game.settings.soundEnabled) {
     unlockSpeechEngine();
@@ -6688,9 +6705,6 @@ function wireInput() {
       || ui.roomEmojiBtn?.contains(event.target)) return;
     closeEmojiPanel();
   });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeEmojiPanel();
-  });
   el('creditsBtn').addEventListener('click', () => openModal('creditsPanel'));
   ui.scoreBtn?.addEventListener('click', () => {
     updateScoreUI();
@@ -6713,12 +6727,17 @@ function wireInput() {
     });
   }
   el('settingsQuit').addEventListener('click', quitToMenu);
+  ui.exitConfirmBack?.addEventListener('click', () => {
+    closeModal('exitConfirm');
+    quitToMenu();
+  });
   for (const button of document.querySelectorAll('[data-close]')) {
     button.addEventListener('click', () => closeModal(button.dataset.close));
   }
   for (const modal of document.querySelectorAll('.modal')) {
     modal.addEventListener('pointerdown', (event) => {
-      if (event.target === modal && modal.id !== 'overlay'
+      if (event.target === modal && !CLOSE_ONLY_WITH_X.has(modal.id)
+        && modal.id !== 'exitConfirm' && modal.id !== 'overlay'
         && modal.id !== 'loading' && modal.id !== 'menuScreen'
         && modal.id !== 'joinScreen' && modal.id !== 'roomScreen') {
         closeModal(modal.id);
@@ -6735,7 +6754,11 @@ function wireInput() {
       startCast();
       return;
     }
-    if (event.key === 'Escape') { closeTopModal(); return; }
+    if (event.key === 'Escape') {
+      if (ui.emojiPanel && !ui.emojiPanel.hidden) closeEmojiPanel();
+      else handleEscape();
+      return;
+    }
     if (game.state !== S.AWAIT_DISCARD || paused()) return;
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault();
