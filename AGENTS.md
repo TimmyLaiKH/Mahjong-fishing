@@ -78,7 +78,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
 | `tests/rules.test.mjs` | 64 rule tests: T1–T13, table-driven patterns, flowers, weighted pool, 1000-game simulation. |
 | `tests/payout.test.mjs` | 12 payout/settlement tests. |
 | `tests/net.test.mjs` | 2 tests for PeerJS-safe outgoing message normalisation. |
-| `tests/hkma-ui.test.mjs` | 8 static checks: no old character, three help tabs, jump button, custom-pattern order, bands-only 120×181 tiles, version cachebusts. |
+| `tests/hkma-ui.test.mjs` | 8 static checks: no old character, three help tabs, HUD min-fan and AI emoji wiring, custom-pattern order, bands-only 120×181 tiles, version cachebusts. |
 | `tests/browser-ai-discard.test.html` | Browser regression page: loads the real game with `?test=1`, forces an AI discard via `aiTick()`, and fails on any exception or missing river tile. |
 | `README.md`, `CHANGELOG.md`, `CREDITS.md`, `AGENTS.md` | Player docs, change history, asset licences, agent instructions. |
 
@@ -148,8 +148,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   room-code/share-link UI.
 - **Help and pattern table.** 玩法說明 has three tabs (`data-help-tab` = `rules`/`patterns`/`payout`,
   panels `#helpTabRules`/`#helpTabPatterns`/`#helpTabPayout`); the `玩法說明` list may exceed six
-  `<li>` items. Its header has a `前往番數表` button (`#helpFanTableBtn`) that first switches to the
-  `牌型一覽` tab and then scrolls the modal card to `#fanTableTitle` without adding a list item.
+  `<li>` items. There is no `前往番數表` button or `jumpToFanTable()`; the 牌型一覽 tab keeps `#fanTableTitle`.
   Custom patterns sort to the bottom of the generated table. The separate `派彩計算表` tab has a
   static 0–10 番 payout table (`#payoutTableTitle`) that shows
   倍率 V/B, 出銃支付, 自摸每家 and 自摸三家合計, followed by a note that B is the host's 金額倍數
@@ -442,8 +441,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
 
 - The HUD opens with one bar: **設定 → 玩法說明 → 表情** on the left, a large centered timer,
   and **計分 + round block** on the right. The round block stacks `X風第 X 局・X 圈` above
-  counters that read only 門風 and 資金 (with a `$` prefix); 巡, 番數 and 最佳 are not shown
-  during play. The main menu appears before any lobby or game starts and shows a legal 十三么
+  counters that read `起糊 N 番` (from `match.minFan ?? matchSetup.minFan ?? 0`), 門風 and 資金
+  (with a `$` prefix); 巡, 番數 and 最佳 are not shown during play. The main menu appears before any lobby or game starts and shows a legal 十三么
   winning hand (all 13 orphans plus one duplicate), but no fan record line. The 設定 panel keeps only
   player name, two switches (背景音樂, 音效與語音), 主音量, 音樂音量, 重來這局 and 回到主選單 —
   鉤速 (default 1.0×) and
@@ -492,6 +491,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `.room-avatar` while `body.waiting-room` is active. The layer sits above modals (`z-index:65`) but
   is `pointer-events:none` so casts, room controls and HUD clicks still work; bubbles remove
   themselves on `animationend`. The picker closes on outside click, Escape, resize or selection.
+- AI seats may react with existing emojis: 30% 😭/😡 on 出銃, 30% 😎/😀 on AI win, a forced 😡 from the 出銃 AI plus 55% 👏/👍/😮/🔥 from other AIs when you win 10+ fan, 8% 😍/🙏 on 上/碰/明槓, 30% 😮/😂 on 流局 and 70% 🎉 at match end. Only solo/host generates them and the host broadcasts `{t:'emoji', seat, emoji}`; they never affect scoring.
 - A document-level click listener plays a short WebAudio click for every enabled `<button>`, while
   `discard()` plays `assets/audio/mahjong-tile-strike.mp3` via `music.tile()`. Both live in
   `js/audio.js`. They follow the 音效與語音 switch and the master volume, while the music track
