@@ -284,12 +284,22 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.109/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.109/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.110/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.110/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.109/);
-  assert.match(readme, /\?v=1\.4\.109/);
-  assert.match(changelog, /^## 1\.4\.109/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.110/);
+  assert.match(readme, /\?v=1\.4\.110/);
+  assert.match(changelog, /^## 1\.4\.110/m);
+
+  // 玩法說明: pinned close button and updated source notes.
+  const css = readFileSync('css/style.css', 'utf8');
+  assert.match(css, /#helpPanel \.modal-head \{[^}]*position: sticky/);
+  assert.match(css, /#helpPanel \.modal-head \{[^}]*top: 0/);
+  assert.doesNotMatch(html, /標示「自訂牌型」者為本遊戲保留的變體/);
+  assert.doesNotMatch(html, /範例牌型由規則引擎產生並經測試驗證/);
+  assert.match(html, /標準牌型番數以香港麻雀協會《香港麻雀總例》為準；標示「自訂牌型」者為本遊戲增加的變體，皆為一此沒有收錄香港麻雀協會《香港麻雀總例》的特殊牌型。由房主設定使用與否。/);
+  const rulesSrc = readFileSync('js/rules.js', 'utf8');
+  assert.doesNotMatch(rulesSrc, /香港麻雀協會《香港麻雀總例》沒有此番種/);
 
   // Host-only 自訂牌型 toggle and engine threading.
   assert.match(html, /id="customPatternsToggle"/);
