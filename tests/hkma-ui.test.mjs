@@ -68,6 +68,18 @@ test('玩法說明有三個分頁按鈕與三個面板', () => {
   assert.match(settingsOpen, /restart\.hidden = !game\.match\?\.active/);
   assert.match(game, /el\('menuSettings'\)[^\n]*openSettingsPanel\(\)/);
   assert.match(game, /el\('settingsBtn'\)[^\n]*openSettingsPanel\(\)/);
+
+  // A small greyed-out note explains iOS silent mode / slider limitations.
+  assert.match(html, /id="settingsNote"/);
+  const settingsNote = html.slice(html.indexOf('id="settingsNote"'), html.indexOf('class="settings-quit"'));
+  assert.match(settingsNote, /靜音模式/);
+  assert.match(settingsNote, /音量滑桿/);
+
+  // The 十三么 牌王 rule in item 8 must not be bolded.
+  const helpItems = html.slice(html.indexOf('<ol class="help-list">'), html.indexOf('</ol>', html.indexOf('<ol class="help-list">')));
+  const itemEight = helpItems.split('<li>').filter((line) => line.includes('十三么') && line.includes('牌王'))[0] ?? '';
+  assert.ok(itemEight.length > 0, 'item 8 not found');
+  assert.doesNotMatch(itemEight, /<strong>/);
 });
 
 test('HUD 起糊與 AI 表情已接上', () => {
@@ -144,6 +156,26 @@ test('HUD 起糊與 AI 表情已接上', () => {
   assert.match(bubble, /bubble\.dataset\.seat/);
   assert.match(bubble, /querySelectorAll\('\.emoji-bubble'\)/);
   assert.match(bubble, /stagger/);
+
+  // AI replies to a human emoji arrive about a second later, not instantly.
+  assert.match(game, /HUMAN_EMOJI_REPLY_DELAY_MS = 1000/);
+  assert.match(reply, /setTimeout\([\s\S]*?HUMAN_EMOJI_REPLY_DELAY_MS/);
+});
+
+test('槓後補牌前不能吃別人的牌', () => {
+  const game = readFileSync('js/game.js', 'utf8');
+  const build = game.slice(
+    game.indexOf('function buildClaimActions('),
+    game.indexOf('function robKong('),
+  );
+  // No claim action at all — including 胡／搶槓／碰／上／明槓 — until the
+  // replacement tile after a 槓 has been fished.
+  assert.match(build, /game\.kongChain > 0 \|\| game\.grabPending/);
+  const claim = game.slice(
+    game.indexOf('function claimFromBox('),
+    game.indexOf('function declareOpenMeldMulti('),
+  );
+  assert.match(claim, /!fresh \|\|/);
 });
 
 test('玩法說明清單可多於六項且保留固定入口', () => {
@@ -245,12 +277,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.104/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.104/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.105/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.105/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
   assert.match(game, /\.\/rules\.js\?v=1\.4\.97/);
-  assert.match(readme, /\?v=1\.4\.104/);
-  assert.match(changelog, /^## 1\.4\.104/m);
+  assert.match(readme, /\?v=1\.4\.105/);
+  assert.match(changelog, /^## 1\.4\.105/m);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);

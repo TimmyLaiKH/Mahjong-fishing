@@ -809,3 +809,11 @@ td:last-child { min-width: 220px; }
   .hand { gap: 1px; }
   .tiles-meta { gap: 2px 6px; }
 }
+
+/* Greyed-out device caveat below the settings volume sliders. */
+.settings-note {
+  margin: 6px 0 2px;
+  color: #93a7ad;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
