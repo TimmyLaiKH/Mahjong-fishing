@@ -29,7 +29,7 @@ const ui = {
   selfWinBar: el('selfWinBar'), selfWinLabel: el('selfWinLabel'),
   selfWinTile: el('selfWinTile'), selfWinActions: el('selfWinActions'),
   roundInfo: el('roundInfo'), seatWind: el('seatWind'),
-  scoreBtn: el('scoreBtn'), moneyCount: el('moneyCount'),
+  scoreBtn: el('scoreBtn'), moneyCount: el('moneyCount'), minFanCount: el('minFanCount'),
   emojiBtn: el('emojiBtn'), emojiPanel: el('emojiPanel'), emojiLayer: el('emojiLayer'),
   roomEmojiBtn: el('roomEmojiBtn'),
   scorePanel: el('scorePanel'), scoreRoundInfo: el('scoreRoundInfo'),
@@ -5787,6 +5787,9 @@ function updateScoreUI() {
     ui.moneyCount.textContent = game.match
       ? moneyText(game.match.money[game.seat] ?? 0) : '—';
   }
+  if (ui.minFanCount) {
+    ui.minFanCount.textContent = `${game.match?.minFan ?? game.matchSetup?.minFan ?? 0} 番`;
+  }
   if (ui.scoreRoundInfo) {
     const match = game.match;
     if (!match) {
@@ -6304,19 +6307,6 @@ function switchHelpTab(name) {
   if (card) card.scrollTop = 0;
 }
 
-/** Switch to the pattern table and scroll inside the help card so its heading
- *  is reachable on phones without dragging through the rules list. */
-function jumpToFanTable() {
-  switchHelpTab('patterns');
-  const card = el('helpPanel')?.querySelector('.modal-card');
-  const title = el('fanTableTitle');
-  if (!card || !title) return;
-  const top = card.scrollTop + title.getBoundingClientRect().top
-    - card.getBoundingClientRect().top - 12;
-  if (typeof card.scrollTo === 'function') card.scrollTo({ top, behavior: 'smooth' });
-  else card.scrollTop = top;
-  title.focus({ preventScroll: true });
-}
 function closeTopModal() {
   const open = [...document.querySelectorAll('.modal.show')]
     .filter((m) => m !== ui.loading && m !== ui.menu);
@@ -6601,7 +6591,6 @@ function wireInput() {
   for (const button of el('helpPanel').querySelectorAll('[data-help-tab]')) {
     button.addEventListener('click', () => switchHelpTab(button.dataset.helpTab));
   }
-  el('helpFanTableBtn')?.addEventListener('click', jumpToFanTable);
   el('settingsBtn').addEventListener('click', () => openModal('settingsPanel'));
   ui.emojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.emojiBtn));
   ui.roomEmojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.roomEmojiBtn));
@@ -6747,7 +6736,7 @@ if (new URLSearchParams(location.search).has('test')) {
     showMenu, startFromMenu, openSoloRoom, startRoomGame, quitToMenu, net, openRoom, joinRoom,
     askRoomCode, setPlayerName, leaveRoom,
     voteRematch, showMultiEndOverlay, showHandEndOverlay, readySoloNextHand, handEndMessage,
-    handEndTitle, handEndTiles, showOverlay, jumpToFanTable, matchEndMessage, isTouchOnly, selectDiscard,
+    handEndTitle, handEndTiles, showOverlay, matchEndMessage, isTouchOnly, selectDiscard,
     roundInfoText, getHudRoundInfo: () => hudRoundInfo, moneyText, renderStandings,
     requestRestart, startRestartVote, voteRestart, cancelRestart,
     updateClaimTimer, maxHookLength, swingLimit, spawnFish,

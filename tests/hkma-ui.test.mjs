@@ -38,16 +38,18 @@ test('玩法說明有三個分頁按鈕與三個面板', () => {
     assert.match(html, new RegExp(`data-help-tab="${name}"`));
     assert.match(html, new RegExp(`id="helpTab${name[0].toUpperCase()}${name.slice(1)}"`));
   }
+  assert.doesNotMatch(html, /id="helpFanTableBtn"/);
+  assert.doesNotMatch(html, /前往番數表/);
 });
 
-test('前往番數表會先切到牌型一覽分頁', () => {
+test('HUD 顯示本場起糊番數', () => {
   const game = readFileSync('js/game.js', 'utf8');
-  assert.match(game, /function switchHelpTab\(/);
-  assert.match(game, /function jumpToFanTable\(\)[\s\S]{0,400}switchHelpTab\('patterns'\)/);
+  assert.match(html, /id="minFanCount"/);
+  assert.match(game, /ui\.minFanCount/);
+  assert.match(game, /match\.minFan \?\? game\.matchSetup\?\.minFan \?\? 0/);
 });
 
 test('玩法說明清單可多於六項且保留固定入口', () => {
-  assert.match(html, /id="helpFanTableBtn"[^>]*>前往番數表</);
   assert.match(html, /id="payoutTableTitle"/);
   assert.match(html, /id="patternsBody"/);
 });
