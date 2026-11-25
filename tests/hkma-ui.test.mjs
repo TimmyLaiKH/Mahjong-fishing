@@ -315,6 +315,11 @@ test('玩家版本與 cachebust 已更新', () => {
     game.indexOf('function kongStateFor('),
   );
   assert.match(seatCtx, /customPatterns: customPatternsEnabled\(\)/);
+  const winCtx = game.slice(
+    game.indexOf('function winContext('),
+    game.indexOf('function openingWinContext('),
+  );
+  assert.match(winCtx, /customPatterns: customPatternsEnabled\(\)/);
   const current = game.slice(
     game.indexOf('function currentRoomMatchSetup('),
     game.indexOf('function updateRoomSettings('),

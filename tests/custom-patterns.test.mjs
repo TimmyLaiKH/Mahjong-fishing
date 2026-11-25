@@ -82,5 +82,18 @@ test('detectCustomPatterns returns id/fan/detail entries only', () => {
   }
 });
 
+test('清一色不誤判缺門與百萬石', () => {
+  const oneSuit = 'm9 m9 m9 m8 m8 m8 m7 m7 m7 m6 m6 m6 m5 m5';
+  const result = evalTiles(oneSuit, { context: { customPatterns: true } });
+  assert.ok(!names(result).includes('缺門'));
+  assert.ok(!names(result).includes('百萬石'));
+  const kongHand = evaluateHand({
+    concealed: ['m9', 'm9'],
+    melds: ['m1', 'p2', 's3', 's4'].map((tile) => ({ tile, type: 'kong', tiles: [tile, tile, tile, tile] })),
+    context: { customPatterns: true },
+  });
+  assert.ok(!names(kongHand).includes('百萬石'));
+});
+
 console.log(`結果：${passed} 通過，${failed} 失敗`);
 process.exitCode = failed ? 1 : 0;

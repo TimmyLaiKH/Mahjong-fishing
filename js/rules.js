@@ -670,7 +670,7 @@ export function detectCustomPatterns({
   if ([...suitsByStart.values()].some((suits) => suits.size >= 2)) add('鏡糊糊');
 
   const suitsPresent = new Set(allTiles.filter((t) => /^[mps]/.test(t)).map((t) => t[0]));
-  if (suitsPresent.size <= 2) add('缺門');
+  if (suitsPresent.size === 2) add('缺門');
 
   if (melds.filter((m) => m.type === 'kong').length >= 3) add('三槓子');
 
@@ -700,7 +700,8 @@ export function detectCustomPatterns({
   }
   const RED_PEACOCK = new Set(['s1', 's5', 's7', 's9', 'C']);
   if (allTiles.length && allTiles.every((t) => RED_PEACOCK.has(t))) add('紅孔雀');
-  if (allTiles.length === 14 && allTiles.every((t) => /^[mps][1-9]$/.test(t))) {
+  if (melds.length === 0 && suitsPresent.size >= 2 && allTiles.length
+      && allTiles.every((t) => /^[mps][1-9]$/.test(t))) {
     const total = allTiles.reduce((sum, t) => sum + Number(t[1]), 0);
     if (total >= 100) add('百萬石');
   }

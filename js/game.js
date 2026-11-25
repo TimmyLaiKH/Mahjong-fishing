@@ -537,6 +537,7 @@ function winContext() {
     seatWind: game.seatWind,
     fanCap: game.settings.fanCap,
     declinedFlowerWin: game.declinedFlowerWin,
+    customPatterns: customPatternsEnabled(),
   };
 }
 
