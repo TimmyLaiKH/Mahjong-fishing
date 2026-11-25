@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.108/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.108/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.109/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.109/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.108/);
-  assert.match(readme, /\?v=1\.4\.108/);
-  assert.match(changelog, /^## 1\.4\.108/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.109/);
+  assert.match(readme, /\?v=1\.4\.109/);
+  assert.match(changelog, /^## 1\.4\.109/m);
 
   // Host-only 自訂牌型 toggle and engine threading.
   assert.match(html, /id="customPatternsToggle"/);

@@ -27,6 +27,9 @@ const EXPECTED_FAN = Object.freeze({
   三槓子: 3, 三喜臨門: 3, 雙色同刻: 3, 四歸四: 3,
   萬綠叢中一點紅: 10, 百萬石: 10, 紅孔雀: 10,
   七對子: 3, 人胡: 10, 綠一色: 10, 藍一色: 10,
+  一心一意: 13, 九五之尊: 10, 四連刻: 3,
+  三色同順: 2, 三色同刻: 2, 全帶么九: 2, 五門齊: 2,
+  全求人: 1, 斷么九: 1,
 });
 
 test('approved custom patterns are in the fan table with wiki values', () => {
@@ -99,6 +102,37 @@ test('清一色不誤判缺門與百萬石', () => {
     context: { customPatterns: true },
   });
   assert.ok(!names(kongHand).includes('百萬石'));
+});
+
+
+test('creative custom patterns honour toggle and kong tile count', () => {
+  const fourKongs = {
+    concealed: ['m1', 'm1'],
+    melds: ['m1', 'm1', 'm1', 'm1'].map((tile) => ({
+      tile, type: 'kong', tiles: [tile, tile, tile, tile],
+    })),
+    context: { customPatterns: true },
+  };
+  assert.ok(names(evaluateHand(fourKongs)).includes('一心一意'));
+  const off = evaluateHand({ ...fourKongs, context: { customPatterns: false } });
+  assert.ok(!names(off).includes('一心一意'));
+
+  const pairs = [
+    ['m1 m2 m3 p1 p2 p3 s1 s2 s3 m4 m5 m6 p9 p9', '三色同順', '鏡糊糊'],
+    ['m1 m1 m1 p1 p1 p1 s1 s1 s1 m2 m2 m2 p2 p2', '三色同刻', '雙色同刻'],
+    ['m1 m1 m1 p1 p1 p1 s1 s1 s1 E E E m9 m9', '花么九', '全帶么九'],
+    ['m1 m1 m1 m2 m2 m2 m3 m3 m3 m4 m4 m4 E E', '四連刻', '對對糊'],
+  ];
+  const stacks = new Set(['三色同順', '三色同刻']);
+  for (const [spec, higher, lower] of pairs) {
+    const result = evalTiles(spec, { context: { customPatterns: true } });
+    assert.ok(names(result).includes(higher), `${spec}: ${higher}`);
+    if (stacks.has(higher)) {
+      assert.ok(names(result).includes(lower), `${spec}: ${lower} stacks`);
+    } else {
+      assert.ok(!names(result).includes(lower), `${spec}: ${lower} absorbed`);
+    }
+  }
 });
 
 console.log(`結果：${passed} 通過，${failed} 失敗`);

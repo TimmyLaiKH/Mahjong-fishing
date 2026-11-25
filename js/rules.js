@@ -69,6 +69,10 @@ export const FAN_VALUES = Object.freeze({
   '兩般高': 3, '兩般低': 3, '鏡糊糊': 3, '四般高': 3, '四般低': 3,
   '三槓子': 3, '三喜臨門': 3, '雙色同刻': 3, '四歸四': 3,
   '萬綠叢中一點紅': 10, '百萬石': 10, '紅孔雀': 10,
+  // 創意自訂牌型
+  '一心一意': 13, '九五之尊': 10, '四連刻': 3,
+  '三色同順': 2, '三色同刻': 2, '全帶么九': 2, '五門齊': 2,
+  '全求人': 1, '斷么九': 1,
 });
 
 /** No upper limit: a hand keeps every fan it scores. */
@@ -316,6 +320,51 @@ export const PATTERN_TABLE = Object.freeze([
     id: '紅孔雀', fan: 10, category: '自訂牌型', desc: '自訂牌型：只由一、五、七、九索與紅中組成（原十三番改十番）。',
     example: { concealed: ['s1', 's1', 's1', 's5', 's5', 's5', 's7', 's7', 's7', 's9', 's9', 's9', 'C', 'C'], melds: [], context: { customPatterns: true } },
   },
+  {
+    id: '一心一意', fan: 13, category: '自訂牌型', desc: '自訂牌型：全部十四張（四槓時十八張）都是同一種牌；不吸收其他牌型，可與清么九、坎坎胡等並計。',
+    example: { concealed: Array.from({ length: 14 }, () => 'm1'), melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '九五之尊', fan: 10, category: '自訂牌型', desc: '自訂牌型：全部由五與九（各花色皆可）組成。',
+    example: { concealed: ['m5', 'm5', 'm5', 'p5', 'p5', 'p5', 's5', 's5', 's5', 'm9', 'm9', 'm9', 'p9', 'p9'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '四連刻', fan: 3, category: '自訂牌型', desc: '自訂牌型：同一花色四組連續數字的刻子。',
+    example: { concealed: ['m1', 'm1', 'm1', 'm2', 'm2', 'm2', 'm3', 'm3', 'm3', 'm4', 'm4', 'm4', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '三色同順', fan: 2, category: '自訂牌型', desc: '自訂牌型：同一數字的順子在萬、筒、索各有一組。',
+    example: { concealed: ['m1', 'm2', 'm3', 'p1', 'p2', 'p3', 's1', 's2', 's3', 'm4', 'm5', 'm6', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '三色同刻', fan: 2, category: '自訂牌型', desc: '自訂牌型：同一數字的刻子在萬、筒、索各有一組。',
+    example: { concealed: ['m1', 'm1', 'm1', 'p1', 'p1', 'p1', 's1', 's1', 's1', 'm2', 'm2', 'm2', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '全帶么九', fan: 2, category: '自訂牌型', desc: '自訂牌型：每組面子與將都包含么九或字牌。',
+    example: { concealed: ['m1', 'm2', 'm3', 'p7', 'p8', 'p9', 's1', 's2', 's3', 'E', 'E', 'E', 'm9', 'm9'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '五門齊', fan: 2, category: '自訂牌型', desc: '自訂牌型：萬、筒、索、風牌與三元牌五類都有。',
+    example: { concealed: ['m1', 'm2', 'm3', 'p1', 'p2', 'p3', 's1', 's2', 's3', 'E', 'E', 'E', 'C', 'C'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '全求人', fan: 1, category: '自訂牌型', desc: '自訂牌型：四組都是碰、上或槓，並吃他人打出的牌完成將。',
+    example: {
+      concealed: ['m5', 'm5'],
+      melds: [
+        { tile: 'm1', type: 'pung', tiles: ['m1', 'm1', 'm1'], open: true },
+        { tile: 'p2', type: 'chow', tiles: ['p2', 'p3', 'p4'], open: true },
+        { tile: 's3', type: 'kong', tiles: ['s3', 's3', 's3', 's3'] },
+        { tile: 'E', type: 'pung', tiles: ['E', 'E', 'E'], open: true },
+      ],
+      context: { customPatterns: true, selfDraw: false },
+    },
+  },
+  {
+    id: '斷么九', fan: 1, category: '自訂牌型', desc: '自訂牌型：全部由二至八的數字牌組成，沒有么九或字牌。',
+    example: { concealed: ['m2', 'm3', 'm4', 'm5', 'm6', 'm7', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 's8', 's8'], melds: [], context: { customPatterns: true } },
+  },
 ]);
 
 const PATTERN_BY_ID = Object.fromEntries(PATTERN_TABLE.map((p) => [p.id, p]));
@@ -380,9 +429,10 @@ export const ABSORBS = Object.freeze({
   '四般低': ['三般低', '一般低'],
   '三般低': ['一般低'],
   '兩般低': ['一般低'],
+  '四連刻': ['對對糊'],
   '坎坎胡': ['對對糊', '門前清'],
   '十八羅漢': ['對對糊'],
-  '花么九': ['對對糊'],
+  '花么九': ['對對糊', '全帶么九'],
   '清么九': ['花么九', '對對糊'],
   '字一色': ['花么九', '對對糊', '番子:SEAT', '番子:ROUND'],
   '大四喜': ['對對糊', '小四喜', '番子:SEAT', '番子:ROUND'],
@@ -707,6 +757,53 @@ export function detectCustomPatterns({
     const total = allTiles.reduce((sum, t) => sum + Number(t[1]), 0);
     if (total >= 100) add('百萬石');
   }
+
+  // 一心一意 counts the physical fourth kong tile too: four kongs make 18 tiles.
+  const fullTiles = [...concealed, ...melds.flatMap((m) => m.tiles)];
+  if (fullTiles.length >= 14 && fullTiles.every((tile) => tile === fullTiles[0])) add('一心一意');
+
+  const NOBLE_TILES = new Set(['m5', 'm9', 'p5', 'p9', 's5', 's9']);
+  if (allTiles.length && allTiles.every((tile) => NOBLE_TILES.has(tile))) add('九五之尊');
+
+  const pungsBySuit = new Map();
+  for (const set of effectiveSets) {
+    if (!isPung(set) || !/^[mps]/.test(set.tiles[0])) continue;
+    const suit = set.tiles[0][0];
+    if (!pungsBySuit.has(suit)) pungsBySuit.set(suit, new Set());
+    pungsBySuit.get(suit).add(Number(set.tiles[0][1]));
+  }
+  let fourConsecutive = false;
+  for (const ranks of pungsBySuit.values()) {
+    const sorted = [...ranks].sort((a, b) => a - b);
+    let run = 1;
+    for (let i = 1; i < sorted.length; i += 1) {
+      run = sorted[i] === sorted[i - 1] + 1 ? run + 1 : 1;
+      if (run >= 4) { fourConsecutive = true; break; }
+    }
+    if (fourConsecutive) break;
+  }
+  if (fourConsecutive) add('四連刻');
+
+  for (const start of new Set([...chowCounts.keys()].map((key) => key.split(':')[1]))) {
+    if (SUIT_PREFIXES.every((suit) => chowCounts.has(`${suit}:${start}`))) {
+      add('三色同順');
+      break;
+    }
+  }
+  if ([...suitsByRank.values()].some((suits) => suits.size === 3)) add('三色同刻');
+
+  const withTerminal = (tiles) => Array.isArray(tiles)
+    && tiles.some((tile) => TERMINALS.includes(tile) || TILE_INFO[tile].isHonor);
+  if (effectiveSets.length === 4 && effectiveSets.every((set) => withTerminal(set.tiles))
+      && withTerminal(effectivePair)) add('全帶么九');
+
+  if (SUIT_PREFIXES.every((suit) => allTiles.some((tile) => tile.startsWith(suit)))
+      && allTiles.some((tile) => WINDS.includes(tile))
+      && allTiles.some((tile) => DRAGONS.includes(tile))) add('五門齊');
+
+  if (melds.length === 4 && !context.selfDraw) add('全求人');
+  if (allTiles.length && allTiles.every((tile) => /^[mps][2-8]$/.test(tile))) add('斷么九');
+
   return found;
 }
 
