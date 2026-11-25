@@ -284,12 +284,56 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.106/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.106/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.107/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.107/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.97/);
-  assert.match(readme, /\?v=1\.4\.106/);
-  assert.match(changelog, /^## 1\.4\.106/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.107/);
+  assert.match(readme, /\?v=1\.4\.107/);
+  assert.match(changelog, /^## 1\.4\.107/m);
+
+  // Host-only 自訂牌型 toggle and engine threading.
+  assert.match(html, /id="customPatternsToggle"/);
+  assert.match(html, /\(由房主設定\)/);
+  assert.match(game, /customPatternsToggle: el\('customPatternsToggle'\)/);
+  const setup = game.slice(
+    game.indexOf('function normalizeMatchSetup('),
+    game.indexOf('function formatMoney('),
+  );
+  assert.match(setup, /customPatterns: source\.customPatterns === true/);
+  const clone = game.slice(
+    game.indexOf('function cloneMatch('),
+    game.indexOf('function adoptMatch('),
+  );
+  assert.match(clone, /customPatterns: match\.customPatterns === true/);
+  const helper = game.slice(
+    game.indexOf('function customPatternsEnabled('),
+    game.indexOf('function seatWinContext('),
+  );
+  assert.match(helper, /game\.match\?\.customPatterns \?\? game\.matchSetup\?\.customPatterns \?\? false/);
+  const seatCtx = game.slice(
+    game.indexOf('function seatWinContext('),
+    game.indexOf('function kongStateFor('),
+  );
+  assert.match(seatCtx, /customPatterns: customPatternsEnabled\(\)/);
+  const winCtx = game.slice(
+    game.indexOf('function winContext('),
+    game.indexOf('function openingWinContext('),
+  );
+  assert.match(winCtx, /customPatterns: customPatternsEnabled\(\)/);
+  const current = game.slice(
+    game.indexOf('function currentRoomMatchSetup('),
+    game.indexOf('function updateRoomSettings('),
+  );
+  assert.match(current, /customPatterns: ui\.customPatternsToggle\?\.checked \?\? false/);
+  assert.match(game, /ui\.customPatternsToggle\.checked = Boolean\(setup\.customPatterns\)/);
+  assert.match(game, /ui\.customPatternsToggle\.disabled = !isHost/);
+  assert.match(game, /ui\.customPatternsToggle\?\.addEventListener\('change', updateRoomSettings\)/);
+  const table = game.slice(
+    game.indexOf('function buildPatternTable('),
+    game.indexOf('const PATTERN_ROWS'),
+  );
+  assert.match(table, /customPatternsEnabled\(\)/);
+  assert.match(table, /category !== '自訂牌型'/);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);

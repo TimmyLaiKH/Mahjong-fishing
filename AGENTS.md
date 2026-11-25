@@ -138,7 +138,10 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
 - **Official fan authority.** HKMA《香港麻雀總例》is the sole authority for pattern names and fan
   values. `花么九` keeps its in-game ID but is 4 番 (the 總例 calls it `花么`). `七對子`, `人胡`,
   `綠一色` and `藍一色` are explicitly in-game custom patterns (`category: '自訂牌型'`) and keep
-  their existing fan values; do not present them as official 總例 patterns.
+  their existing fan values; do not present them as official 總例 patterns. The full wiki custom list
+  (一般高／一般低／缺門／三般高／三般低／一條龍／兩般高／兩般低／鏡糊糊／四般高／四般低／三槓子／
+  三喜臨門／雙色同刻／四歸四／萬綠叢中一點紅／百萬石／紅孔雀) is also `自訂牌型`; wiki 13 番 maps
+  to 10 番 and 一條龍 is absorbed by 九子連環.
 - **Player-facing strings are contractual.** Waiting-to-cast status is exactly
   `拋竿釣起你需要的牌吧！(點擊屏幕)`. Other fixed strings include `房主已離開`,
   `房主已離開，請重新開房間`, `房間已滿，請換一個房間。`,
@@ -156,8 +159,9 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   source note sits beside it. The `牌型一覽` tab is generated from `PATTERN_TABLE` +
   `FLOWER_PATTERN_TABLE`; every pattern needs a validated `example` there. HKMA《香港麻雀總例》is the
   sole fan authority; `花么九` is 4 番 (花么). Patterns carrying `category: '自訂牌型'`
-  (七對子、人胡、綠一色、藍一色) get a small 自訂牌型 tag in the name cell only; settlement and speech
-  never show it. The closing footnote says
+  (all custom patterns above) get a small 自訂牌型 tag in the name cell only; settlement and speech
+  never show it. The host-only `customPatternsToggle` room switch (default OFF) hides these rows and
+  disables their scoring; guests see a read-only `(由房主設定)` note. The closing footnote says
   `碰、上、槓才不計門前清，吃胡他人打出的牌仍可計門前清（但不計自摸）。`
 - **No bottom `釣魚` button.** Click/tap the canvas or press Space to cast. Hints are always on;
   terminology is 聽牌, not a hint toggle. Wait hints are advisory and never gate settlement: for

@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.97';
+} from './rules.js?v=1.4.107';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -57,6 +57,7 @@ const ui = {
   roomStartingMoneyValue: el('roomStartingMoneyValue'),
   roomWinds: el('roomWinds'), roomBase: el('roomBase'), roomBaseText: el('roomBaseText'),
   roomBaseValue: el('roomBaseValue'), roomMinFan: el('roomMinFan'), roomFanCap: el('roomFanCap'),
+  customPatternsToggle: el('customPatternsToggle'), customPatternsValue: el('customPatternsValue'),
   roomStart: el('roomStart'), roomLeave: el('roomLeave'), roomMessage: el('roomMessage'),
   settingsMusic: el('settingsMusic'), settingsSound: el('settingsSound'),
   mainVolume: el('mainVolume'), mainVolumeValue: el('mainVolumeValue'),
@@ -191,7 +192,7 @@ const game = {
   fanTotal: readNumber('mf-fantotal'),
   matchSetup: {
     startingMoney: DEFAULT_STARTING_MONEY, winds: DEFAULT_WINDS, base: DEFAULT_BASE,
-    minFan: DEFAULT_MIN_FAN, fanCapTen: DEFAULT_FAN_CAP_TEN,
+    minFan: DEFAULT_MIN_FAN, fanCapTen: DEFAULT_FAN_CAP_TEN, customPatterns: false,
   },
   match: null,              // created by resetMatch(); authoritative on the host
   settings: {
@@ -227,7 +228,7 @@ const game = {
   roomSettings: {
     hookSpeed: 1, gameSeconds: GAME_SECONDS,
     startingMoney: DEFAULT_STARTING_MONEY, winds: DEFAULT_WINDS, base: DEFAULT_BASE,
-    minFan: DEFAULT_MIN_FAN, fanCapTen: DEFAULT_FAN_CAP_TEN,
+    minFan: DEFAULT_MIN_FAN, fanCapTen: DEFAULT_FAN_CAP_TEN, customPatterns: false,
   },
   claimBoxes: [],           // multiplayer claim slots (one per recent discard / kong)
   claimedKeys: new Set(),   // solo: one AI claim per played tile
@@ -369,6 +370,7 @@ function normalizeMatchSetup(source = {}) {
     base: clampInt(source.base, MIN_BASE, MAX_BASE, DEFAULT_BASE),
     minFan: clampInt(source.minFan, MIN_MIN_FAN, MAX_MIN_FAN, DEFAULT_MIN_FAN),
     fanCapTen: source.fanCapTen !== false,
+    customPatterns: source.customPatterns === true,
   };
 }
 
@@ -411,6 +413,7 @@ function cloneMatch(match = game.match) {
     startingMoney: match.startingMoney, winds: match.winds, base: match.base,
     minFan: clampInt(match.minFan, MIN_MIN_FAN, MAX_MIN_FAN, DEFAULT_MIN_FAN),
     fanCapTen: match.fanCapTen !== false,
+    customPatterns: match.customPatterns === true,
     money: [...match.money], dealerSeat: match.dealerSeat,
     repeatCount: match.repeatCount, handNumber: match.handNumber,
     history: match.history.map((entry) => ({ ...entry })),
@@ -422,7 +425,7 @@ function cloneMatch(match = game.match) {
 
 function adoptMatch(data) {
   if (!data || !Array.isArray(data.money) || data.money.length !== 4) return;
-  game.matchSetup = normalizeMatchSetup(data);
+  game.matchSetup = normalizeMatchSetup({ ...data, customPatterns: data.customPatterns === true });
   applyFanCap(game.matchSetup);
   game.match = {
     ...game.matchSetup,
@@ -534,6 +537,7 @@ function winContext() {
     seatWind: game.seatWind,
     fanCap: game.settings.fanCap,
     declinedFlowerWin: game.declinedFlowerWin,
+    customPatterns: customPatternsEnabled(),
   };
 }
 
@@ -771,6 +775,11 @@ function seatWindOf(seat) {
     ?? WINDS[(WINDS.indexOf(game.roundWind ?? 'E') + seat) % WINDS.length];
 }
 
+/** Effective 自訂牌型 switch: room value wins, lobby setup next, default off. */
+function customPatternsEnabled() {
+  return game.match?.customPatterns ?? game.matchSetup?.customPatterns ?? false;
+}
+
 function seatWinContext(seat, { opening = false, ...extra } = {}) {
   const seatWind = seatWindOf(seat);
   const dealer = seatWind === game.roundWind;
@@ -781,6 +790,7 @@ function seatWinContext(seat, { opening = false, ...extra } = {}) {
     roundWind: game.roundWind,
     seatWind,
     fanCap: game.settings.fanCap,
+    customPatterns: customPatternsEnabled(),
     declinedFlowerWin: seat === game.seat ? game.declinedFlowerWin : false,
   };
   if (opening) {
@@ -3623,6 +3633,11 @@ function renderRoom() {
   }
   if (ui.roomMinFan) ui.roomMinFan.value = String(setup.minFan);
   if (ui.roomFanCap) ui.roomFanCap.value = setup.fanCapTen ? '10' : 'infinite';
+  if (ui.customPatternsToggle) {
+    ui.customPatternsToggle.checked = Boolean(setup.customPatterns);
+    ui.customPatternsToggle.disabled = !isHost;
+    if (ui.customPatternsValue) ui.customPatternsValue.textContent = ui.customPatternsToggle.checked ? '開' : '關';
+  }
   if (ui.roomAvatars) {
     ui.roomAvatars.innerHTML = '';
     const players = game.players.length ? game.players : defaultRoomPlayers();
@@ -3683,6 +3698,7 @@ function currentRoomMatchSetup() {
     fanCapTen: ui.roomFanCap
       ? ui.roomFanCap.value !== 'infinite'
       : game.matchSetup.fanCapTen,
+    customPatterns: ui.customPatternsToggle?.checked ?? false,
   });
 }
 
@@ -6506,7 +6522,10 @@ function quitToMenu() {
 
 function buildPatternTable() {
   ui.patternsBody.innerHTML = '';
-  const rows = sortPatternRows([...PATTERN_ROWS, ...FLOWER_PATTERN_TABLE]);
+  const ordinaryRows = customPatternsEnabled()
+    ? PATTERN_ROWS
+    : PATTERN_ROWS.filter((row) => row.category !== '自訂牌型');
+  const rows = sortPatternRows([...ordinaryRows, ...FLOWER_PATTERN_TABLE]);
   for (const pattern of rows) {
     const tr = document.createElement('tr');
     const name = document.createElement('td');
@@ -6724,6 +6743,7 @@ function wireInput() {
   ui.roomBase?.addEventListener('input', updateRoomSettings);
   ui.roomMinFan?.addEventListener('change', updateRoomSettings);
   ui.roomFanCap?.addEventListener('change', updateRoomSettings);
+  ui.customPatternsToggle?.addEventListener('change', updateRoomSettings);
   ui.roomStartingMoneyText?.addEventListener('change', commitRoomMoneyText);
   ui.roomBaseText?.addEventListener('change', commitRoomBaseText);
   for (const [input, commit] of [

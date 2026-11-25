@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/style.css?v=1.4.106" />
+<link rel="stylesheet" href="css/style.css?v=1.4.107" />
 </head>
 <body>
 <canvas id="game" aria-label="釣魚遊戲畫面"></canvas>
@@ -189,6 +189,12 @@
           </select>
         </span>
       </label>
+      <label class="field">自訂牌型
+        <span class="duration-controls">
+          <input id="customPatternsToggle" type="checkbox" aria-label="房間自訂牌型開關" />
+          <b id="customPatternsValue">關</b>
+        </span>
+      </label>
     </div>
     <div class="room-actions">
       <button id="roomStart" class="primary" type="button" hidden>開始遊戲</button>
@@ -354,6 +360,6 @@
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js" onerror="this.onerror=null;this.src='js/vendor/peerjs.min.js'"></script>
-<script type="module" src="js/game.js?v=1.4.106"></script>
+<script type="module" src="js/game.js?v=1.4.107"></script>
 </body>
 </html>

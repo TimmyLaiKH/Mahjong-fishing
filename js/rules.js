@@ -63,6 +63,12 @@ export const FAN_VALUES = Object.freeze({
   '天胡': 10,        // 開局補花後立即自摸，必為門前清，不再另計自摸
   '地胡': 10,        // 閒家食莊家開局第一隻打出牌，不再另計自摸
   '人胡': 10,        // 閒家開局第一釣自摸，必為門前清，不再另計自摸
+  // 自訂牌型（粵語維基；原十三番改為十番）
+  '一般高': 1, '一般低': 1, '缺門': 1,
+  '三般高': 2, '三般低': 2, '一條龍': 2,
+  '兩般高': 3, '兩般低': 3, '鏡糊糊': 3, '四般高': 3, '四般低': 3,
+  '三槓子': 3, '三喜臨門': 3, '雙色同刻': 3, '四歸四': 3,
+  '萬綠叢中一點紅': 10, '百萬石': 10, '紅孔雀': 10,
 });
 
 /** No upper limit: a hand keeps every fan it scores. */
@@ -234,6 +240,82 @@ export const PATTERN_TABLE = Object.freeze([
     id: '藍一色', fan: 10, category: '自訂牌型', desc: '自訂牌型：全部由東、南、西、北、白板或八筒組成。香港麻雀協會《香港麻雀總例》沒有此番種。',
     example: { concealed: ['E', 'E', 'E', 'S', 'S', 'S', 'W', 'W', 'W', 'B', 'B', 'B', 'p8', 'p8'], melds: [], context: { roundWind: 'E', seatWind: 'S' } },
   },
+  {
+    id: '一般高', fan: 1, category: '自訂牌型', desc: '自訂牌型：同一花色兩組完全相同的順子（二同順）。',
+    example: { concealed: ['m1', 'm2', 'm3', 'm1', 'm2', 'm3', 'p1', 'p2', 'p3', 's1', 's2', 's3', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '一般低', fan: 1, category: '自訂牌型', desc: '自訂牌型：同一花色兩組相差一階的順子（二步高）。',
+    example: { concealed: ['m1', 'm2', 'm2', 'm3', 'm3', 'm4', 'p1', 'p2', 'p3', 's1', 's2', 's3', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '缺門', fan: 1, category: '自訂牌型', desc: '自訂牌型：手中缺少一門數字花色。',
+    example: { concealed: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '三般高', fan: 2, category: '自訂牌型', desc: '自訂牌型：同一花色三組完全相同的順子（三同順）。',
+    example: { concealed: ['m1', 'm2', 'm3', 'm1', 'm2', 'm3', 'm1', 'm2', 'm3', 'p1', 'p2', 'p3', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '三般低', fan: 2, category: '自訂牌型', desc: '自訂牌型：同一花色三組逐階上升的順子（三步高）。',
+    example: { concealed: ['m1', 'm2', 'm2', 'm3', 'm3', 'm3', 'm4', 'm4', 'm5', 'p1', 'p2', 'p3', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '一條龍', fan: 2, category: '自訂牌型', desc: '自訂牌型：同一花色一至九各一張（一氣通貫）；九子連環不再另計此項。',
+    example: { concealed: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'p1', 'p2', 'p3', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '兩般高', fan: 3, category: '自訂牌型', desc: '自訂牌型：兩組不同的同順（雙龍抱）。',
+    example: { concealed: ['m1', 'm2', 'm3', 'm1', 'm2', 'm3', 'p1', 'p2', 'p3', 'p1', 'p2', 'p3', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '兩般低', fan: 3, category: '自訂牌型', desc: '自訂牌型：兩組不同的步高（雙蛇抱）。',
+    example: { concealed: ['m1', 'm2', 'm2', 'm3', 'm3', 'm4', 'p1', 'p2', 'p2', 'p3', 'p3', 'p4', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '鏡糊糊', fan: 3, category: '自訂牌型', desc: '自訂牌型：兩種花色各有一組相同數字的順子。',
+    example: { concealed: ['m1', 'm2', 'm3', 'p1', 'p2', 'p3', 'm7', 'm8', 'm9', 'p7', 'p8', 'p9', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '四般高', fan: 3, category: '自訂牌型', desc: '自訂牌型：同一花色四組完全相同的順子（四同順）。',
+    example: { concealed: ['m1', 'm2', 'm3', 'm1', 'm2', 'm3', 'm1', 'm2', 'm3', 'm1', 'm2', 'm3', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '四般低', fan: 3, category: '自訂牌型', desc: '自訂牌型：同一花色四組逐階上升的順子（步步高）。',
+    example: { concealed: ['m1', 'm2', 'm2', 'm3', 'm3', 'm3', 'm4', 'm4', 'm4', 'm5', 'm5', 'm6', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '三槓子', fan: 3, category: '自訂牌型', desc: '自訂牌型：開出三個槓子。',
+    example: {
+      concealed: ['m5', 'm5', 'm5', 'E', 'E'],
+      melds: ['m1', 'p2', 's3'].map((tile) => ({ tile, type: 'kong', tiles: [tile, tile, tile, tile] })),
+      context: { customPatterns: true },
+    },
+  },
+  {
+    id: '三喜臨門', fan: 3, category: '自訂牌型', desc: '自訂牌型：東南西北其中三種風牌刻子（三風刻）。',
+    example: { concealed: ['E', 'E', 'E', 'S', 'S', 'S', 'W', 'W', 'W', 'p1', 'p2', 'p3', 'm5', 'm5'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '雙色同刻', fan: 3, category: '自訂牌型', desc: '自訂牌型：兩種花色各有相同數字的刻子，且沒有順子。',
+    example: { concealed: ['m1', 'm1', 'm1', 'p1', 'p1', 'p1', 'm2', 'm2', 'm2', 'p2', 'p2', 'p2', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '四歸四', fan: 3, category: '自訂牌型', desc: '自訂牌型：四張相同牌分佈在四組順子之中。',
+    example: { concealed: ['m1', 'm2', 'm3', 'm2', 'm3', 'm4', 'm3', 'm4', 'm5', 'm3', 'm4', 'm5', 'E', 'E'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '萬綠叢中一點紅', fan: 10, category: '自訂牌型', desc: '自訂牌型：全綠牌加五索或紅中其中之一（原十三番改十番）。',
+    example: { concealed: ['s2', 's3', 's4', 's2', 's3', 's4', 's6', 's6', 's6', 'F', 'F', 'F', 'C', 'C'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '百萬石', fan: 10, category: '自訂牌型', desc: '自訂牌型：清一色以外的門清牌，所有數字合計達一百（百萬雄兵；原十三番改十番）。',
+    example: { concealed: ['m9', 'm9', 'm9', 'p9', 'p9', 'p9', 's9', 's9', 's9', 'm8', 'm8', 'm8', 'p8', 'p8'], melds: [], context: { customPatterns: true } },
+  },
+  {
+    id: '紅孔雀', fan: 10, category: '自訂牌型', desc: '自訂牌型：只由一、五、七、九索與紅中組成（原十三番改十番）。',
+    example: { concealed: ['s1', 's1', 's1', 's5', 's5', 's5', 's7', 's7', 's7', 's9', 's9', 's9', 'C', 'C'], melds: [], context: { customPatterns: true } },
+  },
 ]);
 
 const PATTERN_BY_ID = Object.fromEntries(PATTERN_TABLE.map((p) => [p.id, p]));
@@ -286,12 +368,18 @@ const BONUS_IDS = new Set([
  * a self-draw and to 胡他人打出牌, so a claim win still scores this 1 fan.
  */
 export const ABSORBS = Object.freeze({
-  '九子連環': ['清一色', '門前清'],
+  '九子連環': ['清一色', '門前清', '一條龍'],
   '十三么': ['門前清'],
   '七對子': ['門前清'],
   '天胡': ['自摸', '門前清'],
   '地胡': ['自摸', '門前清'],
   '人胡': ['自摸', '門前清'],
+  '四般高': ['三般高', '一般高'],
+  '三般高': ['一般高'],
+  '兩般高': ['一般高'],
+  '四般低': ['三般低', '一般低'],
+  '三般低': ['一般低'],
+  '兩般低': ['一般低'],
   '坎坎胡': ['對對糊', '門前清'],
   '十八羅漢': ['對對糊'],
   '花么九': ['對對糊'],
@@ -495,6 +583,131 @@ function resolveOverlaps(found, ctx = {}) {
   return [...kept, ...adjustments];
 }
 
+/**
+ * Detect all custom (自訂牌型) patterns. The four legacy customs are on unless
+ * context.customPatterns is explicitly false; the wiki customs fire only when
+ * context.customPatterns is explicitly true, so the legacy 64-rule baseline is
+ * unchanged. The game always passes an explicit boolean for the room toggle.
+ */
+export function detectCustomPatterns({
+  concealed = [], groups = [], melds = [], sets = [], pair = null, context = {},
+} = {}) {
+  const found = [];
+  const add = (id, detail) => {
+    found.push(detail ? { id, fan: FAN_VALUES[id] ?? 0, detail } : { id, fan: FAN_VALUES[id] ?? 0 });
+  };
+  const enableLegacy = context.customPatterns !== false;
+  const enableWiki = context.customPatterns === true;
+  const allTiles = [...concealed, ...melds.flatMap((m) => m.tiles.slice(0, 3))];
+  const effectiveSets = sets.length ? sets : [
+    ...groups.filter((g) => g.type !== 'pair').map((g) => ({ type: g.type, tiles: g.tiles })),
+    ...melds.map((m) => ({ type: m.type === 'chow' ? 'sequence' : 'pung', tiles: m.tiles.slice(0, 3) })),
+  ];
+  const effectivePair = pair ?? groups.find((g) => g.type === 'pair')?.tiles
+    ?? (concealed.length === 2 ? [concealed[0], concealed[1]] : null);
+
+  if (enableLegacy) {
+    if (melds.length === 0 && isSevenPairs(concealed)) add('七對子');
+    if (effectiveSets.length === 4 && allTiles.every((t) => GREEN_TILES.has(t))) add('綠一色');
+    if (effectiveSets.length === 4 && allTiles.every((t) => BLUE_TILES.has(t))) add('藍一色');
+    const openingSelfDraw = context.selfDraw && melds.length === 0 && context.kongReplacementChain === 0;
+    if (openingSelfDraw && !context.tiangu && context.renhu) add('人胡');
+  }
+  if (!enableWiki) return found;
+
+  const chowCounts = new Map();
+  const startsBySuit = new Map();
+  const tileInChows = new Map();
+  for (const set of effectiveSets) {
+    if (set.type !== 'sequence' || !/^[mps]/.test(set.tiles[0])) continue;
+    const suit = set.tiles[0][0];
+    const start = Math.min(...set.tiles.map((t) => Number(t[1])));
+    const key = `${suit}:${start}`;
+    chowCounts.set(key, (chowCounts.get(key) ?? 0) + 1);
+    if (!startsBySuit.has(suit)) startsBySuit.set(suit, new Set());
+    startsBySuit.get(suit).add(start);
+    for (const tile of set.tiles) tileInChows.set(tile, (tileInChows.get(tile) ?? 0) + 1);
+  }
+  const maxChow = Math.max(0, ...chowCounts.values());
+  const duplicateChows = [...chowCounts.values()].filter((n) => n >= 2).length;
+  if (duplicateChows >= 2) add('兩般高');
+  if (maxChow >= 4) add('四般高');
+  else if (maxChow >= 3) add('三般高');
+  else if (maxChow >= 2) add('一般高');
+
+  const stairRuns = [];
+  for (const starts of startsBySuit.values()) {
+    const sorted = [...starts].sort((a, b) => a - b);
+    if (!sorted.some((start, i) => i > 0 && start === sorted[i - 1] + 1)) continue;
+    let run = 1;
+    let best = 1;
+    for (let i = 1; i < sorted.length; i += 1) {
+      run = sorted[i] === sorted[i - 1] + 1 ? run + 1 : 1;
+      best = Math.max(best, run);
+    }
+    stairRuns.push(best);
+  }
+  if (stairRuns.length >= 2) add('兩般低');
+  const maxStep = Math.max(0, ...stairRuns);
+  if (maxStep >= 4) add('四般低');
+  else if (maxStep >= 3) add('三般低');
+  else if (stairRuns.length >= 1) add('一般低');
+
+  for (const suit of SUIT_PREFIXES) {
+    const numbers = new Set(allTiles.filter((t) => t.startsWith(suit)).map((t) => Number(t[1])));
+    if (Array.from({ length: 9 }, (_, i) => i + 1).every((n) => numbers.has(n))) {
+      add('一條龍');
+      break;
+    }
+  }
+
+  const suitsByStart = new Map();
+  for (const key of chowCounts.keys()) {
+    const [suit, start] = key.split(':');
+    if (!suitsByStart.has(start)) suitsByStart.set(start, new Set());
+    suitsByStart.get(start).add(suit);
+  }
+  if ([...suitsByStart.values()].some((suits) => suits.size >= 2)) add('鏡糊糊');
+
+  const suitsPresent = new Set(allTiles.filter((t) => /^[mps]/.test(t)).map((t) => t[0]));
+  if (suitsPresent.size === 2) add('缺門');
+
+  if (melds.filter((m) => m.type === 'kong').length >= 3) add('三槓子');
+
+  const windPungs = new Set(effectiveSets
+    .filter((set) => isPung(set) && WINDS.includes(set.tiles[0]))
+    .map((set) => set.tiles[0]));
+  if (windPungs.size >= 3) add('三喜臨門');
+
+  const pungsBySuitRank = new Map();
+  for (const set of effectiveSets) {
+    if (!isPung(set) || !/^[mps]/.test(set.tiles[0])) continue;
+    const key = `${set.tiles[0][0]}:${set.tiles[0][1]}`;
+    pungsBySuitRank.set(key, (pungsBySuitRank.get(key) ?? 0) + 1);
+  }
+  const suitsByRank = new Map();
+  for (const key of pungsBySuitRank.keys()) {
+    const [suit, rank] = key.split(':');
+    if (!suitsByRank.has(rank)) suitsByRank.set(rank, new Set());
+    suitsByRank.get(rank).add(suit);
+  }
+  if ([...suitsByRank.values()].some((suits) => suits.size >= 2)) add('雙色同刻');
+
+  if ([...tileInChows.values()].some((count) => count >= 4)) add('四歸四');
+
+  if (allTiles.length && allTiles.every((t) => GREEN_TILES.has(t) || t === 's5' || t === 'C')) {
+    if (allTiles.includes('s5') !== allTiles.includes('C')) add('萬綠叢中一點紅');
+  }
+  const RED_PEACOCK = new Set(['s1', 's5', 's7', 's9', 'C']);
+  if (allTiles.length && allTiles.every((t) => RED_PEACOCK.has(t))) add('紅孔雀');
+  if (melds.length === 0 && suitsPresent.size >= 2 && allTiles.length
+      && allTiles.every((t) => /^[mps][1-9]$/.test(t))) {
+    const total = allTiles.reduce((sum, t) => sum + Number(t[1]), 0);
+    if (total >= 100) add('百萬石');
+  }
+  return found;
+}
+
 function evaluateDecomposition(concealed, groups, melds, context) {
   const allTiles = [...concealed, ...melds.flatMap((m) => m.tiles.slice(0, 3))];
   const sets = [
@@ -533,11 +746,8 @@ function evaluateDecomposition(concealed, groups, melds, context) {
   if (dragonPungTiles.size === 3) add('大三元');
   else if (dragonPungTiles.size === 2 && pair && DRAGONS.includes(pair[0])
     && !dragonPungTiles.has(pair[0])) add('小三元');
-  if (melds.length === 0 && isSevenPairs(concealed)) add('七對子');
   if (sets.length === 4 && allTiles.every((t) => TILE_INFO[t].isHonor)) add('字一色');
   if (sets.length === 4 && allTiles.every((t) => TERMINALS.includes(t))) add('清么九');
-  if (sets.length === 4 && allTiles.every((t) => GREEN_TILES.has(t))) add('綠一色');
-  if (sets.length === 4 && allTiles.every((t) => BLUE_TILES.has(t))) add('藍一色');
 
   if (sets.length === 4 && sets.every(isPung)) {
     // 對對糊 is the plain all-pung hand; 坎坎胡 is its fully concealed (四暗刻)
@@ -585,7 +795,6 @@ function evaluateDecomposition(concealed, groups, melds, context) {
   // 地胡 is a claim on the dealer's first discard, never an opening self-draw.
   const isDihu = !context.selfDraw && context.dihuClaim && context.kongReplacementChain === 0;
   if (isTiangu) add('天胡');
-  if (isRenhu) add('人胡');
   if (isDihu) add('地胡');
   if (!isTiangu && context.kongReplacementChain === 1 && context.selfDraw) add('槓上開花');
   if (!isTiangu && context.kongReplacementChain >= 2 && context.selfDraw) add('連槓開花');
@@ -599,6 +808,10 @@ function evaluateDecomposition(concealed, groups, melds, context) {
   // the winning tile may be self-drawn or claimed from another player.
   if (melds.length === 0) add('門前清');
   if (context.selfDraw) add('自摸');
+
+  for (const custom of detectCustomPatterns({ concealed, groups, melds, sets, pair, context })) {
+    add(custom.id, custom.detail);
+  }
 
   let patterns = resolveOverlaps(found, {
     ...context,
@@ -735,7 +948,7 @@ export function flowerWinResult(flowers = [], seatWind = 'E', fanCap = FAN_CAP, 
   // 暗槓或其他槓後補到七花只計槓上開花，不計天地人胡。
   if (openingSelfDraw && ctx.tiangu) found.push(flowerPattern('天胡'));
   else if (openingSelfDraw && ctx.dihuaClaim) found.push(flowerPattern('地胡'));
-  else if (openingSelfDraw && ctx.renhu) found.push(flowerPattern('人胡'));
+  else if (openingSelfDraw && ctx.renhu && ctx.customPatterns !== false) found.push(flowerPattern('人胡'));
   if (ctx.kongReplacementChain === 1 && ctx.selfDraw) found.push(flowerPattern('槓上開花'));
   if (ctx.kongReplacementChain >= 2 && ctx.selfDraw) found.push(flowerPattern('連槓開花'));
   if (ctx.haidi && ctx.kongReplacementChain === 0) found.push(flowerPattern('海底撈月'));
