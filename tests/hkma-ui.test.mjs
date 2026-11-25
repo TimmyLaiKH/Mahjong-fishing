@@ -58,6 +58,16 @@ test('玩法說明有三個分頁按鈕與三個面板', () => {
   assert.match(game, /function quitToMenu\([\s\S]*?closeModal\('exitConfirm'\)/);
   const backdrop = game.slice(game.indexOf("modal.addEventListener('pointerdown'"));
   assert.match(backdrop, /CLOSE_ONLY_WITH_X\.has\(modal\.id\)/);
+
+  // 設定 opened from the menu must not offer 重來這局.
+  assert.match(game, /function openSettingsPanel\(\)/);
+  const settingsOpen = game.slice(
+    game.indexOf('function openSettingsPanel('),
+    game.indexOf('function closeTopModal('),
+  );
+  assert.match(settingsOpen, /restart\.hidden = !game\.match\?\.active/);
+  assert.match(game, /el\('menuSettings'\)[^\n]*openSettingsPanel\(\)/);
+  assert.match(game, /el\('settingsBtn'\)[^\n]*openSettingsPanel\(\)/);
 });
 
 test('HUD 起糊與 AI 表情已接上', () => {
@@ -98,7 +108,40 @@ test('HUD 起糊與 AI 表情已接上', () => {
   const send = game.slice(game.indexOf('function sendEmoji('), game.indexOf('function aiEmoji('));
   assert.match(send, /maybeReplyToHumanEmoji\(\);/);
   const inbox = game.slice(game.indexOf("net.on('emoji'"), game.indexOf("net.on('catch'"));
-  assert.match(inbox, /net\.isHost && !isAiSeat\(msg\.seat\)\) maybeReplyToHumanEmoji\(\);/);
+  assert.match(inbox, /net\.isHost && !isEmojiAiSeat\(msg\.seat\)\) maybeReplyToHumanEmoji\(\);/);
+
+  // Empty room seats are not AI, even if aiStates from a finished hand linger.
+  assert.match(game, /function isEmojiAiSeat\(/);
+  const emojiSeat = game.slice(
+    game.indexOf('function isEmojiAiSeat('),
+    game.indexOf('function showEmojiBubble('),
+  );
+  assert.match(emojiSeat, /player\.isEmpty \|\| !player\.isBot/);
+  const emojiHelpers = game.slice(
+    game.indexOf('function aiEmoji('),
+    game.indexOf('function emitAiReactions('),
+  );
+  assert.match(emojiHelpers, /isEmojiAiSeat\(seat\)/);
+  assert.match(reply, /isEmojiAiSeat\(seat\)/);
+  const reopen = game.slice(
+    game.indexOf('function reopenMultiRoomSettings('),
+    game.indexOf('function addRematchVote('),
+  );
+  assert.match(reopen, /game\.aiStates = \{\}/);
+  const backRoom = game.slice(
+    game.indexOf("net.on('backToRoom'"),
+    game.indexOf("net.on('start'"),
+  );
+  assert.match(backRoom, /game\.aiStates = \{\}/);
+
+  // Bubbles from different seats are staggered instead of stacking.
+  const bubble = game.slice(
+    game.indexOf('function showEmojiBubble('),
+    game.indexOf('function sendEmoji('),
+  );
+  assert.match(bubble, /bubble\.dataset\.seat/);
+  assert.match(bubble, /querySelectorAll\('\.emoji-bubble'\)/);
+  assert.match(bubble, /stagger/);
 });
 
 test('玩法說明清單可多於六項且保留固定入口', () => {
@@ -159,7 +202,7 @@ test('43 張牌圖都是 RGBA 120x181', () => {
 test('iOS 語音鎖定與音樂恢復有防護', () => {
   const game = readFileSync('js/game.js', 'utf8');
   assert.match(game, /function speechEngineBusy\(\)/);
-  assert.match(game, /const speechBusy = \(\) => speechActive \|\| speechEngineBusy\(\);/);
+  assert.match(game, /const speechBusy = \(\) => speechActive;/);
   const unlockMusic = game.slice(
     game.indexOf('function unlockMusic('),
     game.indexOf('function setMainVolume('),
@@ -175,7 +218,8 @@ test('iOS 語音鎖定與音樂恢復有防護', () => {
     game.indexOf('function unlockSpeechEngine('),
     game.indexOf('function voiceStatus('),
   );
-  assert.match(unlock, /speechActive \|\| speechEngineBusy\(\)/);
+  assert.match(unlock, /speechUnlocked \|\| speechActive/);
+  assert.doesNotMatch(unlock, /speechEngineBusy\(\)/);
   const resume = game.slice(
     game.indexOf('function resumeMusicAfterVoice('),
     game.indexOf('function scheduleMusicResumeAfterVoice('),
@@ -196,12 +240,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.102/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.102/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.103/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.103/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
   assert.match(game, /\.\/rules\.js\?v=1\.4\.97/);
-  assert.match(readme, /\?v=1\.4\.102/);
-  assert.match(changelog, /^## 1\.4\.102/m);
+  assert.match(readme, /\?v=1\.4\.103/);
+  assert.match(changelog, /^## 1\.4\.103/m);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);

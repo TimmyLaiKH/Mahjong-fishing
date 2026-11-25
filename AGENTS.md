@@ -491,7 +491,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `.room-avatar` while `body.waiting-room` is active. The layer sits above modals (`z-index:65`) but
   is `pointer-events:none` so casts, room controls and HUD clicks still work; bubbles remove
   themselves on `animationend`. The picker closes on outside click, Escape, resize or selection.
-- AI seats may react with existing emojis: 30% 😭/😡 on 出銃, 30% 😎/😀 on AI win, a forced 😡 from the 出銃 AI plus 55% 👏/👍/😮/🔥 from other AIs when you win 10+ fan, 8% 😍/🙏 on 上/碰/明槓, 30% 😮/😂 on 流局 and 70% 🎉 at match end. Each human emoji also gives every AI a 30% chance to reply 😀/👍, in the room as well as during play. Only solo/host generates AI emojis and the host broadcasts `{t:'emoji', seat, emoji}`; they never affect scoring.
+- AI seats may react with existing emojis: 30% 😭/😡 on 出銃, 30% 😎/😀 on AI win, a forced 😡 from the 出銃 AI plus 55% 👏/👍/😮/🔥 from other AIs when you win 10+ fan, 8% 😍/🙏 on 上/碰/明槓, 30% 😮/😂 on 流局 and 70% 🎉 at match end. Each human emoji also gives every AI a 30% chance to reply 😀/👍, in the room as well as during play. Empty lobby seats (空位) never react, even if stale `aiStates` linger after a match. Floating bubbles stagger by the number of active bubbles so different seats do not overlap. Only solo/host generates AI emojis and the host broadcasts `{t:'emoji', seat, emoji}`; they never affect scoring.
 - A document-level click listener plays a short WebAudio click for every enabled `<button>`, while
   `discard()` plays `assets/audio/mahjong-tile-strike.mp3` via `music.tile()`. Both live in
   `js/audio.js`. They follow the 音效與語音 switch and the master volume, while the music track
@@ -509,6 +509,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   The 設定 modal must not mention AI, 起糊 or 番數上限 — those live in the room lobby; host hook
   speed and duration lock after start; both
   volume sliders save into `mf-volume`, and both switches save into `mf-sound`.
+   The `設定` panel hides `重來這局` when opened from the main menu; `openSettingsPanel()` shows it
+   only while `game.match.active`.
 - Exact waiting status, help tabs, pattern table source and no-bottom-button rules are listed
   under **Core game invariants**; keep them in sync with `index.html`.
 
@@ -533,6 +535,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   exclusive session and stopped the background track whenever speech began. Announcements go
   through a small queue: `speakCantonese()` speaks a cached voice immediately when idle (to keep
   the iOS user gesture), otherwise lines wait their turn. `speakVoiceNow()` never calls
+   High-frequency gesture guards use the local `speechActive` state only, so tapping fast does
+   not synchronously query the native speech engine.
   `speechSynthesis.cancel()`/`resume()` when a new line arrives; those calls can interrupt a line
   and are avoided for safety, but diagnostics proved they were not the cause of the reported
   freeze. It schedules `music.resume()` 250 ms after

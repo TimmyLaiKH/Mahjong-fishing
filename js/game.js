@@ -589,23 +589,35 @@ function announceNotice(text, ms) {
   speakCantonese(text);
 }
 
+/** Only real AI bots react with emoji. Empty lobby seats are not AI, even if
+ *  aiStates from a finished hand still linger on the host. */
+function isEmojiAiSeat(seat) {
+  const player = game.players.find((entry) => entry?.seat === seat);
+  if (!player || player.isEmpty || !player.isBot) return false;
+  return true;
+}
+
 /** Floating emoji bubbles appear beside each seat's avatar on the sea. */
 function showEmojiBubble(seat, emoji) {
   if (!ui.emojiLayer || !EMOJIS.includes(emoji) || seat < 0 || seat > 3) return;
   const bubble = document.createElement('div');
   bubble.className = 'emoji-bubble';
+  bubble.dataset.seat = String(seat);
+  const active = ui.emojiLayer.querySelectorAll('.emoji-bubble').length;
+  const stagger = active % 4;
+  bubble.style.zIndex = String(stagger + 1);
   const roomAvatar = document.body.classList.contains('waiting-room')
     && ui.room?.classList.contains('show') ? ui.roomAvatars?.children[seat] : null;
   if (roomAvatar) {
     const rect = roomAvatar.getBoundingClientRect();
-    bubble.style.left = `${rect.left + rect.width / 2}px`;
-    bubble.style.top = `${rect.bottom + 8}px`;
+    bubble.style.left = `${rect.left + rect.width / 2 + (stagger - 1.5) * 18}px`;
+    bubble.style.top = `${rect.bottom + 8 + stagger * 10}px`;
   } else {
     const spread = Math.min(160, view.width / 10);
     const offsets = [-spread, -spread * 0.45, spread * 0.45, spread];
     const rect = canvas.getBoundingClientRect();
-    bubble.style.left = `${rect.left + (view.width / 2 + offsets[seat]) * view.scale}px`;
-    bubble.style.top = `${rect.top + 52 * view.scale}px`;
+    bubble.style.left = `${rect.left + (view.width / 2 + offsets[seat]) * view.scale + (stagger - 1.5) * 18}px`;
+    bubble.style.top = `${rect.top + (52 + stagger * 10) * view.scale}px`;
   }
   const face = document.createElement('span');
   face.className = 'emoji-face';
@@ -627,7 +639,7 @@ function sendEmoji(emoji) {
 }
 
 function aiEmoji(seat, emoji) {
-  if (!isAiSeat(seat) || !EMOJIS.includes(emoji)) return;
+  if (!isEmojiAiSeat(seat) || !EMOJIS.includes(emoji)) return;
   showEmojiBubble(seat, emoji);
   if (game.mode === 'multi' && net.isHost) {
     net.broadcast({ t: 'emoji', seat, emoji });
@@ -635,14 +647,14 @@ function aiEmoji(seat, emoji) {
 }
 
 function maybeAiEmoji(seat, chance, options) {
-  if (!isAiSeat(seat) || Math.random() >= chance) return;
+  if (!isEmojiAiSeat(seat) || Math.random() >= chance) return;
   aiEmoji(seat, options[Math.floor(Math.random() * options.length)]);
 }
 
 function maybeReplyToHumanEmoji() {
   if (game.mode === 'multi' && !net.isHost) return;
   for (let seat = 0; seat < 4; seat += 1) {
-    if (isAiSeat(seat)) maybeAiEmoji(seat, HUMAN_EMOJI_AI_REPLY_CHANCE, ['😀', '👍']);
+    if (isEmojiAiSeat(seat)) maybeAiEmoji(seat, HUMAN_EMOJI_AI_REPLY_CHANCE, ['😀', '👍']);
   }
 }
 
@@ -2704,7 +2716,7 @@ function speechEngineBusy() {
     && Boolean(speechSynthesis.speaking || speechSynthesis.pending);
 }
 
-const speechBusy = () => speechActive || speechEngineBusy();
+const speechBusy = () => speechActive;
 
 /** iOS only allows speech after a user gesture. A silent utterance unlocks the
  *  engine without adding any audible announcement. Never issue it while a real
@@ -2712,11 +2724,12 @@ const speechBusy = () => speechActive || speechEngineBusy();
  *  completion handlers the speech queue then stays busy forever. Leave
  *  speechUnlocked false so a later, idle gesture retries the unlock. */
 function unlockSpeechEngine() {
-  if (speechUnlocked || speechActive || speechEngineBusy()
+  if (speechUnlocked || speechActive
     || typeof speechSynthesis === 'undefined'
     || typeof SpeechSynthesisUtterance === 'undefined') return;
   primeDeviceVoice();
   try {
+    if (speechSynthesis.speaking || speechSynthesis.pending) return;
     const unlock = new SpeechSynthesisUtterance(' ');
     unlock.volume = 0;
     unlock.lang = 'yue-HK';
@@ -4197,6 +4210,7 @@ function reopenMultiRoomSettings() {
   game.rematchRequired = [];
   game.rematchMessage = '';
   game.rematchNewMatch = false;
+  game.aiStates = {};
   ui.overlay.classList.remove('show');
   for (const id of ['helpPanel', 'settingsPanel', 'scorePanel']) closeModal(id);
   game.state = S.LOADING;
@@ -4635,6 +4649,7 @@ function wireNetEvents() {
     game.rematchRequired = [];
     game.rematchMessage = '';
     game.rematchNewMatch = false;
+    game.aiStates = {};
     game.state = S.LOADING;
     setMultiUIVisibility(false);
     game.roomSettings = { ...msg.settings };
@@ -4694,7 +4709,7 @@ function wireNetEvents() {
   net.on('emoji', (msg) => {
     if (net.isHost && msg.seat !== game.seat) net.broadcast(msg);
     showEmojiBubble(msg.seat, msg.emoji);
-    if (net.isHost && !isAiSeat(msg.seat)) maybeReplyToHumanEmoji();
+    if (net.isHost && !isEmojiAiSeat(msg.seat)) maybeReplyToHumanEmoji();
   });
 
   net.on('catch', (msg) => {
@@ -6405,6 +6420,13 @@ function switchHelpTab(name) {
   if (card) card.scrollTop = 0;
 }
 
+/** Settings opened from the menu must not offer the mid-hand restart action. */
+function openSettingsPanel() {
+  const restart = el('restartBtn');
+  if (restart) restart.hidden = !game.match?.active;
+  openModal('settingsPanel');
+}
+
 function closeTopModal() {
   const open = [...document.querySelectorAll('.modal.show')]
     .filter((m) => m !== ui.loading && m !== ui.menu);
@@ -6700,14 +6722,14 @@ function wireInput() {
   }
   ui.roomGameDurationText.addEventListener('change', commitRoomDurationText);
   el('menuHelp').addEventListener('click', () => { switchHelpTab('rules'); openModal('helpPanel'); });
-  el('menuSettings').addEventListener('click', () => openModal('settingsPanel'));
+  el('menuSettings').addEventListener('click', () => openSettingsPanel());
   el('menuCredits').addEventListener('click', () => openModal('creditsPanel'));
   el('restartBtn').addEventListener('click', () => { closeTopModal(); requestRestart(); });
   el('helpBtn').addEventListener('click', () => { switchHelpTab('rules'); openModal('helpPanel'); });
   for (const button of el('helpPanel').querySelectorAll('[data-help-tab]')) {
     button.addEventListener('click', () => switchHelpTab(button.dataset.helpTab));
   }
-  el('settingsBtn').addEventListener('click', () => openModal('settingsPanel'));
+  el('settingsBtn').addEventListener('click', () => openSettingsPanel());
   ui.emojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.emojiBtn));
   ui.roomEmojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.roomEmojiBtn));
   document.addEventListener('click', (event) => {
