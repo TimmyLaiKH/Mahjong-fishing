@@ -646,10 +646,13 @@ function emitAiReactions({ winner = null, discarder = null, fan = 0, draw = fals
         maybeAiEmoji(seat, BIG_WIN_AI_EMOJI_CHANCE, ['👏', '👍', '😮', '🔥']);
       }
     }
-  } else if (isAiSeat(winner)) {
-    maybeAiEmoji(winner, AI_WIN_EMOJI_CHANCE, ['😎', '😀']);
-  } else if (isAiSeat(discarder)) {
-    maybeAiEmoji(discarder, AI_DISCARD_EMOJI_CHANCE, ['😭', '😡']);
+  } else {
+    if (isAiSeat(winner)) {
+      maybeAiEmoji(winner, AI_WIN_EMOJI_CHANCE, ['😎', '😀']);
+    }
+    if (isAiSeat(discarder)) {
+      maybeAiEmoji(discarder, AI_DISCARD_EMOJI_CHANCE, ['😭', '😡']);
+    }
   }
   if (draw) {
     for (let seat = 0; seat < 4; seat += 1) {

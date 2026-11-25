@@ -58,7 +58,14 @@ test('HUD 起糊與 AI 表情已接上', () => {
   assert.match(game, /function emitAiReactions\(/);
   assert.match(game, /function recordRoundResult\([\s\S]*?emitAiReactions\(\{/);
   assert.match(game, /function applyAiMeldClaim\([\s\S]*?maybeAiEmoji\(/);
-  assert.match(game, /game\.mode !== 'multi' \|\| net\.isHost/);
+  const emit = game.slice(
+    game.indexOf('function emitAiReactions('),
+    game.indexOf('function closeEmojiPanel()'),
+  );
+  assert.match(emit, /if \(game\.mode === 'multi' && !net\.isHost\) return;/);
+  assert.match(emit, /if \(isAiSeat\(winner\)\)/);
+  assert.match(emit, /if \(isAiSeat\(discarder\)\)/);
+  assert.doesNotMatch(emit, /else if \(isAiSeat\(discarder\)\)/);
   assert.match(game, /net\.broadcast\(\{ t: 'emoji', seat, emoji \}\)/);
 });
 
