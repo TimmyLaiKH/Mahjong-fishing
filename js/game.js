@@ -2717,6 +2717,9 @@ function speechEngineBusy() {
 }
 
 const speechBusy = () => speechActive;
+// One-time unlock: repeated taps must not re-run audio/voice setup, which is
+// what causes the brief iOS stall when tapping fast during speech.
+let gestureAudioUnlocked = false;
 
 /** iOS only allows speech after a user gesture. A silent utterance unlocks the
  *  engine without adding any audible announcement. Never issue it while a real
@@ -4708,6 +4711,9 @@ function wireNetEvents() {
 
   net.on('emoji', (msg) => {
     if (net.isHost && msg.seat !== game.seat) net.broadcast(msg);
+    // The sender already showed this bubble locally in sendEmoji(); the host
+    // relays it back to everyone including the sender, so skip the echo.
+    if (msg.seat === game.seat) return;
     showEmojiBubble(msg.seat, msg.emoji);
     if (net.isHost && !isEmojiAiSeat(msg.seat)) maybeReplyToHumanEmoji();
   });
@@ -6615,11 +6621,13 @@ function setEffectsEnabled(value) {
 
 function unlockMusic() {
   if (speechBusy()) return;
+  if (gestureAudioUnlocked) return;
   if (game.settings.musicEnabled) music.start();
   if (game.settings.soundEnabled) {
     unlockSpeechEngine();
     primeDeviceVoice();
   }
+  gestureAudioUnlocked = true;
 }
 
 function setMainVolume(value) {

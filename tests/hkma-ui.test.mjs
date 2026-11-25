@@ -109,6 +109,8 @@ test('HUD 起糊與 AI 表情已接上', () => {
   assert.match(send, /maybeReplyToHumanEmoji\(\);/);
   const inbox = game.slice(game.indexOf("net.on('emoji'"), game.indexOf("net.on('catch'"));
   assert.match(inbox, /net\.isHost && !isEmojiAiSeat\(msg\.seat\)\) maybeReplyToHumanEmoji\(\);/);
+  // A guest must not show its own emoji twice when the host relays it back.
+  assert.match(inbox, /if \(msg\.seat === game\.seat\) return;[\s\S]*?showEmojiBubble\(msg\.seat, msg\.emoji\)/);
 
   // Empty room seats are not AI, even if aiStates from a finished hand linger.
   assert.match(game, /function isEmojiAiSeat\(/);
@@ -209,6 +211,9 @@ test('iOS 語音鎖定與音樂恢復有防護', () => {
   );
   assert.match(unlockMusic, /if \(speechBusy\(\)\) return;/);
   assert.match(unlockMusic, /if \(game\.settings\.musicEnabled\) music\.start\(\);/);
+  // Repeated taps must skip the audio/voice setup after the first gesture unlock.
+  assert.match(game, /let gestureAudioUnlocked = false/);
+  assert.match(unlockMusic, /if \(gestureAudioUnlocked\) return;/);
   const clickHandler = game.slice(
     game.indexOf("document.addEventListener('click', (event) => {"),
     game.indexOf("el('creditsBtn')"),
@@ -240,12 +245,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.103/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.103/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.104/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.104/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
   assert.match(game, /\.\/rules\.js\?v=1\.4\.97/);
-  assert.match(readme, /\?v=1\.4\.103/);
-  assert.match(changelog, /^## 1\.4\.103/m);
+  assert.match(readme, /\?v=1\.4\.104/);
+  assert.match(changelog, /^## 1\.4\.104/m);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
