@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.110/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.110/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.111/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.111/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.110/);
-  assert.match(readme, /\?v=1\.4\.110/);
-  assert.match(changelog, /^## 1\.4\.110/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.111/);
+  assert.match(readme, /\?v=1\.4\.111/);
+  assert.match(changelog, /^## 1\.4\.111/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -303,6 +303,15 @@ test('玩家版本與 cachebust 已更新', () => {
 
   // Host-only 自訂牌型 toggle and engine threading.
   assert.match(html, /id="customPatternsToggle"/);
+  const switchSlice = html.slice(
+    html.indexOf('id="customPatternsToggle"') - 120,
+    html.indexOf('id="customPatternsToggle"') + 160,
+  );
+  assert.match(switchSlice, /switch-field/);
+  assert.match(switchSlice, /class="switch"/);
+  assert.match(html, /id="roomStartingMoney"[^>]*value="128"/);
+  assert.match(html, /id="roomStartingMoneyText"[^>]*value="128"/);
+  assert.match(game, /const DEFAULT_STARTING_MONEY = 128;/);
   assert.match(html, /\(由房主設定\)/);
   assert.match(game, /customPatternsToggle: el\('customPatternsToggle'\)/);
   const setup = game.slice(
