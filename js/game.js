@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.110';
+} from './rules.js?v=1.4.112';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -127,7 +127,7 @@ const HAIDI_SECONDS = 5;
 /** Match scoring: one shared amount multiplier, a wind limit and a starting purse per seat. */
 const MIN_STARTING_MONEY = 1;
 const MAX_STARTING_MONEY = 100000000;
-const DEFAULT_STARTING_MONEY = 20;
+const DEFAULT_STARTING_MONEY = 128;
 const MIN_WINDS = 1;
 const MAX_WINDS = 4;
 const DEFAULT_WINDS = 1;
@@ -2377,6 +2377,8 @@ function commitAiWin(seat, result, fanTotal = null, meta = {}) {
   const log = recordRoundResult({ winner: seat, result, ...winMeta });
   clearClaim();
   clearSelfWin();
+  game.claimPriorities.clear();
+  game.pendingKongs.clear();
   setState(S.WIN);
   const name = seatLabel(seat);
   setStatus(`${name} 胡牌！${result.totalFan} 番`);
