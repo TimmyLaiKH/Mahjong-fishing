@@ -35,7 +35,7 @@ node --check js/net.js
 node tests/rules.test.mjs        # must print 64 通過，0 失敗
 node tests/payout.test.mjs       # must print 12 通過，0 失敗
 node tests/net.test.mjs          # must print 2 通過，0 失敗
-node tests/hkma-ui.test.mjs      # must print 8 通過，0 失敗
+node tests/hkma-ui.test.mjs      # must print 9 通過，0 失敗
 git diff --check
 ```
 
@@ -78,7 +78,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
 | `tests/rules.test.mjs` | 64 rule tests: T1–T13, table-driven patterns, flowers, weighted pool, 1000-game simulation. |
 | `tests/payout.test.mjs` | 12 payout/settlement tests. |
 | `tests/net.test.mjs` | 2 tests for PeerJS-safe outgoing message normalisation. |
-| `tests/hkma-ui.test.mjs` | 8 static checks: no old character, three help tabs, HUD min-fan and AI emoji wiring, custom-pattern order, bands-only 120×181 tiles, version cachebusts. |
+| `tests/hkma-ui.test.mjs` | 9 static checks: no old character, three help tabs, HUD min-fan and AI emoji wiring, iOS speech/music guards, custom-pattern order, bands-only 120×181 tiles, version cachebusts. |
 | `tests/browser-ai-discard.test.html` | Browser regression page: loads the real game with `?test=1`, forces an AI discard via `aiTick()`, and fails on any exception or missing river tile. |
 | `README.md`, `CHANGELOG.md`, `CREDITS.md`, `AGENTS.md` | Player docs, change history, asset licences, agent instructions. |
 
