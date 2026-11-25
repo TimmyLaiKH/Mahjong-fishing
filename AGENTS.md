@@ -491,17 +491,18 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `.room-avatar` while `body.waiting-room` is active. The layer sits above modals (`z-index:65`) but
   is `pointer-events:none` so casts, room controls and HUD clicks still work; bubbles remove
   themselves on `animationend`. The picker closes on outside click, Escape, resize or selection.
-- AI seats may react with existing emojis: 30% 😭/😡 on 出銃, 30% 😎/😀 on AI win, a forced 😡 from the 出銃 AI plus 55% 👏/👍/😮/🔥 from other AIs when you win 10+ fan, 8% 😍/🙏 on 上/碰/明槓, 30% 😮/😂 on 流局 and 70% 🎉 at match end. Only solo/host generates them and the host broadcasts `{t:'emoji', seat, emoji}`; they never affect scoring.
+- AI seats may react with existing emojis: 30% 😭/😡 on 出銃, 30% 😎/😀 on AI win, a forced 😡 from the 出銃 AI plus 55% 👏/👍/😮/🔥 from other AIs when you win 10+ fan, 8% 😍/🙏 on 上/碰/明槓, 30% 😮/😂 on 流局 and 70% 🎉 at match end. Each human emoji also gives every AI a 30% chance to reply 😀/👍, in the room as well as during play. Only solo/host generates AI emojis and the host broadcasts `{t:'emoji', seat, emoji}`; they never affect scoring.
 - A document-level click listener plays a short WebAudio click for every enabled `<button>`, while
   `discard()` plays `assets/audio/mahjong-tile-strike.mp3` via `music.tile()`. Both live in
   `js/audio.js`. They follow the 音效與語音 switch and the master volume, while the music track
   follows the 背景音樂 switch and master × music volume; both switches share one `mf-sound` value
   (`music,effects` as `1`/`0`) and no storage keys are added.
-- Modals: `設定`, `玩法說明`, `計分` and `資料來源` close only with their ✕ button; backdrop clicks
-  and Escape never dismiss them, and they keep blocking input behind them. `overlay`, `loading`,
-  `menuScreen`, `joinScreen` and `roomScreen` also never close on backdrop. Escape in `roomScreen`
-  (solo or multiplayer room) or `joinScreen` opens the `#exitConfirm` dialog asking whether to
-  return to the main menu; confirming calls `quitToMenu()`, cancelling keeps the lobby open. Other
+- Modals: `設定`, `玩法說明`, `計分` and `資料來源` close with their ✕ button; backdrop clicks never
+  dismiss them, and they keep blocking input behind them. On PC they also close with Escape;
+  on touch/iOS they stay ✕-only. `overlay`, `loading`, `menuScreen`, `joinScreen` and `roomScreen`
+  also never close on backdrop. Escape in `roomScreen` (solo or multiplayer room) or `joinScreen`
+  opens the `#exitConfirm` dialog asking whether to return to the main menu; confirming calls
+  `quitToMenu()`, cancelling keeps the lobby open. Escape during an active hand opens `設定`. Other
   ESC behaviour is unchanged. The `重新開始投票` overlay is informational — it blocks input but not
   simulation. In-game `回到主選單` quits the round, clears pending prompts, sets `LOADING`, and
   shows the menu.
