@@ -69,6 +69,12 @@ test('一條龍 is absorbed by 九子連環', () => {
   assert.match(breakdown, /一條龍/);
 });
 
+test('兩般低 recognises two disjoint step-runs in the same suit', () => {
+  const hand = 'm1 m2 m2 m3 m3 m4 m5 m6 m6 m7 m7 m8 E E';
+  const result = evalTiles(hand, { context: { customPatterns: true } });
+  assert.ok(names(result).includes('兩般低'), names(result).join(','));
+});
+
 test('detectCustomPatterns returns id/fan/detail entries only', () => {
   const concealed = tiles('m1 m1 m3 m3 p2 p2 p7 p7 s4 s4 E E C C');
   const result = rules.detectCustomPatterns({

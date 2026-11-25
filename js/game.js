@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.107';
+} from './rules.js?v=1.4.108';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -6522,10 +6522,7 @@ function quitToMenu() {
 
 function buildPatternTable() {
   ui.patternsBody.innerHTML = '';
-  const ordinaryRows = customPatternsEnabled()
-    ? PATTERN_ROWS
-    : PATTERN_ROWS.filter((row) => row.category !== '自訂牌型');
-  const rows = sortPatternRows([...ordinaryRows, ...FLOWER_PATTERN_TABLE]);
+  const rows = sortPatternRows([...PATTERN_ROWS, ...FLOWER_PATTERN_TABLE]);
   for (const pattern of rows) {
     const tr = document.createElement('tr');
     const name = document.createElement('td');
