@@ -82,6 +82,7 @@ const AI_MELD_EMOJI_CHANCE = 0.08;
 const DRAW_EMOJI_CHANCE = 0.3;
 const MATCH_END_EMOJI_CHANCE = 0.7;
 const HUMAN_EMOJI_AI_REPLY_CHANCE = 0.3;
+const HUMAN_EMOJI_REPLY_DELAY_MS = 1000;
 // Codes that failed to produce a live host this session. PeerJS can leave a
 // stale id registered for a while after the host leaves, so never retry them.
 const deadRooms = new Set();
@@ -653,9 +654,13 @@ function maybeAiEmoji(seat, chance, options) {
 
 function maybeReplyToHumanEmoji() {
   if (game.mode === 'multi' && !net.isHost) return;
-  for (let seat = 0; seat < 4; seat += 1) {
-    if (isEmojiAiSeat(seat)) maybeAiEmoji(seat, HUMAN_EMOJI_AI_REPLY_CHANCE, ['😀', '👍']);
-  }
+  // Let the player's own bubble land first; a reply a second later reads more
+  // naturally than an instant reaction on every device.
+  setTimeout(() => {
+    for (let seat = 0; seat < 4; seat += 1) {
+      if (isEmojiAiSeat(seat)) maybeAiEmoji(seat, HUMAN_EMOJI_AI_REPLY_CHANCE, ['😀', '👍']);
+    }
+  }, HUMAN_EMOJI_REPLY_DELAY_MS);
 }
 
 function emitAiReactions({ winner = null, discarder = null, fan = 0, draw = false } = {}) {
@@ -1700,6 +1705,11 @@ function canDeclareMeld() {
 function buildClaimActions(discardId, bot = game.pendingClaim?.bot, includePass = false,
   { potential = false, firstDiscard = false, discarderSeat = null,
     kong = false, concealed = false, sourceKey = null } = {}) {
+  // A 槓 replacement must be fished before reacting to anyone else's tile.
+  // 胡／搶槓／碰／上／明槓 are all unavailable in that window.
+  if (game.kongChain > 0 || game.grabPending) {
+    return includePass ? [{ label: '過', primary: false, onClick: passClaim }] : [];
+  }
   const tiles = potential ? claimReadyTiles() : game.hand;
   const hand = tiles.map((tile) => tile.id);
   const counts = countTiles(hand);

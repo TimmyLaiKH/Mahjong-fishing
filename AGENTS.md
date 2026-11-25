@@ -35,7 +35,7 @@ node --check js/net.js
 node tests/rules.test.mjs        # must print 64 通過，0 失敗
 node tests/payout.test.mjs       # must print 12 通過，0 失敗
 node tests/net.test.mjs          # must print 2 通過，0 失敗
-node tests/hkma-ui.test.mjs      # must print 9 通過，0 失敗
+node tests/hkma-ui.test.mjs      # must print 10 通過，0 失敗
 git diff --check
 ```
 
@@ -78,7 +78,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
 | `tests/rules.test.mjs` | 64 rule tests: T1–T13, table-driven patterns, flowers, weighted pool, 1000-game simulation. |
 | `tests/payout.test.mjs` | 12 payout/settlement tests. |
 | `tests/net.test.mjs` | 2 tests for PeerJS-safe outgoing message normalisation. |
-| `tests/hkma-ui.test.mjs` | 9 static checks: no old character, three help tabs, HUD min-fan and AI emoji wiring, iOS speech/music guards, modal/ESC wiring, custom-pattern order, bands-only 120×181 tiles, version cachebusts. |
+| `tests/hkma-ui.test.mjs` | 10 static checks: no old character, three help tabs, HUD min-fan and AI emoji wiring, iOS speech/music guards, modal/ESC wiring, custom-pattern order, bands-only 120×181 tiles, version cachebusts. |
 | `tests/browser-ai-discard.test.html` | Browser regression page: loads the real game with `?test=1`, forces an AI discard via `aiTick()`, and fails on any exception or missing river tile. |
 | `README.md`, `CHANGELOG.md`, `CREDITS.md`, `AGENTS.md` | Player docs, change history, asset licences, agent instructions. |
 
@@ -148,7 +148,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   room-code/share-link UI.
 - **Help and pattern table.** 玩法說明 has three tabs (`data-help-tab` = `rules`/`patterns`/`payout`,
   panels `#helpTabRules`/`#helpTabPatterns`/`#helpTabPayout`); the `玩法說明` list may exceed six
-  `<li>` items. There is no `前往番數表` button or `jumpToFanTable()`; the 牌型一覽 tab keeps `#fanTableTitle`.
+  `<li>` items. There is no `前往番數表` button or `jumpToFanTable()`; the 牌型一覽 tab keeps `#fanTableTitle`. The 十三么 牌王 item is a plain `<li>`, not bolded.
   Custom patterns sort to the bottom of the generated table. The separate `派彩計算表` tab has a
   static 0–10 番 payout table (`#payoutTableTitle`) that shows
   倍率 V/B, 出銃支付, 自摸每家 and 自摸三家合計, followed by a note that B is the host's 金額倍數
@@ -277,7 +277,9 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   and among every other action, it is still strictly first-press-wins. Otherwise first valid claim
   wins; a claimant must discard before claiming again; timeout implicitly passes.
   `canDeclareClaim()` requires a 13-tile-equivalent hand with the rod home, no pending kong
-  replacement or forced discard; `canDeclareMeld()` adds the four-meld limit.
+  replacement or forced discard; `canDeclareMeld()` adds the four-meld limit. After a 槓 the replacement
+  tile must be fished first: `buildClaimActions()` returns no 胡／搶槓／碰／上／明槓 actions at all while
+  `game.kongChain > 0 || game.grabPending`.
   Delayed AI claims are revalidated at execution for the same conditions and recomputed as wins.
   Opponent claim boxes include a local `過` button that marks that box `passed` and hides it; it
   never cancels AI or other seats' claims on the same discard. A 十三么 candidate's `過` is also
@@ -491,7 +493,7 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   `.room-avatar` while `body.waiting-room` is active. The layer sits above modals (`z-index:65`) but
   is `pointer-events:none` so casts, room controls and HUD clicks still work; bubbles remove
   themselves on `animationend`. The picker closes on outside click, Escape, resize or selection.
-- AI seats may react with existing emojis: 30% 😭/😡 on 出銃, 30% 😎/😀 on AI win, a forced 😡 from the 出銃 AI plus 55% 👏/👍/😮/🔥 from other AIs when you win 10+ fan, 8% 😍/🙏 on 上/碰/明槓, 30% 😮/😂 on 流局 and 70% 🎉 at match end. Each human emoji also gives every AI a 30% chance to reply 😀/👍, in the room as well as during play. Empty lobby seats (空位) never react, even if stale `aiStates` linger after a match. A guest ignores the host echo of its own emoji so it appears once on every device. Floating bubbles stagger by the number of active bubbles so different seats do not overlap. Only solo/host generates AI emojis and the host broadcasts `{t:'emoji', seat, emoji}`; they never affect scoring.
+- AI seats may react with existing emojis: 30% 😭/😡 on 出銃, 30% 😎/😀 on AI win, a forced 😡 from the 出銃 AI plus 55% 👏/👍/😮/🔥 from other AIs when you win 10+ fan, 8% 😍/🙏 on 上/碰/明槓, 30% 😮/😂 on 流局 and 70% 🎉 at match end. Each human emoji also gives every AI a 30% chance to reply 😀/👍 about one second later, in the room as well as during play. Empty lobby seats (空位) never react, even if stale `aiStates` linger after a match. A guest ignores the host echo of its own emoji so it appears once on every device. Floating bubbles stagger by the number of active bubbles so different seats do not overlap. Only solo/host generates AI emojis and the host broadcasts `{t:'emoji', seat, emoji}`; they never affect scoring.
 - A document-level click listener plays a short WebAudio click for every enabled `<button>`, while
   `discard()` plays `assets/audio/mahjong-tile-strike.mp3` via `music.tile()`. Both live in
   `js/audio.js`. They follow the 音效與語音 switch and the master volume, while the music track
@@ -510,7 +512,8 @@ T1–T13. Keep the seeded simulation meaningful: no exceptions, `wins > 0`, and 
   speed and duration lock after start; both
   volume sliders save into `mf-volume`, and both switches save into `mf-sound`.
    The `設定` panel hides `重來這局` when opened from the main menu; `openSettingsPanel()` shows it
-   only while `game.match.active`.
+   only while `game.match.active`. A greyed-out `#settingsNote` below 音樂音量 warns that silent mode may
+   mute voice announcements and that volume sliders may not work on some devices.
 - Exact waiting status, help tabs, pattern table source and no-bottom-button rules are listed
   under **Core game invariants**; keep them in sync with `index.html`.
 

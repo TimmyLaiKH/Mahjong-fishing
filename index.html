@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/style.css?v=1.4.104" />
+<link rel="stylesheet" href="css/style.css?v=1.4.105" />
 </head>
 <body>
 <canvas id="game" aria-label="釣魚遊戲畫面"></canvas>
@@ -233,7 +233,7 @@
         <li>允行、一心、念慈三位對手（聯機時為其他玩家或 AI）各有自己的手牌與釣竿，和大家在同一片海裡搶魚，也能自己胡牌。</li>
         <li>他們打出的牌會展示五秒；該牌的圖片、出牌者與門風，以及胡／碰／上／明槓按鈕會顯示在釣竿右側（每位對手各有一欄），桿子仍會繼續擺動，你可照常拋竿與打牌。</li>
         <li>胡、碰、明槓可向任一對手宣告；上只能向你的上家（前一個門風）宣告；逾時自動放棄。</li>
-        <li><strong>只有聽十三么的玩家是「牌王」：在該牌的五秒視窗內，其他人的胡／槓／碰／上都會被鎖住，直到牌王胡牌、按「過」或視窗結束；多位十三么牌王同時聽牌時先按先贏。除此之外，所有胡／槓／碰／上完全先按先贏，沒有其他優先順序。</strong></li>
+        <li>只有聽十三么的玩家是「牌王」：在該牌的五秒視窗內，其他人的胡／槓／碰／上都會被鎖住，直到牌王胡牌、按「過」或視窗結束；多位十三么牌王同時聽牌時先按先贏。除此之外，所有胡／槓／碰／上完全先按先贏，沒有其他優先順序。</li>
         <li>任何人開啟「設定」、「玩法說明」、「重來這局」投票或「計分」時，魚群、計時、鉤子與 AI 仍會繼續。</li>
         <li>點「計分」可看四家資金與每局派彩紀錄；單機在開始前、聯機由房主在大廳設定起始資金、圈子數、金額倍數、起糊（預設 3 番，可選 0–10 番）與上限番數（預設 10 番，亦可選無限）。累計番數會記錄在本機瀏覽器中。</li>
         <li>有人破產或打完指定圈數即結束，資金最多者勝；莊家胡牌可連莊。</li>
@@ -311,6 +311,7 @@
         <b id="musicVolumeValue">100%</b>
       </span>
     </label>
+    <p id="settingsNote" class="settings-note">注意：可能需要關閉靜音模式才聽得到語音廣播，部分裝置的音量滑桿可能無法作用。</p>
     <div class="settings-quit">
       <button id="restartBtn" class="quit-btn" type="button">重來這局</button>
       <button id="settingsQuit" class="quit-btn" type="button">回到主選單</button>
@@ -353,6 +354,6 @@
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js" onerror="this.onerror=null;this.src='js/vendor/peerjs.min.js'"></script>
-<script type="module" src="js/game.js?v=1.4.104"></script>
+<script type="module" src="js/game.js?v=1.4.105"></script>
 </body>
 </html>
