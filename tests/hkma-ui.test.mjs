@@ -42,11 +42,24 @@ test('玩法說明有三個分頁按鈕與三個面板', () => {
   assert.doesNotMatch(html, /前往番數表/);
 });
 
-test('HUD 顯示本場起糊番數', () => {
+test('HUD 起糊與 AI 表情已接上', () => {
   const game = readFileSync('js/game.js', 'utf8');
   assert.match(html, /id="minFanCount"/);
   assert.match(game, /ui\.minFanCount/);
   assert.match(game, /match\.minFan \?\? game\.matchSetup\?\.minFan \?\? 0/);
+  for (const name of [
+    'AI_DISCARD_EMOJI_CHANCE', 'AI_WIN_EMOJI_CHANCE', 'DRAW_EMOJI_CHANCE',
+    'MATCH_END_EMOJI_CHANCE', 'BIG_WIN_AI_EMOJI_CHANCE', 'AI_MELD_EMOJI_CHANCE',
+  ]) {
+    assert.match(game, new RegExp(name));
+  }
+  assert.match(game, /function aiEmoji\(/);
+  assert.match(game, /function maybeAiEmoji\(/);
+  assert.match(game, /function emitAiReactions\(/);
+  assert.match(game, /function recordRoundResult\([\s\S]*?emitAiReactions\(\{/);
+  assert.match(game, /function applyAiMeldClaim\([\s\S]*?maybeAiEmoji\(/);
+  assert.match(game, /game\.mode !== 'multi' \|\| net\.isHost/);
+  assert.match(game, /net\.broadcast\(\{ t: 'emoji', seat, emoji \}\)/);
 });
 
 test('玩法說明清單可多於六項且保留固定入口', () => {
