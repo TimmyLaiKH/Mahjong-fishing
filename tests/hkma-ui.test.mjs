@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.131/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.131/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.132/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.132/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.131/);
-  assert.match(readme, /\?v=1\.4\.131/);
-  assert.match(changelog, /^## 1\.4\.131/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.132/);
+  assert.match(readme, /\?v=1\.4\.132/);
+  assert.match(changelog, /^## 1\.4\.132/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -484,9 +484,11 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(rodDraw128, /AIM_PREVIEW_LEN/);
   assert.match(game, /AIM_PREVIEW_LEN = 50;/);
   assert.match(rodDraw128, /game\.state === S\.AWAIT_CAST/);
-  assert.match(rodDraw128, /hookPositionFor\(game\.rodAngle, previewLen, game\.seat\)/);
+  // 1.4.132: line + hook hang from the cat and sway on their own clock.
+  assert.match(rodDraw128, /Math\.sin\(seconds \/ 1\.2\) \* 0\.3/);
+  assert.match(rodDraw128, /lineStartX = game\.state === S\.AWAIT_CAST/);
   // 1.4.131: hook glyph rotates to follow the fishing line / aim direction.
-  assert.match(rodDraw128, /Math\.atan2\(hookY - visTipY, hookX - visTipX\)/);
+  assert.match(rodDraw128, /Math\.atan2\(hookY - lineStartY, hookX - lineStartX\)/);
   assert.match(rodDraw128, /ctx\.translate\(hookX, hookY\)/);
   assert.match(rodDraw128, /ctx\.rotate\(lineAngle - Math\.PI \/ 2\)/);
 
