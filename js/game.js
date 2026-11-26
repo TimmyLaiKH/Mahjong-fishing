@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.130';
+} from './rules.js?v=1.4.131';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -5682,7 +5682,12 @@ function drawRod() {
   ctx.font = '56px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('🪝', hookX, hookY);
+  const lineAngle = Math.atan2(hookY - visTipY, hookX - visTipX);
+  ctx.save();
+  ctx.translate(hookX, hookY);
+  ctx.rotate(lineAngle - Math.PI / 2);
+  ctx.fillText('🪝', 0, 0);
+  ctx.restore();
   // Show whatever the hook has caught, including flowers and kong replacements.
   if (game.lastDraw && (game.state === S.REELING || game.state === S.RESOLVE_DRAW)) {
     const tileY = Math.min(hookY + 100, WORLD_H - TILE_H / 2 - 8);
