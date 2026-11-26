@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.133';
+} from './rules.js?v=1.4.134';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -5618,11 +5618,8 @@ function drawPlayerAvatars() {
 }
 
 function drawRod() {
-  const { baseX } = hookPosition();
+  const { baseX, hookX: gameHookX, hookY: gameHookY } = hookPosition();
   const previewLen = game.state === S.AWAIT_CAST ? AIM_PREVIEW_LEN : game.hookLen;
-  const { hookX, hookY } = game.state === S.AWAIT_CAST
-    ? hookPositionFor(game.rodAngle, previewLen, game.seat)
-    : hookPosition();
   // The cat holds the handle at the waterline; only the drawing moves, while
   // hook/tip/catch geometry and host sync stay exactly as before.
   const handleY = WATER_TOP;
@@ -5643,13 +5640,24 @@ function drawRod() {
     visTipX = baseX + lx * Math.cos(theta) - ly * Math.sin(theta);
     visTipY = handleY + lx * Math.sin(theta) + ly * Math.cos(theta);
   }
+  let hookX = gameHookX;
+  let hookY = gameHookY;
+  if (game.state === S.AWAIT_CAST) {
+    // The line and hook hang from the rod tip and sway on their own clock so
+    // players can aim; the rod swing is completely independent. Visual only —
+    // catch detection and multiplayer sync still use the computed game hook.
+    const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
+    const pendulum = Math.sin(seconds / 1.2) * 0.3;
+    hookX = visTipX + Math.sin(pendulum) * previewLen;
+    hookY = visTipY + Math.cos(pendulum) * previewLen;
+  }
   // One hook only: the line is drawn straight to the same (hookX, hookY) that
   // catch detection and multiplayer sync use, so it always tracks hookLen and
   // never flips sides when the rod swings through vertical.
   ctx.save();
   ctx.lineCap = 'round';
-  // The fishing line always runs from the visible rod tip to the hook, which
-  // swings with the rod while aiming so players can see where it points.
+  // The fishing line runs from the visible rod tip to the hook; during aiming
+  // the hook sways like a pendulum on its own clock, independent of the rod.
   ctx.strokeStyle = '#e8f4f8';
   ctx.lineWidth = 3;
   ctx.beginPath();
