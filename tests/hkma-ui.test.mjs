@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.128/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.128/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.129/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.129/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.128/);
-  assert.match(readme, /\?v=1\.4\.128/);
-  assert.match(changelog, /^## 1\.4\.128/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.129/);
+  assert.match(readme, /\?v=1\.4\.129/);
+  assert.match(changelog, /^## 1\.4\.129/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
