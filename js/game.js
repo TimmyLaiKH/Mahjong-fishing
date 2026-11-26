@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.132';
+} from './rules.js?v=1.4.133';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -5618,19 +5618,11 @@ function drawPlayerAvatars() {
 }
 
 function drawRod() {
-  const { baseX, hookX: gameHookX, hookY: gameHookY } = hookPosition();
+  const { baseX } = hookPosition();
   const previewLen = game.state === S.AWAIT_CAST ? AIM_PREVIEW_LEN : game.hookLen;
-  let hookX = gameHookX;
-  let hookY = gameHookY;
-  if (game.state === S.AWAIT_CAST) {
-    // The line and hook hang from the cat and sway like a pendulum on their
-    // own clock, independent of the rod swing. Visual only; catch/sync still
-    // use the computed game hook above.
-    const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
-    const pendulum = Math.sin(seconds / 1.2) * 0.3;
-    hookX = baseX + Math.sin(pendulum) * previewLen;
-    hookY = WATER_TOP + Math.cos(pendulum) * previewLen;
-  }
+  const { hookX, hookY } = game.state === S.AWAIT_CAST
+    ? hookPositionFor(game.rodAngle, previewLen, game.seat)
+    : hookPosition();
   // The cat holds the handle at the waterline; only the drawing moves, while
   // hook/tip/catch geometry and host sync stay exactly as before.
   const handleY = WATER_TOP;
@@ -5656,14 +5648,12 @@ function drawRod() {
   // never flips sides when the rod swings through vertical.
   ctx.save();
   ctx.lineCap = 'round';
-  // While waiting to cast, the line hangs from the cat; otherwise it runs
-  // from the rod tip to the single hook used for catching.
+  // The fishing line always runs from the visible rod tip to the hook, which
+  // swings with the rod while aiming so players can see where it points.
   ctx.strokeStyle = '#e8f4f8';
   ctx.lineWidth = 3;
   ctx.beginPath();
-  const lineStartX = game.state === S.AWAIT_CAST ? baseX : visTipX;
-  const lineStartY = game.state === S.AWAIT_CAST ? WATER_TOP : visTipY;
-  ctx.moveTo(lineStartX, lineStartY);
+  ctx.moveTo(visTipX, visTipY);
   ctx.lineTo(hookX, hookY);
   ctx.stroke();
   if (rodImage?.complete && rodImage.naturalWidth) {
@@ -5693,7 +5683,7 @@ function drawRod() {
   ctx.font = '56px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const lineAngle = Math.atan2(hookY - lineStartY, hookX - lineStartX);
+  const lineAngle = Math.atan2(hookY - visTipY, hookX - visTipX);
   ctx.save();
   ctx.translate(hookX, hookY);
   ctx.rotate(lineAngle - Math.PI / 2);
