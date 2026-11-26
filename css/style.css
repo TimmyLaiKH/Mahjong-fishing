@@ -825,3 +825,12 @@ td:last-child { min-width: 220px; }
 }
 
 .score-match-info { margin: 6px 0 10px; color: #000; font-size: 0.9rem; line-height: 1.5; }
+
+/* Minimal retro HK vibe: cream / ink-black / vermilion, real texture */
+body { background-color: #fffaf0; background-image: repeating-linear-gradient(90deg, rgba(140,29,29,.018) 0 2px, transparent 2px 18px), repeating-linear-gradient(0deg, rgba(26,26,26,.014) 0 1px, transparent 1px 16px); }
+.menu-title-row { display: flex; align-items: center; justify-content: center; gap: 16px; }
+.lucky-cat { display: inline-flex; align-items: center; justify-content: center; }
+.lucky-cat img { width: 64px; height: 64px; object-fit: contain; animation: lucky-cat-wave 1.8s ease-in-out infinite; transform-origin: 70% 80%; filter: drop-shadow(0 2px 3px rgba(0,0,0,.18)); }
+@keyframes lucky-cat-wave { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-7deg); } }
+.menu-card h1.menu-title { color: #1a1a1a; }
+.menu-card .chip.primary { background: #8c1d1d; }
