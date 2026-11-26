@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.127';
+} from './rules.js?v=1.4.128';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -110,6 +110,7 @@ const HOOK_EDGE_MARGIN = 20;
 const TILE_H = 176;
 const ROD_BASE_Y = 4;
 const ROD_LENGTH = 86;
+const AIM_PREVIEW_LEN = 360;
 const MAX_FISH = 12;
 const SPAWN_INTERVAL = 1.2;
 /** About one fish in seven briefly flashes its back as a memory test. */
@@ -5617,7 +5618,11 @@ function drawPlayerAvatars() {
 }
 
 function drawRod() {
-  const { baseX, hookX, hookY } = hookPosition();
+  const { baseX } = hookPosition();
+  const previewLen = game.state === S.AWAIT_CAST ? AIM_PREVIEW_LEN : game.hookLen;
+  const { hookX, hookY } = game.state === S.AWAIT_CAST
+    ? hookPositionFor(game.rodAngle, previewLen, game.seat)
+    : hookPosition();
   // The cat holds the handle at the waterline; only the drawing moves, while
   // hook/tip/catch geometry and host sync stay exactly as before.
   const handleY = WATER_TOP;

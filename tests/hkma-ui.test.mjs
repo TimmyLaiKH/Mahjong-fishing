@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.127/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.127/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.128/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.128/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.127/);
-  assert.match(readme, /\?v=1\.4\.127/);
-  assert.match(changelog, /^## 1\.4\.127/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.128/);
+  assert.match(readme, /\?v=1\.4\.128/);
+  assert.match(changelog, /^## 1\.4\.128/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -476,6 +476,15 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(rodDraw, /Math\.PI \+ 0\.62/);
 
   // 1.4.122: fishing line attaches to the actual rendered rod tip.
+  // 1.4.128: while waiting to cast, the line/hook preview swings with the rod.
+  const rodDraw128 = game.slice(
+    game.indexOf('function drawRod('),
+    game.indexOf('function draw(dt)'),
+  );
+  assert.match(rodDraw128, /AIM_PREVIEW_LEN/);
+  assert.match(rodDraw128, /game\.state === S\.AWAIT_CAST/);
+  assert.match(rodDraw128, /hookPositionFor\(game\.rodAngle, previewLen, game\.seat\)/);
+
   const rodDraw122 = game.slice(
     game.indexOf('function drawRod('),
     game.indexOf('function draw(dt)'),
