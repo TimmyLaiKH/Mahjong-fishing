@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.117/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.117/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.118/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.118/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.117/);
-  assert.match(readme, /\?v=1\.4\.117/);
-  assert.match(changelog, /^## 1\.4\.117/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.118/);
+  assert.match(readme, /\?v=1\.4\.118/);
+  assert.match(changelog, /^## 1\.4\.118/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -428,6 +428,13 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(css117, /@keyframes lucky-cat-wave/);
   assert.match(css117, /\.lucky-cat img/);
   assert.match(css117, /#8c1d1d/);
+
+  // 1.4.118: clearer lucky cat asset and cat on the LEFT of the menu title.
+  const titleRow = html.slice(
+    html.indexOf('class="menu-title-row"'),
+    html.indexOf('</div>', html.indexOf('class="menu-title-row"')),
+  );
+  assert.ok(titleRow.indexOf('class="lucky-cat"') < titleRow.indexOf('class="menu-title"'));
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
