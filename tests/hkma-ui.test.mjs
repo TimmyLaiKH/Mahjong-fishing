@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.116/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.116/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.117/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.117/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.116/);
-  assert.match(readme, /\?v=1\.4\.116/);
-  assert.match(changelog, /^## 1\.4\.116/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.117/);
+  assert.match(readme, /\?v=1\.4\.117/);
+  assert.match(changelog, /^## 1\.4\.117/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -418,6 +418,16 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(html, /<h3>計分<\/h3>/);
   const css114 = readFileSync('css/style.css', 'utf8');
   assert.match(css114, /\.score-match-info \{[^}]*color: #000/);
+
+  // 1.4.117: AI-generated lucky cat as favicon and menu mascot, no incense.
+  assert.match(html, /rel="icon" href="assets\/icons\/maneki-neko-gemini\.png"/);
+  assert.match(html, /class="lucky-cat"/);
+  assert.match(html, /src="assets\/icons\/maneki-neko-gemini\.png"/);
+  assert.doesNotMatch(html, /id="incense"/);
+  const css117 = readFileSync('css/style.css', 'utf8');
+  assert.match(css117, /@keyframes lucky-cat-wave/);
+  assert.match(css117, /\.lucky-cat img/);
+  assert.match(css117, /#8c1d1d/);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
