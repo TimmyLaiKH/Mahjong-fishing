@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.124';
+} from './rules.js?v=1.4.125';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -2454,7 +2454,7 @@ function aiTick(dt) {
       // Check for contact on every frame on the way down (just like the
       // player), but keep extending to the sea floor when nothing is caught so
       // the ghost rod visibly reaches the bottom corners.
-      const maxLen = maxHookLength(rod.angle);
+      const maxLen = maxHookLength(rod.angle, state.seat);
       rod.hookLen = Math.min(maxLen, rod.hookLen + 980 * hookRate * dt);
       aiCheckCatch(state);
       if (rod.phase === 'casting' && rod.hookLen >= maxLen) {
@@ -5254,9 +5254,12 @@ const MAX_SWING_ANGLE = (85 * Math.PI) / 180;
 /** Line length at which the hook reaches the floor or the nearest side edge,
  *  whichever comes first. Keeping both caps lets a nearly sideways cast stop
  *  near the top of the sea instead of shooting off screen. */
-function maxHookLength(angle = game.rodAngle) {
+function maxHookLength(angle = game.rodAngle, seat = game.seat) {
   const toFloor = (WORLD_H - ROD_BASE_Y) / Math.max(Math.cos(angle), 0.01) - ROD_LENGTH;
-  const sideways = Math.max(0, view.width / 2 - TILE_W / 2);
+  const baseX = view.width / 2 + boatOffset(seat);
+  const sideways = Math.sin(angle) >= 0
+    ? Math.max(0, view.width - TILE_W / 2 - baseX)
+    : Math.max(0, baseX - TILE_W / 2);
   const toSide = Math.abs(Math.sin(angle)) > 0.001
     ? sideways / Math.abs(Math.sin(angle)) - ROD_LENGTH
     : Infinity;
@@ -5287,7 +5290,10 @@ function hookPositionFor(angle, hookLen, seat = game.seat) {
   // Keep the hook at or below the water surface; with the rod lifted above the
   // cat, the old raw tip could otherwise put the hook floating in the sky while
   // the rod swings. Fish live below WATER_TOP, so in-water catches are unchanged.
-  const hookY = Math.max(WATER_TOP, tipY + Math.cos(angle) * hookLen);
+  const hookY = Math.max(WATER_TOP, Math.min(
+    WORLD_H - TILE_H / 2,
+    tipY + Math.cos(angle) * hookLen,
+  ));
   return { baseX, tipX, tipY, hookX, hookY };
 }
 
@@ -5647,8 +5653,12 @@ function drawRod() {
   const lineDirX = perpX * Math.cos(tilt) - (rodDirX / rodDirLen) * Math.sin(tilt);
   const lineDirY = perpY * Math.cos(tilt) - (rodDirY / rodDirLen) * Math.sin(tilt);
   const lineLen = Math.hypot(hookX - visTipX, hookY - visTipY);
-  const visHookX = visTipX + lineDirX * lineLen;
-  const visHookY = Math.max(WATER_TOP, visTipY + lineDirY * lineLen);
+  const visHookX = Math.max(TILE_W / 2, Math.min(
+    view.width - TILE_W / 2, visTipX + lineDirX * lineLen,
+  ));
+  const visHookY = Math.max(WATER_TOP, Math.min(
+    WORLD_H - TILE_H / 2, visTipY + lineDirY * lineLen,
+  ));
   ctx.save();
   ctx.lineCap = 'round';
   // Fishing line runs from the rod tip to the visual hook near water level.
@@ -5797,7 +5807,35 @@ function gameLoop(timestamp) {
     if (game.state === S.CASTING) {
       const maxLen = maxHookLength();
       game.hookLen += 980 * hookRate * dt;
-      if (game.hookLen >= maxLen) {
+      const hook = hookPosition();
+      const hitEdge = hook.hookY >= WORLD_H - TILE_H / 2
+        || hook.hookX <= TILE_W / 2
+        || hook.hookX >= view.width - TILE_W / 2;
+      // The drawn 75-degree hook can reach a side before the computed one.
+      // Only check it once the cast is under way so a boat near an edge does
+      // not reel back on the very first frame.
+      let hitVisualEdge = false;
+      if (game.hookLen > 100) {
+        const vBaseX = view.width / 2 + boatOffset(game.seat);
+        const vRodLen = ROD_LENGTH * (200 / 110);
+        const vTipX = vBaseX + Math.sin(game.rodAngle) * vRodLen;
+        const vTipY = WATER_TOP - Math.cos(game.rodAngle) * vRodLen;
+        const vDirX = vTipX - vBaseX;
+        const vDirY = vTipY - WATER_TOP;
+        const vDirLen = Math.hypot(vDirX, vDirY) || 1;
+        let vPerpX = -vDirY / vDirLen;
+        let vPerpY = vDirX / vDirLen;
+        if (vPerpY < 0) { vPerpX = -vPerpX; vPerpY = -vPerpY; }
+        const tilt = Math.PI / 2 - 75 * Math.PI / 180;
+        const vLineX = vPerpX * Math.cos(tilt) - (vDirX / vDirLen) * Math.sin(tilt);
+        const vLineY = vPerpY * Math.cos(tilt) - (vDirY / vDirLen) * Math.sin(tilt);
+        const vLineLen = Math.hypot(hook.hookX - vTipX, hook.hookY - vTipY);
+        const vhx = vTipX + vLineX * vLineLen;
+        const vhy = vTipY + vLineY * vLineLen;
+        hitVisualEdge = vhx <= TILE_W / 2 || vhx >= view.width - TILE_W / 2
+          || vhy >= WORLD_H - TILE_H / 2;
+      }
+      if (game.hookLen >= maxLen || hitEdge || hitVisualEdge) {
         game.hookLen = maxLen;
         setState(S.REELING);
       } else checkCatch();
