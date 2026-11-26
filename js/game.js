@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.138';
+} from './rules.js?v=1.4.139';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -5516,28 +5516,68 @@ function drawFish() {
 }
 
 function drawGhostRod(seat, position, phase, caughtTile = null, label = '') {
-  const baseX = view.width / 2;
-  const tipX = baseX + (position.hookX - baseX) * 0.08;
-  const tipY = ROD_BASE_Y + (position.hookY - ROD_BASE_Y) * 0.08;
+  // Opponents ride the same cat-on-boat and hold the same rod as the player,
+  // drawn transparent. Their boat rides the seat's own host-clock drift, so
+  // every device agrees on where it is without a new network message.
+  const baseX = view.width / 2 + boatOffset(seat);
+  const handleY = WATER_TOP;
+  const rodScale = 200 / 110;
+  const rodLen = ROD_LENGTH * rodScale;
+  const angle = Math.atan2(-Math.cos(ROD_HOLD_ANGLE), Math.sin(ROD_HOLD_ANGLE)) - Math.PI;
+  const theta = angle + Math.PI + 0.62;
+  let visTipX = baseX + Math.sin(ROD_HOLD_ANGLE) * rodLen;
+  let visTipY = handleY - Math.cos(ROD_HOLD_ANGLE) * rodLen;
+  let s = 0;
+  if (rodImage?.complete && rodImage.naturalWidth) {
+    s = (110 * rodScale) / rodImage.naturalWidth;
+    const lx = (1180 - 323) * s;
+    const ly = (54 - 727) * s;
+    visTipX = baseX + lx * Math.cos(theta) - ly * Math.sin(theta);
+    visTipY = handleY + lx * Math.sin(theta) + ly * Math.cos(theta);
+  }
   ctx.save();
   ctx.globalAlpha = 0.3;
   ctx.lineCap = 'round';
-  ctx.strokeStyle = seat % 2 ? '#ffd27f' : '#a9e5ff';
-  ctx.lineWidth = 8;
-  ctx.beginPath();
-  ctx.moveTo(baseX, ROD_BASE_Y);
-  ctx.lineTo(tipX, tipY);
-  ctx.stroke();
+  // Line from the visible rod tip straight to this seat's live hook position.
   ctx.strokeStyle = '#e8f4f8';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(tipX, tipY);
+  ctx.moveTo(visTipX, visTipY);
   ctx.lineTo(position.hookX, position.hookY);
   ctx.stroke();
-  ctx.font = '40px sans-serif';
+  if (rodImage?.complete && rodImage.naturalWidth) {
+    const w = 110 * rodScale;
+    const h = rodImage.naturalHeight * s;
+    const hx = 323 * s;
+    const hy = 727 * s;
+    ctx.save();
+    ctx.translate(baseX, handleY);
+    ctx.rotate(theta);
+    ctx.drawImage(rodImage, -hx, -hy, w, h);
+    ctx.restore();
+  } else {
+    ctx.strokeStyle = seat % 2 ? '#ffd27f' : '#a9e5ff';
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(baseX, handleY);
+    ctx.lineTo(visTipX, visTipY);
+    ctx.stroke();
+  }
+  // Draw the cat last so the rod appears tucked into its paws, like the player.
+  if (catBoatImage?.complete && catBoatImage.naturalWidth) {
+    const cw = 150;
+    const ch = cw * catBoatImage.naturalHeight / catBoatImage.naturalWidth;
+    ctx.drawImage(catBoatImage, baseX - cw / 2, handleY - ch / 2, cw, ch);
+  }
+  ctx.font = '56px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('🪝', position.hookX, position.hookY);
+  const lineAngle = Math.atan2(position.hookY - visTipY, position.hookX - visTipX);
+  ctx.save();
+  ctx.translate(position.hookX, position.hookY);
+  ctx.rotate(lineAngle - Math.PI / 2);
+  ctx.fillText('🪝', 0, 0);
+  ctx.restore();
   // Show the grabbed tile riding the hook back up, just like the player's rod.
   if (caughtTile && phase === 'reeling') {
     const tileY = Math.min(position.hookY + 100, WORLD_H - TILE_H / 2 - 8);
@@ -5591,39 +5631,6 @@ function renderGhostRods() {
     drawGhostRod(value, { hookX: hook.renderX * view.width, hookY: hook.renderY }, hook.phase,
       hook.caught, seatLabel(value));
   }
-}
-
-/** Four small player avatars beside the rod, in seat order (0–3). */
-function drawPlayerAvatars() {
-  const baseX = view.width / 2;
-  const spread = Math.min(160, view.width / 10);
-  const offsets = [-spread, -spread * 0.45, spread * 0.45, spread];
-  const y = 52;
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  for (let seat = 0; seat < 4; seat += 1) {
-    const player = game.players.find((item) => item?.seat === seat);
-    const empty = !player || player.isEmpty;
-    const x = baseX + offsets[seat];
-      const boatX = Math.max(30, Math.min(view.width - 30, x + boatOffset(seat)));
-      if (catBoatImage?.complete && catBoatImage.naturalWidth) {
-        ctx.globalAlpha = empty ? 0.3 : 1;
-        const w = 58;
-        const h = w * catBoatImage.naturalHeight / catBoatImage.naturalWidth;
-        ctx.drawImage(catBoatImage, boatX - w / 2, WATER_TOP - h / 2, w, h);
-      } else {
-        ctx.fillStyle = AVATAR_COLORS[seat];
-        ctx.globalAlpha = empty ? 0.3 : 1;
-        ctx.beginPath();
-        ctx.arc(boatX, WATER_TOP, 26, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.font = '34px sans-serif';
-        ctx.fillStyle = '#06384a';
-        ctx.fillText(AVATAR_ICONS[seat], boatX, WATER_TOP + 1);
-      }
-  }
-  ctx.restore();
 }
 
 function drawRod() {
@@ -5721,7 +5728,6 @@ function draw(dt) {
   ctx.setTransform(view.dpr * view.scale, 0, 0, view.dpr * view.scale, 0, 0);
   drawBackground();
   drawFish();
-  drawPlayerAvatars();
   renderGhostRods();
   drawRod();
   positionClaimBar();
