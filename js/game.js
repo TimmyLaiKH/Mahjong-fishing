@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.122';
+} from './rules.js?v=1.4.123';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -5610,7 +5610,7 @@ function drawPlayerAvatars() {
 }
 
 function drawRod() {
-  const { baseX, hookX, hookY } = hookPosition();
+  const { baseX } = hookPosition();
   // The cat holds the handle at the waterline; only the drawing moves, while
   // hook/tip/catch geometry and host sync stay exactly as before.
   const handleY = WATER_TOP;
@@ -5631,14 +5631,24 @@ function drawRod() {
     visTipX = baseX + lx * Math.cos(theta) - ly * Math.sin(theta);
     visTipY = handleY + lx * Math.sin(theta) + ly * Math.cos(theta);
   }
+  // Visual hook hangs ~80% of the rod length, almost perpendicular to the rod.
+  // Gameplay catch/sync keep using the real hook from hookPosition().
+  const rodDirX = visTipX - baseX;
+  const rodDirY = visTipY - handleY;
+  const rodDirLen = Math.hypot(rodDirX, rodDirY) || 1;
+  let perpX = -rodDirY / rodDirLen;
+  let perpY = rodDirX / rodDirLen;
+  if (perpY < 0) { perpX = -perpX; perpY = -perpY; }
+  const visHookX = visTipX + perpX * (0.8 * rodLen);
+  const visHookY = Math.max(WATER_TOP, visTipY + perpY * (0.8 * rodLen));
   ctx.save();
   ctx.lineCap = 'round';
-  // Fishing line runs from the actual rod tip down to the computed hook.
+  // Fishing line runs from the rod tip to the visual hook near water level.
   ctx.strokeStyle = '#e8f4f8';
   ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(visTipX, visTipY);
-  ctx.lineTo(hookX, hookY);
+  ctx.lineTo(visHookX, visHookY);
   ctx.stroke();
   if (rodImage?.complete && rodImage.naturalWidth) {
     const w = 110 * rodScale;
@@ -5667,11 +5677,11 @@ function drawRod() {
   ctx.font = '56px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('🪝', hookX, hookY);
+  ctx.fillText('🪝', visHookX, visHookY);
   // Show whatever the hook has caught, including flowers and kong replacements.
   if (game.lastDraw && (game.state === S.REELING || game.state === S.RESOLVE_DRAW)) {
-    const tileY = Math.min(hookY + 100, WORLD_H - TILE_H / 2 - 8);
-    drawTile(ctx, game.lastDraw.id, hookX, tileY, TILE_W, TILE_H, {
+    const tileY = Math.min(visHookY + 100, WORLD_H - TILE_H / 2 - 8);
+    drawTile(ctx, game.lastDraw.id, visHookX, tileY, TILE_W, TILE_H, {
       images: game.images, shadow: true,
     });
   }

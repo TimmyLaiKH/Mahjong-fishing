@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.122/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.122/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.123/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.123/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.122/);
-  assert.match(readme, /\?v=1\.4\.122/);
-  assert.match(changelog, /^## 1\.4\.122/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.123/);
+  assert.match(readme, /\?v=1\.4\.123/);
+  assert.match(changelog, /^## 1\.4\.123/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -483,6 +483,17 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(rodDraw122, /lx = \(1180 - 323\) \* s/);
   assert.match(rodDraw122, /ly = \(54 - 727\) \* s/);
   assert.match(rodDraw122, /Math\.cos\(theta\) - ly \* Math\.sin\(theta\)/);
+
+  // 1.4.123: visual line is ~80% of rod length and nearly perpendicular.
+  const rodDraw123 = game.slice(
+    game.indexOf('function drawRod('),
+    game.indexOf('function draw(dt)'),
+  );
+  assert.match(rodDraw123, /0\.8 \* rodLen/);
+  assert.match(rodDraw123, /perpX/);
+  assert.match(rodDraw123, /perpY/);
+  assert.match(rodDraw123, /visHookX/);
+  assert.match(rodDraw123, /visHookY/);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
