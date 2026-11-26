@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.113';
+} from './rules.js?v=1.4.114';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -1280,6 +1280,7 @@ function declareKong(kind, sourceKey = `${game.seat}:kong:${kind}:${game.nextUid
       deadline: Date.now() + MULTI_CLAIM_SECONDS * 1000,
       priorityGraceUntil: Date.now() + PRIORITY_GRACE_MS,
       thirteenSeats: thirteenSeatsForTile(kind, game.seat),
+      robPossible: canRobKong(kind, game.seat, true),
     });
   }
   if (game.pendingKongs.has(sourceKey)) setStatus('等待其他玩家是否搶槓…');
@@ -1528,11 +1529,33 @@ function makeKongMeld(tileId, sourceKey, open = false) {
   };
 }
 
+/** A kong rob window is only meaningful if another seat can actually rob it.
+ *  Host/solo knows the AI hands; with human guests still in the room we keep the
+ *  window because their private hands are not visible to the host. */
+function canRobKong(tileId, declarerSeat, concealed = false) {
+  if (thirteenSeatsForTile(tileId, declarerSeat).length) return true;
+  if (concealed) return false; // 暗槓 only 十三么 can rob, already covered above
+  const humans = game.players.filter((player) => player && !player.isEmpty
+    && !player.isBot && player.seat !== declarerSeat);
+  if (humans.length) return true;
+  const options = { discarderSeat: declarerSeat, qianggang: true };
+  if (game.seat !== declarerSeat && qualifyingWin(claimWinResult(tileId, null, options))) return true;
+  for (const seat of Object.keys(game.aiStates ?? {})) {
+    const aiSeat = Number(seat);
+    if (aiSeat === declarerSeat) continue;
+    if (qualifyingWin(claimWinResultFor(aiSeat, tileId, null, options))) return true;
+  }
+  return false;
+}
+
 function beginKongOpportunity({ seat, tileId, concealed = false, sourceKey,
   removed = [], meld = null, lastDraw = null, restoreDiscard = concealed,
   deadline = Date.now() + MULTI_CLAIM_SECONDS * 1000,
-  priorityGraceUntil = Date.now() + PRIORITY_GRACE_MS, thirteenSeats = null }) {
+  priorityGraceUntil = Date.now() + PRIORITY_GRACE_MS, thirteenSeats = null,
+  robPossible = null }) {
   if (!sourceKey || game.cancelledKongKeys.has(sourceKey)) return;
+  if (robPossible === null) robPossible = canRobKong(tileId, seat, concealed);
+  if (!robPossible) return;
   const already = game.pendingKongs.has(sourceKey);
   if (!already) {
     game.pendingKongs.set(sourceKey, {
@@ -4109,6 +4132,7 @@ function applyClaimResult(msg) {
         meld: msg.meld, restoreDiscard: false,
         deadline: msg.deadline, priorityGraceUntil: msg.priorityGraceUntil,
         thirteenSeats: msg.thirteenSeats ?? null,
+        robPossible: msg.robPossible,
       });
     }
   }
@@ -4809,6 +4833,7 @@ function wireNetEvents() {
         deadline: msg.deadline,
         priorityGraceUntil: msg.priorityGraceUntil,
         thirteenSeats: Array.isArray(msg.thirteenSeats) ? msg.thirteenSeats : null,
+        robPossible: msg.robPossible,
       });
     }
   });
@@ -5949,11 +5974,7 @@ function updateScoreUI() {
     if (!match) {
       ui.scoreRoundInfo.textContent = '尚未開始';
     } else {
-      const pieces = [
-        roundInfoText(),
-        `金額倍數 ${match.base}×`,
-        `起糊 ${match.minFan ?? game.matchSetup?.minFan ?? 0} 番`,
-      ];
+      const pieces = [];
       if (match.repeatCount) pieces.push(`連莊 ${match.repeatCount}`);
       if (match.over) pieces.push('比賽結束');
       ui.scoreRoundInfo.textContent = pieces.join('・');
