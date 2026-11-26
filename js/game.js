@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.114';
+} from './rules.js?v=1.4.115';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -31,7 +31,7 @@ const ui = {
   roundInfo: el('roundInfo'), seatWind: el('seatWind'),
   scoreBtn: el('scoreBtn'), moneyCount: el('moneyCount'), minFanCount: el('minFanCount'),
   emojiBtn: el('emojiBtn'), emojiPanel: el('emojiPanel'), emojiLayer: el('emojiLayer'),
-  roomEmojiBtn: el('roomEmojiBtn'),
+  roomEmojiBtn: el('roomEmojiBtn'), roomHelpBtn: el('roomHelpBtn'),
   scorePanel: el('scorePanel'), scoreRoundInfo: el('scoreRoundInfo'),
   scoreStandings: el('scoreStandings'), scoreHistory: el('scoreHistory'),
   scoreMatchInfo: el('scoreMatchInfo'),
@@ -5974,7 +5974,11 @@ function updateScoreUI() {
     if (!match) {
       ui.scoreRoundInfo.textContent = '尚未開始';
     } else {
-      const pieces = [];
+      const pieces = [
+        roundInfoText(),
+        `金額倍數 ${match.base}×`,
+        `起糊 ${match.minFan ?? game.matchSetup?.minFan ?? 0} 番`,
+      ];
       if (match.repeatCount) pieces.push(`連莊 ${match.repeatCount}`);
       if (match.over) pieces.push('比賽結束');
       ui.scoreRoundInfo.textContent = pieces.join('・');
@@ -6797,6 +6801,10 @@ function wireInput() {
   el('settingsBtn').addEventListener('click', () => openSettingsPanel());
   ui.emojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.emojiBtn));
   ui.roomEmojiBtn?.addEventListener('click', () => toggleEmojiPanel(ui.roomEmojiBtn));
+  ui.roomHelpBtn?.addEventListener('click', () => {
+    switchHelpTab('rules');
+    openModal('helpPanel');
+  });
   document.addEventListener('click', (event) => {
     const button = event.target.closest?.('button');
     if (button && !button.disabled && !speechBusy()) music.click();
