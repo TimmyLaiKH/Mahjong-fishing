@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.136';
+} from './rules.js?v=1.4.137';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -112,7 +112,11 @@ const ROD_BASE_Y = 4;
 const ROD_LENGTH = 86;
 const AIM_PREVIEW_LEN = 80;
 // The drawn rod is held still on the right; the line+hook pendulum is the only motion.
-const ROD_HOLD_ANGLE = (80 * Math.PI) / 180;
+const ROD_HOLD_ANGLE = (60 * Math.PI) / 180;
+function aimPendulum() {
+  const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
+  return Math.sin(seconds / 1.2) * 1.4;
+}
 const MAX_FISH = 12;
 const SPAWN_INTERVAL = 1.2;
 /** About one fish in seven briefly flashes its back as a memory test. */
@@ -1086,6 +1090,8 @@ function startCast() {
     setStatus('等待其他玩家是否搶槓…');
     return;
   }
+  // Launch the hook along the visible aim direction from the pendulum.
+  game.rodAngle = aimPendulum();
   game.hookLen = 0;
   // Lock claims from the moment the hook drops: a grabbed tile must be
   // discarded before 碰／上／明槓, even while it is still on the line.
@@ -5648,8 +5654,7 @@ function drawRod() {
     // The line and hook hang from the rod tip and sway on their own clock so
     // players can aim; the rod swing is completely independent. Visual only —
     // catch detection and multiplayer sync still use the computed game hook.
-    const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
-    const pendulum = Math.sin(seconds / 1.2) * 1.4;
+    const pendulum = aimPendulum();
     hookX = visTipX + Math.sin(pendulum) * previewLen;
     hookY = visTipY + Math.cos(pendulum) * previewLen;
   }
