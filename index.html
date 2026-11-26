@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/style.css?v=1.4.112" />
+<link rel="stylesheet" href="css/style.css?v=1.4.113" />
 </head>
 <body>
 <canvas id="game" aria-label="釣魚遊戲畫面"></canvas>
@@ -38,13 +38,11 @@
     </div>
     <div id="timer" class="timer" aria-label="剩餘時間">05:00</div>
     <div class="hud-right">
-      <button id="scoreBtn" class="chip" type="button">計分</button>
+      <button id="scoreBtn" class="chip" type="button">本局信息</button>
       <div class="round-block">
         <div id="roundInfo" class="round-info" aria-label="場次"></div>
         <div id="counters" class="counters">
-          <span>門風 <b id="seatWind">南</b></span>
           <span>資金 <b id="moneyCount">—</b></span>
-          <span>起糊 <b id="minFanCount">3 番</b></span>
         </div>
       </div>
     </div>
@@ -53,7 +51,7 @@
   <div id="status" role="status" aria-live="polite"></div>
   <div id="toast" role="status" aria-live="polite"></div>
   <section id="meldPanel" class="meld-panel" hidden>
-    <div class="meld-title">各家副露</div>
+    <div class="meld-title">各家(副露)</div>
     <div id="meldRows" class="meld-rows"></div>
   </section>
   <div id="tilesMeta" class="tiles-meta" aria-label="花牌與暗槓">
@@ -322,13 +320,14 @@
   </div>
 </section>
 
-<section id="scorePanel" class="modal" role="dialog" aria-modal="true" aria-label="計分">
+<section id="scorePanel" class="modal" role="dialog" aria-modal="true" aria-label="本局信息">
   <div class="modal-card small">
     <div class="modal-head">
-      <h2>計分</h2>
+      <h2>本局信息</h2>
       <button class="close-btn" data-close="scorePanel" type="button" aria-label="關閉">✕</button>
     </div>
     <p id="scoreRoundInfo" class="score-round-info"></p>
+    <div id="scoreMatchInfo" class="score-match-info"></div>
     <div id="scoreStandings" class="score-standings"></div>
     <h3>每局派彩紀錄</h3>
     <div id="scoreHistory" class="score-history"></div>
@@ -357,6 +356,6 @@
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js" onerror="this.onerror=null;this.src='js/vendor/peerjs.min.js'"></script>
-<script type="module" src="js/game.js?v=1.4.112"></script>
+<script type="module" src="js/game.js?v=1.4.113"></script>
 </body>
 </html>

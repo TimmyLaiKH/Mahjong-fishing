@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.112';
+} from './rules.js?v=1.4.113';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -34,6 +34,7 @@ const ui = {
   roomEmojiBtn: el('roomEmojiBtn'),
   scorePanel: el('scorePanel'), scoreRoundInfo: el('scoreRoundInfo'),
   scoreStandings: el('scoreStandings'), scoreHistory: el('scoreHistory'),
+  scoreMatchInfo: el('scoreMatchInfo'),
   timer: el('timer'),
   exposedKongs: el('exposedKongs'),
   overlay: el('overlay'), patternsBody: el('patternsBody'),
@@ -447,7 +448,7 @@ function windIndexFor(match = game.match) {
   return Math.min(MAX_WINDS - 1, Math.floor((match?.handNumber ?? 0) / 4));
 }
 
-/** `X風第 X 局・X 圈` for the HUD, 計分 panel and hand-end overlay. A settled
+/** `X風第 X 局・門風 X` for the HUD, 本局信息 panel and hand-end overlay. A settled
  *  log shows the hand that just finished; otherwise show the upcoming hand. */
 function roundInfoText(log = null) {
   const match = game.match;
@@ -455,7 +456,8 @@ function roundInfoText(log = null) {
   const windIndex = log ? (log.windIndex ?? 0) : windIndexFor(match);
   const wind = WINDS[windIndex] ?? WINDS[0];
   const hand = log ? ((log.handNumber ?? 0) % 4) + 1 : (match.handNumber % 4) + 1;
-  return `${TILE_INFO[wind]?.name ?? wind}風第 ${hand} 局・${match.winds} 圈`;
+  const seatWind = seatWindOf(game.seat);
+  return `${TILE_INFO[wind]?.name ?? wind}風第 ${hand} 局・門風 ${TILE_INFO[seatWind]?.name ?? seatWind}`;
 }
 
 /** Seat 0's wind such that the dealer carries the current round wind. */
@@ -1406,7 +1408,7 @@ function startClaimPriority({ sourceKey, tileId, kind = 'discard', declarerSeat 
 
 function priorityPending(state) {
   if (!state || state.released) return false;
-  if (state.graceUntil > Date.now()) return true;
+  if (state.graceUntil > Date.now() && state.candidates.size > 0) return true;
   return [...state.candidates.values()].some((item) => !item.passed && !item.claimed);
 }
 
@@ -5930,6 +5932,11 @@ function renderStandings(container, log = null) {
 
 function updateScoreUI() {
   if (ui.roundInfo) ui.roundInfo.textContent = hudRoundInfo || roundInfoText();
+  if (ui.scoreMatchInfo) {
+    const match = game.match ?? game.matchSetup ?? {};
+    const cap = game.settings.fanCap === Infinity ? '無限' : game.settings.fanCap;
+    ui.scoreMatchInfo.textContent = `圈子數 ${match.winds ?? 1} 圈｜起糊 ${match.minFan ?? 0} 番｜上限番數 ${cap} 番｜自訂牌型 ${customPatternsEnabled() ? '開' : '關'}｜金額倍數 ${match.base ?? 1}×｜每局時間 ${formatClock(game.settings.gameSeconds)}`;
+  }
   if (ui.moneyCount) {
     ui.moneyCount.textContent = game.match
       ? moneyText(game.match.money[game.seat] ?? 0) : '—';
