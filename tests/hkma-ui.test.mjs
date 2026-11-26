@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.120/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.120/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.121/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.121/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.120/);
-  assert.match(readme, /\?v=1\.4\.120/);
-  assert.match(changelog, /^## 1\.4\.120/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.121/);
+  assert.match(readme, /\?v=1\.4\.121/);
+  assert.match(changelog, /^## 1\.4\.121/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -467,6 +467,12 @@ test('玩家版本與 cachebust 已更新', () => {
     game.indexOf('function drawRod('),
   );
   assert.match(avatarFn, /WATER_TOP/);
+
+  // 1.4.121: rod handle anchored at the cat on the waterline, not sky-top.
+  const rodDraw = game.slice(game.indexOf('function drawRod('), game.indexOf('function draw('));
+  assert.match(rodDraw, /WATER_TOP/);
+  assert.match(rodDraw, /visTipX/);
+  assert.match(rodDraw, /Math\.PI \+ 0\.62/);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
