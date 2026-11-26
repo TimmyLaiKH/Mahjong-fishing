@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.134';
+} from './rules.js?v=1.4.135';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -110,7 +110,7 @@ const HOOK_EDGE_MARGIN = 20;
 const TILE_H = 176;
 const ROD_BASE_Y = 4;
 const ROD_LENGTH = 86;
-const AIM_PREVIEW_LEN = 50;
+const AIM_PREVIEW_LEN = 80;
 const MAX_FISH = 12;
 const SPAWN_INTERVAL = 1.2;
 /** About one fish in seven briefly flashes its back as a memory test. */
@@ -5647,7 +5647,7 @@ function drawRod() {
     // players can aim; the rod swing is completely independent. Visual only —
     // catch detection and multiplayer sync still use the computed game hook.
     const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
-    const pendulum = Math.sin(seconds / 1.2) * 0.3;
+    const pendulum = Math.sin(seconds / 1.2) * 1.4;
     hookX = visTipX + Math.sin(pendulum) * previewLen;
     hookY = visTipY + Math.cos(pendulum) * previewLen;
   }
