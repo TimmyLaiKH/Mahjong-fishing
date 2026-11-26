@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.126';
+} from './rules.js?v=1.4.127';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -106,6 +106,7 @@ const REFERENCE_W = 1920;
 const WATER_TOP = 90;
 const WATER_BOTTOM = 1030;
 const TILE_W = 132;
+const HOOK_EDGE_MARGIN = 20;
 const TILE_H = 176;
 const ROD_BASE_Y = 4;
 const ROD_LENGTH = 86;
@@ -5258,8 +5259,8 @@ function maxHookLength(angle = game.rodAngle, seat = game.seat) {
   const toFloor = (WORLD_H - ROD_BASE_Y) / Math.max(Math.cos(angle), 0.01) - ROD_LENGTH;
   const baseX = view.width / 2 + boatOffset(seat);
   const sideways = Math.sin(angle) >= 0
-    ? Math.max(0, view.width - TILE_W / 2 - baseX)
-    : Math.max(0, baseX - TILE_W / 2);
+    ? Math.max(0, view.width - HOOK_EDGE_MARGIN - baseX)
+    : Math.max(0, baseX - HOOK_EDGE_MARGIN);
   const toSide = Math.abs(Math.sin(angle)) > 0.001
     ? sideways / Math.abs(Math.sin(angle)) - ROD_LENGTH
     : Infinity;
@@ -5283,8 +5284,8 @@ function hookPositionFor(angle, hookLen, seat = game.seat) {
   const tipY = ROD_BASE_Y + Math.cos(angle) * ROD_LENGTH;
   // Safety net after a resize; maxHookLength() normally stops at the edge so
   // the hook reaches it without leaving the canvas.
-  const hookX = Math.max(TILE_W / 2, Math.min(
-    view.width - TILE_W / 2,
+  const hookX = Math.max(HOOK_EDGE_MARGIN, Math.min(
+    view.width - HOOK_EDGE_MARGIN,
     tipX + Math.sin(angle) * hookLen,
   ));
   // Keep the hook at or below the water surface; with the rod lifted above the
@@ -5790,8 +5791,8 @@ function gameLoop(timestamp) {
       game.hookLen += 980 * hookRate * dt;
       const hook = hookPosition();
       const hitEdge = hook.hookY >= WORLD_H - TILE_H / 2
-        || hook.hookX <= TILE_W / 2
-        || hook.hookX >= view.width - TILE_W / 2;
+        || hook.hookX <= HOOK_EDGE_MARGIN
+        || hook.hookX >= view.width - HOOK_EDGE_MARGIN;
       if (game.hookLen >= maxLen || hitEdge) {
         game.hookLen = maxLen;
         setState(S.REELING);
