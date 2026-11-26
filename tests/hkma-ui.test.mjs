@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.124/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.124/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.125/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.125/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.124/);
-  assert.match(readme, /\?v=1\.4\.124/);
-  assert.match(changelog, /^## 1\.4\.124/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.125/);
+  assert.match(readme, /\?v=1\.4\.125/);
+  assert.match(changelog, /^## 1\.4\.125/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -494,6 +494,18 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(rodDraw123, /perpY/);
   assert.match(rodDraw123, /visHookX/);
   assert.match(rodDraw123, /visHookY/);
+
+  // 1.4.125: hook reverses at the sea floor / side edge instead of going off-screen.
+  const maxLenFn = game.slice(
+    game.indexOf('function maxHookLength('),
+    game.indexOf('function swingLimit('),
+  );
+  assert.match(maxLenFn, /boatOffset\(seat\)/);
+  const loopCast = game.slice(
+    game.indexOf('function gameLoop('),
+    game.indexOf('function broadcastSeaSnapshot('),
+  );
+  assert.match(loopCast, /hook\.hookY >= WORLD_H - TILE_H \/ 2/);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
