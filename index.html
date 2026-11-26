@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#06384a" />
 <title>香港麻雀釣魚</title>
-<link rel="icon" href="assets/tiles/faces/E.png" />
+<link rel="icon" href="assets/icons/mahjong-cat.svg" type="image/svg+xml" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/style.css?v=1.4.116" />
+<link rel="stylesheet" href="css/style.css?v=1.4.117" />
 </head>
 <body>
 <canvas id="game" aria-label="釣魚遊戲畫面"></canvas>
@@ -36,7 +36,13 @@
       <button id="helpBtn" class="chip" type="button">玩法說明</button>
       <button id="emojiBtn" class="chip" type="button" aria-haspopup="true" aria-expanded="false">表情</button>
     </div>
-    <div id="timer" class="timer" aria-label="剩餘時間">05:00</div>
+    <div id="timer" class="timer" aria-label="剩餘時間">
+    <span id="incense" class="incense" aria-hidden="true">
+      <span class="incense-stick"></span>
+      <span class="incense-smoke"></span>
+    </span>
+    <span id="timerText" class="timer-text">05:00</span>
+  </div>
     <div class="hud-right">
       <button id="scoreBtn" class="chip" type="button">本局信息</button>
       <div class="round-block">
@@ -73,7 +79,19 @@
 
 <div id="menuScreen" class="modal menu-screen" role="dialog" aria-modal="true" aria-label="主選單">
   <div class="modal-card menu-card">
-    <h1 class="menu-title">香港麻雀釣魚</h1>
+    <div class="menu-title-row">
+      <img class="menu-icon" src="assets/icons/mahjong-cat.svg" alt="" />
+      <h1 class="menu-title">香港麻雀釣魚</h1>
+      <span class="lucky-cat" aria-hidden="true">
+        <span class="lucky-cat-ear left"></span>
+        <span class="lucky-cat-ear right"></span>
+        <span class="lucky-cat-body"></span>
+        <span class="lucky-cat-eye left"></span>
+        <span class="lucky-cat-eye right"></span>
+        <span class="lucky-cat-arm"></span>
+        <span class="lucky-cat-coin">發</span>
+      </span>
+    </div>
     <p class="menu-subtitle">拋竿釣牌，湊成你的胡牌。</p>
     <div id="menuTiles" class="menu-tiles" aria-hidden="true"></div>
     <div class="menu-actions">
@@ -358,6 +376,6 @@
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js" onerror="this.onerror=null;this.src='js/vendor/peerjs.min.js'"></script>
-<script type="module" src="js/game.js?v=1.4.116"></script>
+<script type="module" src="js/game.js?v=1.4.117"></script>
 </body>
 </html>

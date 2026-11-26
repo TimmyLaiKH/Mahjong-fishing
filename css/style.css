@@ -825,3 +825,22 @@ td:last-child { min-width: 220px; }
 }
 
 .score-match-info { margin: 6px 0 10px; color: #000; font-size: 0.9rem; line-height: 1.5; }
+
+/* Minimal retro HK-style: incense countdown + lucky cat */
+.timer { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.incense { --burn: 1; position: relative; display: inline-flex; align-items: flex-end; width: 18px; height: 46px; }
+.incense-stick { position: relative; display: block; width: 4px; height: calc(46px * var(--burn)); background: linear-gradient(#8b4b2f, #3b1d12); border-radius: 2px; transition: height .25s linear; }
+.incense-stick::after { content: ''; position: absolute; top: -3px; left: -1px; width: 6px; height: 6px; border-radius: 50%; background: #e6642e; box-shadow: 0 0 6px #e6642e; opacity: var(--burn); }
+.incense-smoke { position: absolute; left: 8px; bottom: calc(46px * var(--burn)); width: 3px; height: 24px; border-radius: 50%; background: rgba(255,255,255,.28); filter: blur(1px); opacity: calc(var(--burn) * .45); animation: incense-smoke 2.4s ease-in-out infinite; pointer-events: none; }
+@keyframes incense-smoke { 0% { transform: translateY(0) scaleX(1); opacity: .38; } 100% { transform: translateY(-18px) scaleX(2.4); opacity: 0; } }
+.menu-title-row { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.menu-icon { width: 44px; height: 44px; flex: none; }
+.lucky-cat { position: relative; display: inline-block; width: 44px; height: 48px; flex: none; }
+.lucky-cat-body { position: absolute; left: 6px; bottom: 0; width: 32px; height: 34px; border-radius: 14px 14px 10px 10px; background: #fffaf0; border: 2px solid #8c1d1d; }
+.lucky-cat-ear { position: absolute; top: 2px; width: 14px; height: 14px; background: #fffaf0; border: 2px solid #8c1d1d; transform: rotate(45deg); }
+.lucky-cat-ear.left { left: 5px; } .lucky-cat-ear.right { right: 5px; }
+.lucky-cat-eye { position: absolute; top: 18px; width: 4px; height: 5px; border-radius: 50%; background: #1a1a1a; }
+.lucky-cat-eye.left { left: 14px; } .lucky-cat-eye.right { right: 14px; }
+.lucky-cat-arm { position: absolute; right: 2px; bottom: 16px; width: 14px; height: 7px; border-radius: 6px; background: #fffaf0; border: 2px solid #8c1d1d; transform-origin: left center; animation: lucky-cat-wave 1.6s ease-in-out infinite; }
+.lucky-cat-coin { position: absolute; left: 12px; bottom: 8px; font-size: 12px; font-weight: 700; color: #8c1d1d; }
+@keyframes lucky-cat-wave { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-32deg); } }

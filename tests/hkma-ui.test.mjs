@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.116/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.116/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.117/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.117/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.116/);
-  assert.match(readme, /\?v=1\.4\.116/);
-  assert.match(changelog, /^## 1\.4\.116/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.117/);
+  assert.match(readme, /\?v=1\.4\.117/);
+  assert.match(changelog, /^## 1\.4\.117/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -418,6 +418,27 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(html, /<h3>計分<\/h3>/);
   const css114 = readFileSync('css/style.css', 'utf8');
   assert.match(css114, /\.score-match-info \{[^}]*color: #000/);
+
+  // 1.4.117: retro HK vibe, countdown incense, 招財貓 and CSS/SVG icon.
+  assert.match(html, /rel="icon" href="assets\/icons\/mahjong-cat\.svg/);
+  assert.match(html, /id="incense"[^>]*class="incense"/);
+  assert.match(html, /class="incense-stick"/);
+  assert.match(html, /class="incense-smoke"/);
+  assert.match(html, /class="lucky-cat"/);
+  assert.match(html, /class="menu-icon"/);
+  const ui117 = game.slice(
+    game.indexOf('function updateTimer('),
+    game.indexOf('function isTouchOnly('),
+  );
+  assert.match(ui117, /incenseBurn/);
+  assert.match(ui117, /setProperty\('--burn'/);
+  const css117 = readFileSync('css/style.css', 'utf8');
+  assert.match(css117, /\.incense-stick/);
+  assert.match(css117, /@keyframes incense-smoke/);
+  assert.match(css117, /@keyframes lucky-cat-wave/);
+  assert.match(css117, /\.lucky-cat/);
+  assert.match(css117, /\.menu-icon/);
+  assert.match(css117, /--burn/);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
