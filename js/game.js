@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.119';
+} from './rules.js?v=1.4.120';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -5271,7 +5271,7 @@ function swingLimit() {
 
 function boatOffset(seat = game.seat) {
   const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
-  return Math.sin(seconds / 6 + seat * 1.7) * Math.min(90, view.width * 0.06);
+  return Math.sin(seconds / 2 + seat * 1.7) * view.width * 0.42;
 }
 
 function hookPositionFor(angle, hookLen, seat = game.seat) {
@@ -5585,21 +5585,21 @@ function drawPlayerAvatars() {
     const player = game.players.find((item) => item?.seat === seat);
     const empty = !player || player.isEmpty;
     const x = baseX + offsets[seat];
-      const boatX = x + boatOffset(seat);
+      const boatX = Math.max(30, Math.min(view.width - 30, x + boatOffset(seat)));
       if (catBoatImage?.complete && catBoatImage.naturalWidth) {
         ctx.globalAlpha = empty ? 0.3 : 1;
         const w = 58;
         const h = w * catBoatImage.naturalHeight / catBoatImage.naturalWidth;
-        ctx.drawImage(catBoatImage, boatX - w / 2, y - h / 2, w, h);
+        ctx.drawImage(catBoatImage, boatX - w / 2, WATER_TOP - h / 2, w, h);
       } else {
         ctx.fillStyle = AVATAR_COLORS[seat];
         ctx.globalAlpha = empty ? 0.3 : 1;
         ctx.beginPath();
-        ctx.arc(boatX, y, 26, 0, Math.PI * 2);
+        ctx.arc(boatX, WATER_TOP, 26, 0, Math.PI * 2);
         ctx.fill();
         ctx.font = '34px sans-serif';
         ctx.fillStyle = '#06384a';
-        ctx.fillText(AVATAR_ICONS[seat], boatX, y + 1);
+        ctx.fillText(AVATAR_ICONS[seat], boatX, WATER_TOP + 1);
       }
   }
   ctx.restore();
@@ -5636,7 +5636,7 @@ function drawRod() {
   if (catBoatImage?.complete && catBoatImage.naturalWidth) {
     const cw = 150;
     const ch = cw * catBoatImage.naturalHeight / catBoatImage.naturalWidth;
-    ctx.drawImage(catBoatImage, baseX - cw / 2, ROD_BASE_Y - ch / 2, cw, ch);
+    ctx.drawImage(catBoatImage, baseX - cw / 2, WATER_TOP - ch / 2, cw, ch);
   }
   ctx.strokeStyle = '#e8f4f8';
   ctx.lineWidth = 3;

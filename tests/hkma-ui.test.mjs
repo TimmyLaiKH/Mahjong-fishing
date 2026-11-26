@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.119/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.119/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.120/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.120/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.119/);
-  assert.match(readme, /\?v=1\.4\.119/);
-  assert.match(changelog, /^## 1\.4\.119/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.120/);
+  assert.match(readme, /\?v=1\.4\.120/);
+  assert.match(changelog, /^## 1\.4\.120/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -454,6 +454,19 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(game, /assets\/icons\/cat-on-boat\.png/);
   assert.match(game, /assets\/icons\/fishing-rod\.png/);
   assert.doesNotMatch(html, /id="incense"/);
+
+  // 1.4.120: faster full-width boat drift resting on the waterline.
+  const boatFn = game.slice(
+    game.indexOf('function boatOffset('),
+    game.indexOf('function hookPositionFor('),
+  );
+  assert.match(boatFn, /seconds \/ 2/);
+  assert.match(boatFn, /view\.width \* 0\.42/);
+  const avatarFn = game.slice(
+    game.indexOf('function drawPlayerAvatars('),
+    game.indexOf('function drawRod('),
+  );
+  assert.match(avatarFn, /WATER_TOP/);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
