@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.115';
+} from './rules.js?v=1.4.116';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -5974,11 +5974,7 @@ function updateScoreUI() {
     if (!match) {
       ui.scoreRoundInfo.textContent = '尚未開始';
     } else {
-      const pieces = [
-        roundInfoText(),
-        `金額倍數 ${match.base}×`,
-        `起糊 ${match.minFan ?? game.matchSetup?.minFan ?? 0} 番`,
-      ];
+      const pieces = [];
       if (match.repeatCount) pieces.push(`連莊 ${match.repeatCount}`);
       if (match.over) pieces.push('比賽結束');
       ui.scoreRoundInfo.textContent = pieces.join('・');

@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.115/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.115/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.116/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.116/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.115/);
-  assert.match(readme, /\?v=1\.4\.115/);
-  assert.match(changelog, /^## 1\.4\.115/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.116/);
+  assert.match(readme, /\?v=1\.4\.116/);
+  assert.match(changelog, /^## 1\.4\.116/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -405,17 +405,19 @@ test('玩家版本與 cachebust 已更新', () => {
     game.indexOf('if (ui.scoreRoundInfo) {'),
     game.indexOf('renderStandings(ui.scoreStandings)'),
   );
-  assert.match(scoreInfo, /roundInfoText\(\)/);
-  assert.match(scoreInfo, /金額倍數/);
-  assert.match(scoreInfo, /起糊/);
+  assert.doesNotMatch(scoreInfo, /roundInfoText\(\)/);
+  assert.doesNotMatch(scoreInfo, /金額倍數/);
+  assert.doesNotMatch(scoreInfo, /起糊/);
   assert.match(html, /id="roomHelpBtn"[^>]*>玩法說明<\/button>/);
+  const roomBtnCss = readFileSync('css/style.css', 'utf8');
+  assert.match(roomBtnCss, /#roomEmojiBtn, #roomHelpBtn \{/);
   assert.match(game, /roomHelpBtn: el\('roomHelpBtn'\)/);
   assert.match(game, /ui\.roomHelpBtn\?\.addEventListener\('click'/);
   assert.match(game, /switchHelpTab\('rules'\); openModal\('helpPanel'\)/);
-  assert.match(readFileSync('css/style.css', 'utf8'), /\.score-round-info \{[^}]*color: #000/);
+  assert.match(readFileSync('css/style.css', 'utf8'), /\.score-round-info \{[^}]*color: #555/);
   assert.match(html, /<h3>計分<\/h3>/);
   const css114 = readFileSync('css/style.css', 'utf8');
-  assert.match(css114, /\.score-match-info \{[^}]*color: #9aa7ad/);
+  assert.match(css114, /\.score-match-info \{[^}]*color: #000/);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
