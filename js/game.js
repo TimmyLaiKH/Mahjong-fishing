@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.135';
+} from './rules.js?v=1.4.136';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -111,6 +111,8 @@ const TILE_H = 176;
 const ROD_BASE_Y = 4;
 const ROD_LENGTH = 86;
 const AIM_PREVIEW_LEN = 80;
+// The drawn rod is held still on the right; the line+hook pendulum is the only motion.
+const ROD_HOLD_ANGLE = (80 * Math.PI) / 180;
 const MAX_FISH = 12;
 const SPAWN_INTERVAL = 1.2;
 /** About one fish in seven briefly flashes its back as a memory test. */
@@ -5625,13 +5627,13 @@ function drawRod() {
   const handleY = WATER_TOP;
   const rodScale = 200 / 110;
   const rodLen = ROD_LENGTH * rodScale;
-  const angle = Math.atan2(-Math.cos(game.rodAngle), Math.sin(game.rodAngle)) - Math.PI;
+  const angle = Math.atan2(-Math.cos(ROD_HOLD_ANGLE), Math.sin(ROD_HOLD_ANGLE)) - Math.PI;
   const theta = angle + Math.PI + 0.62;
   // Compute where the PNG rod tip actually renders so the line starts at the
   // visible tip instead of an off-screen approximation. Gameplay hook/catch
   // geometry is untouched; only the string's start point follows the rod.
-  let visTipX = baseX + Math.sin(game.rodAngle) * rodLen;
-  let visTipY = handleY - Math.cos(game.rodAngle) * rodLen;
+  let visTipX = baseX + Math.sin(ROD_HOLD_ANGLE) * rodLen;
+  let visTipY = handleY - Math.cos(ROD_HOLD_ANGLE) * rodLen;
   let s = 0;
   if (rodImage?.complete && rodImage.naturalWidth) {
     s = (110 * rodScale) / rodImage.naturalWidth;

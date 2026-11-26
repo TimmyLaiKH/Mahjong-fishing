@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.135/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.135/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.136/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.136/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.135/);
-  assert.match(readme, /\?v=1\.4\.135/);
-  assert.match(changelog, /^## 1\.4\.135/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.136/);
+  assert.match(readme, /\?v=1\.4\.136/);
+  assert.match(changelog, /^## 1\.4\.136/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -490,6 +490,14 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(rodDraw128, /hookX = visTipX \+ Math\.sin\(pendulum\) \* previewLen/);
   assert.match(rodDraw128, /hookY = visTipY \+ Math\.cos\(pendulum\) \* previewLen/);
   assert.match(rodDraw128, /ctx\.moveTo\(visTipX, visTipY\)/);
+  // 1.4.136: rod held still on the right; only line+hook swing from its tip.
+  const rodDraw136 = game.slice(
+    game.indexOf('function drawRod('),
+    game.indexOf('function draw(dt)'),
+  );
+  assert.match(game, /ROD_HOLD_ANGLE = /);
+  assert.match(rodDraw136, /ROD_HOLD_ANGLE/);
+  assert.doesNotMatch(rodDraw136, /game\.rodAngle/);
   // 1.4.131: hook glyph rotates to follow the fishing line / aim direction.
   assert.match(rodDraw128, /Math\.atan2\(hookY - visTipY, hookX - visTipX\)/);
   assert.match(rodDraw128, /ctx\.translate\(hookX, hookY\)/);
