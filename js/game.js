@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.137';
+} from './rules.js?v=1.4.138';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -211,6 +211,7 @@ const game = {
     gameSeconds: readGameSeconds(),
   },
   hookSpeed: Math.min(2, Math.max(0.5, readNumberWithDefault('mf-hookspeed', 1))),
+  aimPreviewLen: 0,         // eased drawn aim length, avoids hook teleport on discard
   lastDraw: null,           // { uid, id, source: 'fish' | 'flower' | 'kong', fromKong? }
   kongChain: 0,
   kongOrigin: null,         // first kong of the chain: { open, sourceSeat, declarerSeat }
@@ -5627,7 +5628,7 @@ function drawPlayerAvatars() {
 
 function drawRod() {
   const { baseX, hookX: gameHookX, hookY: gameHookY } = hookPosition();
-  const previewLen = game.state === S.AWAIT_CAST ? AIM_PREVIEW_LEN : game.hookLen;
+  const previewLen = game.state === S.AWAIT_CAST ? game.aimPreviewLen : game.hookLen;
   // The cat holds the handle at the waterline; only the drawing moves, while
   // hook/tip/catch geometry and host sync stay exactly as before.
   const handleY = WATER_TOP;
@@ -5806,6 +5807,8 @@ function gameLoop(timestamp) {
       broadcastHookState(dt);
     }
     const hookRate = game.hookSpeed * paceFactor();
+    const aimTarget = game.state === S.AWAIT_CAST ? AIM_PREVIEW_LEN : 0;
+    game.aimPreviewLen += (aimTarget - game.aimPreviewLen) * Math.min(1, dt * 12);
     if (game.state === S.AWAIT_CAST) {
       const limit = swingLimit();
       game.rodAngle += game.rodDir * 0.9 * hookRate * dt;
