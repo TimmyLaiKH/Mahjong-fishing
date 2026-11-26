@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.137/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.137/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.138/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.138/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.137/);
-  assert.match(readme, /\?v=1\.4\.137/);
-  assert.match(changelog, /^## 1\.4\.137/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.138/);
+  assert.match(readme, /\?v=1\.4\.138/);
+  assert.match(changelog, /^## 1\.4\.138/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -481,9 +481,13 @@ test('玩家版本與 cachebust 已更新', () => {
     game.indexOf('function drawRod('),
     game.indexOf('function draw(dt)'),
   );
-  assert.match(rodDraw128, /AIM_PREVIEW_LEN/);
+  assert.match(rodDraw128, /game\.aimPreviewLen/);
   assert.match(game, /AIM_PREVIEW_LEN = 80;/);
   assert.match(rodDraw128, /game\.state === S\.AWAIT_CAST/);
+  // 1.4.138: ease the aim-preview length so the hook never teleports from the tip.
+  assert.match(game, /aimPreviewLen: 0/);
+  assert.match(game, /const aimTarget = game\.state === S\.AWAIT_CAST \? AIM_PREVIEW_LEN : 0;/);
+  assert.match(game, /game\.aimPreviewLen \+= \(aimTarget - game\.aimPreviewLen\)/);
   // 1.4.133: line attaches to the rod tip; hook swings with the rod to aim.
   // 1.4.134: string+hook pendulum on their own clock, attached to the rod tip.
   assert.match(game, /Math\.sin\(seconds \/ 1\.2\) \* 1\.4/);
