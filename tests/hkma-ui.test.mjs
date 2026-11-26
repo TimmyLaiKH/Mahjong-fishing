@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.126/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.126/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.127/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.127/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.126/);
-  assert.match(readme, /\?v=1\.4\.126/);
-  assert.match(changelog, /^## 1\.4\.126/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.127/);
+  assert.match(readme, /\?v=1\.4\.127/);
+  assert.match(changelog, /^## 1\.4\.127/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -507,6 +507,16 @@ test('玩家版本與 cachebust 已更新', () => {
   );
   assert.match(loopCast, /hook\.hookY >= WORLD_H - TILE_H \/ 2/);
   assert.doesNotMatch(loopCast, /hitVisualEdge/);
+  // 1.4.127: the hook can travel closer to the left/right screen edges.
+  const hookFn = game.slice(
+    game.indexOf('function hookPositionFor('),
+    game.indexOf('function hookPosition()'),
+  );
+  assert.match(maxLenFn, /HOOK_EDGE_MARGIN/);
+  assert.match(hookFn, /HOOK_EDGE_MARGIN/);
+  assert.match(loopCast, /hook\.hookX <= HOOK_EDGE_MARGIN/);
+  assert.doesNotMatch(hookFn, /Math\.max\(TILE_W \/ 2,/);
+
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
