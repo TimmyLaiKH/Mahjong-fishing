@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.120';
+} from './rules.js?v=1.4.121';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -5606,44 +5606,53 @@ function drawPlayerAvatars() {
 }
 
 function drawRod() {
-  const { baseX, tipX, tipY, hookX, hookY } = hookPosition();
+  const { baseX, hookX, hookY } = hookPosition();
+  // The cat holds the handle at the waterline; only the drawing moves, while
+  // hook/tip/catch geometry and host sync stay exactly as before.
+  const handleY = WATER_TOP;
+  const rodScale = 200 / 110;
+  const rodLen = ROD_LENGTH * rodScale;
+  const visTipX = baseX + Math.sin(game.rodAngle) * rodLen;
+  const visTipY = handleY - Math.cos(game.rodAngle) * rodLen;
   ctx.save();
   ctx.lineCap = 'round';
+  // Fishing line runs from the visual rod tip down to the computed hook.
+  ctx.strokeStyle = '#e8f4f8';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(visTipX, visTipY);
+  ctx.lineTo(hookX, hookY);
+  ctx.stroke();
   if (rodImage?.complete && rodImage.naturalWidth) {
     const iw = rodImage.naturalWidth;
     const ih = rodImage.naturalHeight;
-    const w = 110;
+    const w = 110 * rodScale;
     const s = w / iw;
     const h = ih * s;
-    // The handle end of the PNG sits near (323, 727); use it as the pivot and
-    // align the PNG's natural screen angle (-0.67 rad) with the computed rod.
     const hx = 323 * s;
     const hy = 727 * s;
-    const angle = Math.atan2(tipY - ROD_BASE_Y, tipX - baseX);
+    // Native PNG points up-right (~-0.618 rad). Rotate it so the handle stays
+    // at the cat and the rod rises toward the visual tip.
+    const angle = Math.atan2(-Math.cos(game.rodAngle), Math.sin(game.rodAngle)) - Math.PI;
     ctx.save();
-    ctx.translate(baseX, ROD_BASE_Y);
-    ctx.rotate(angle + 0.67);
+    ctx.translate(baseX, handleY);
+    ctx.rotate(angle + Math.PI + 0.62);
     ctx.drawImage(rodImage, -hx, -hy, w, h);
     ctx.restore();
   } else {
     ctx.strokeStyle = '#8d5524';
     ctx.lineWidth = 12;
     ctx.beginPath();
-    ctx.moveTo(baseX, ROD_BASE_Y);
-    ctx.lineTo(tipX, tipY);
+    ctx.moveTo(baseX, handleY);
+    ctx.lineTo(visTipX, visTipY);
     ctx.stroke();
   }
+  // Draw the cat last so the rod appears tucked into its paws.
   if (catBoatImage?.complete && catBoatImage.naturalWidth) {
     const cw = 150;
     const ch = cw * catBoatImage.naturalHeight / catBoatImage.naturalWidth;
-    ctx.drawImage(catBoatImage, baseX - cw / 2, WATER_TOP - ch / 2, cw, ch);
+    ctx.drawImage(catBoatImage, baseX - cw / 2, handleY - ch / 2, cw, ch);
   }
-  ctx.strokeStyle = '#e8f4f8';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(tipX, tipY);
-  ctx.lineTo(hookX, hookY);
-  ctx.stroke();
   ctx.font = '56px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
