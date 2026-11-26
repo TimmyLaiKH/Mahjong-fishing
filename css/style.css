@@ -823,3 +823,5 @@ td:last-child { min-width: 220px; }
   font-size: 0.82rem;
   line-height: 1.4;
 }
+
+.score-match-info { margin: 6px 0 10px; color: #d8ecef; font-size: 0.9rem; line-height: 1.5; }

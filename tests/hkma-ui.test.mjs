@@ -84,8 +84,8 @@ test('玩法說明有三個分頁按鈕與三個面板', () => {
 
 test('HUD 起糊與 AI 表情已接上', () => {
   const game = readFileSync('js/game.js', 'utf8');
-  assert.match(html, /id="minFanCount"/);
-  assert.match(game, /ui\.minFanCount/);
+  assert.doesNotMatch(html, /id="minFanCount"/);
+  assert.match(game, /scoreMatchInfo/);
   assert.match(game, /match\.minFan \?\? game\.matchSetup\?\.minFan \?\? 0/);
   for (const name of [
     'AI_DISCARD_EMOJI_CHANCE', 'AI_WIN_EMOJI_CHANCE', 'DRAW_EMOJI_CHANCE',
@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.112/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.112/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.113/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.113/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.112/);
-  assert.match(readme, /\?v=1\.4\.112/);
-  assert.match(changelog, /^## 1\.4\.112/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.113/);
+  assert.match(readme, /\?v=1\.4\.113/);
+  assert.match(changelog, /^## 1\.4\.113/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -359,6 +359,29 @@ test('玩家版本與 cachebust 已更新', () => {
   );
   assert.match(table, /sortPatternRows\(\[\.\.\.PATTERN_ROWS, \.\.\.FLOWER_PATTERN_TABLE\]\)/);
   assert.doesNotMatch(table, /category !== '自訂牌型'/);
+
+  // 1.4.113: no grace-block without a real 十三么 candidate, round line,
+  // refocused HUD and 本局信息 panel.
+  const priority = game.slice(
+    game.indexOf('function priorityPending('),
+    game.indexOf('function releaseClaimPriority('),
+  );
+  assert.match(priority, /state\.graceUntil > Date\.now\(\) && state\.candidates\.size > 0/);
+  const round = game.slice(
+    game.indexOf('function roundInfoText('),
+    game.indexOf('function seatZeroWind('),
+  );
+  assert.match(round, /門風 \$\{/);
+  assert.doesNotMatch(round, /圈/);
+  assert.doesNotMatch(html, /id="seatWind"/);
+  assert.doesNotMatch(html, /id="minFanCount"/);
+  assert.match(html, /id="scoreBtn"[^>]*>本局信息<\/button>/);
+  assert.match(html, /各家\(副露\)/);
+  assert.match(html, /id="scoreMatchInfo"/);
+  for (const label of ['圈子數', '起糊', '上限番數', '自訂牌型', '金額倍數', '每局時間']) {
+    assert.match(html, new RegExp(label));
+  }
+  assert.match(game, /scoreMatchInfo: el\('scoreMatchInfo'\)/);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
