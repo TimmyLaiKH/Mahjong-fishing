@@ -1,6 +1,6 @@
 # 香港麻雀釣魚
 
-**立即遊玩：** https://timmylaikh.github.io/Mahjong-fishing/?v=1.4.118
+**立即遊玩：** https://timmylaikh.github.io/Mahjong-fishing/?v=1.4.119
 
 一個**純靜態**的香港麻雀釣魚小遊戲：在海底釣起麻將牌，湊成四組一將並胡牌。沒有框架、沒有打包步驟；所有規則判定都由 `js/rules.js` 這個純模組負責，因此 `node tests/rules.test.mjs` 可以直接在 Node 執行。
 

@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.118/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.118/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.119/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.119/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.118/);
-  assert.match(readme, /\?v=1\.4\.118/);
-  assert.match(changelog, /^## 1\.4\.118/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.119/);
+  assert.match(readme, /\?v=1\.4\.119/);
+  assert.match(changelog, /^## 1\.4\.119/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -435,6 +435,25 @@ test('玩家版本與 cachebust 已更新', () => {
     html.indexOf('</div>', html.indexOf('class="menu-title-row"')),
   );
   assert.ok(titleRow.indexOf('class="lucky-cat"') < titleRow.indexOf('class="menu-title"'));
+
+  // 1.4.119: one cat-on-boat + rod image prototype; boat drift affects hook base.
+  assert.match(html, /id="helpBtn"/);
+  const boatCode = game.slice(
+    game.indexOf('function boatOffset('),
+    game.indexOf('function hookPositionFor('),
+  );
+  assert.match(boatCode, /clockOffset/);
+  assert.match(boatCode, /Math\.sin/);
+  const hook = game.slice(
+    game.indexOf('function hookPositionFor('),
+    game.indexOf('function hookPosition('),
+  );
+  assert.match(hook, /boatOffset\(seat\)/);
+  assert.match(game, /catBoatImage/);
+  assert.match(game, /rodImage/);
+  assert.match(game, /assets\/icons\/cat-on-boat\.png/);
+  assert.match(game, /assets\/icons\/fishing-rod\.png/);
+  assert.doesNotMatch(html, /id="incense"/);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
