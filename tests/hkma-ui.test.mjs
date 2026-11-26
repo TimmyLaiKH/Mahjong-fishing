@@ -86,7 +86,7 @@ test('HUD 起糊與 AI 表情已接上', () => {
   const game = readFileSync('js/game.js', 'utf8');
   assert.doesNotMatch(html, /id="minFanCount"/);
   assert.match(game, /scoreMatchInfo/);
-  assert.match(game, /match\.minFan \?\? game\.matchSetup\?\.minFan \?\? 0/);
+  assert.match(game, /ui\.scoreMatchInfo\.textContent =/);
   for (const name of [
     'AI_DISCARD_EMOJI_CHANCE', 'AI_WIN_EMOJI_CHANCE', 'DRAW_EMOJI_CHANCE',
     'MATCH_END_EMOJI_CHANCE', 'BIG_WIN_AI_EMOJI_CHANCE', 'AI_MELD_EMOJI_CHANCE',
@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.113/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.113/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.114/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.114/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.113/);
-  assert.match(readme, /\?v=1\.4\.113/);
-  assert.match(changelog, /^## 1\.4\.113/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.114/);
+  assert.match(readme, /\?v=1\.4\.114/);
+  assert.match(changelog, /^## 1\.4\.114/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -382,6 +382,35 @@ test('玩家版本與 cachebust 已更新', () => {
     assert.match(html, new RegExp(label));
   }
   assert.match(game, /scoreMatchInfo: el\('scoreMatchInfo'\)/);
+
+  // 1.4.114: kong rob window only when an opponent can actually rob, and the
+  // 本局信息 panel keeps only the info row + a plain 計分 heading.
+  assert.match(game, /function canRobKong\(/);
+  const kong = game.slice(
+    game.indexOf('function beginKongOpportunity('),
+    game.indexOf('function finishKongOpportunity('),
+  );
+  assert.match(kong, /if \(!robPossible\) return;/);
+  const kongBroadcast = game.slice(
+    game.indexOf('function declareKong('),
+    game.indexOf('function makeKongMeld('),
+  );
+  assert.match(kongBroadcast, /robPossible:/);
+  const meldHandler = game.slice(
+    game.indexOf("net.on('meld'"),
+    game.indexOf("net.on('win'"),
+  );
+  assert.match(meldHandler, /robPossible: msg\.robPossible/);
+  const scoreInfo = game.slice(
+    game.indexOf('if (ui.scoreRoundInfo) {'),
+    game.indexOf('renderStandings(ui.scoreStandings)'),
+  );
+  assert.doesNotMatch(scoreInfo, /roundInfoText\(\)/);
+  assert.doesNotMatch(scoreInfo, /金額倍數/);
+  assert.doesNotMatch(scoreInfo, /起糊/);
+  assert.match(html, /<h3>計分<\/h3>/);
+  const css114 = readFileSync('css/style.css', 'utf8');
+  assert.match(css114, /\.score-match-info \{[^}]*color: #9aa7ad/);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
