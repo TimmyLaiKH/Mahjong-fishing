@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.116';
+} from './rules.js?v=1.4.117';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -35,7 +35,7 @@ const ui = {
   scorePanel: el('scorePanel'), scoreRoundInfo: el('scoreRoundInfo'),
   scoreStandings: el('scoreStandings'), scoreHistory: el('scoreHistory'),
   scoreMatchInfo: el('scoreMatchInfo'),
-  timer: el('timer'),
+  timer: el('timer'), timerText: el('timerText'), incense: el('incense'),
   exposedKongs: el('exposedKongs'),
   overlay: el('overlay'), patternsBody: el('patternsBody'),
   claimBoxes: el('claimBoxes'),
@@ -6156,8 +6156,10 @@ function renderFlowers() {
 }
 
 function updateTimer() {
-  ui.timer.textContent = formatClock(game.timeLeft);
+  if (ui.timerText) ui.timerText.textContent = formatClock(game.timeLeft);
   ui.timer.classList.toggle('urgent', game.timeLeft <= 60);
+  const incenseBurn = Math.max(0, Math.min(1, game.timeLeft / (game.settings.gameSeconds || 300)));
+  ui.incense?.style.setProperty('--burn', incenseBurn.toFixed(3));
 }
 
 /** Touch screens need two taps to play a tile: the first selects it and shows

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="招財貓麻雀">
+  <rect x="4" y="2" width="56" height="60" rx="8" fill="#f6efdc" stroke="#8c1d1d" stroke-width="3"/>
+  <rect x="9" y="7" width="46" height="50" rx="5" fill="#fffaf0" stroke="#1d1a17" stroke-width="1.5"/>
+  <path d="M18 24 Q18 10 25 18 L31 12 L35 20 L43 13 Q48 22 46 26 Z" fill="#f6efdc" stroke="#1d1a17" stroke-width="1.5"/>
+  <circle cx="24" cy="32" r="2.6" fill="#1d1a17"/>
+  <circle cx="40" cy="32" r="2.6" fill="#1d1a17"/>
+  <path d="M29 38 Q32 41 35 38" fill="none" stroke="#8c1d1d" stroke-width="2" stroke-linecap="round"/>
+  <path d="M32 42 Q28 46 24 43 M32 42 Q36 46 40 43" fill="none" stroke="#1d1a17" stroke-width="1.2" stroke-linecap="round"/>
+  <rect x="24" y="49" width="16" height="8" rx="2" fill="#8c1d1d"/>
+  <text x="32" y="55" font-size="7" font-family="serif" text-anchor="middle" fill="#fffaf0">發</text>
+</svg>
