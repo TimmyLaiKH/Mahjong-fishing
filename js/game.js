@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.118';
+} from './rules.js?v=1.4.119';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -263,6 +263,8 @@ const resetUnloadNotice = () => { unloadNotified = false; };
 // The HUD round line stays on the hand that is being played until the next
 // hand actually starts; settlement must not flip it while the end overlay is up.
 let hudRoundInfo = '';
+let catBoatImage = null;
+let rodImage = null;
 
 function readNumber(key) {
   try { return Number(localStorage.getItem(key)) || 0; } catch { return 0; }
@@ -2016,7 +2018,7 @@ function swingAiRod(rod, dt) {
 }
 
 function aiHookPosition(state) {
-  return hookPositionFor(state.rod.angle, state.rod.hookLen);
+  return hookPositionFor(state.rod.angle, state.rod.hookLen, state.seat);
 }
 
 function aiCheckCatch(state) {
@@ -5267,8 +5269,13 @@ function swingLimit() {
   return MAX_SWING_ANGLE;
 }
 
-function hookPositionFor(angle, hookLen) {
-  const baseX = view.width / 2;
+function boatOffset(seat = game.seat) {
+  const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
+  return Math.sin(seconds / 6 + seat * 1.7) * Math.min(90, view.width * 0.06);
+}
+
+function hookPositionFor(angle, hookLen, seat = game.seat) {
+  const baseX = view.width / 2 + boatOffset(seat);
   const tipX = baseX + Math.sin(angle) * ROD_LENGTH;
   const tipY = ROD_BASE_Y + Math.cos(angle) * ROD_LENGTH;
   // Safety net after a resize; maxHookLength() normally stops at the edge so
@@ -5281,7 +5288,7 @@ function hookPositionFor(angle, hookLen) {
 }
 
 function hookPosition() {
-  return hookPositionFor(game.rodAngle, game.hookLen);
+  return hookPositionFor(game.rodAngle, game.hookLen, game.seat);
 }
 
 /** Distant mountain ridges above the waterline. */
@@ -5578,14 +5585,22 @@ function drawPlayerAvatars() {
     const player = game.players.find((item) => item?.seat === seat);
     const empty = !player || player.isEmpty;
     const x = baseX + offsets[seat];
-    ctx.globalAlpha = empty ? 0.3 : 1;
-    ctx.beginPath();
-    ctx.arc(x, y, 26, 0, Math.PI * 2);
-    ctx.fillStyle = AVATAR_COLORS[seat];
-    ctx.fill();
-    ctx.font = '34px sans-serif';
-    ctx.fillStyle = '#06384a';
-    ctx.fillText(AVATAR_ICONS[seat], x, y + 1);
+      const boatX = x + boatOffset(seat);
+      if (catBoatImage?.complete && catBoatImage.naturalWidth) {
+        ctx.globalAlpha = empty ? 0.3 : 1;
+        const w = 58;
+        const h = w * catBoatImage.naturalHeight / catBoatImage.naturalWidth;
+        ctx.drawImage(catBoatImage, boatX - w / 2, y - h / 2, w, h);
+      } else {
+        ctx.fillStyle = AVATAR_COLORS[seat];
+        ctx.globalAlpha = empty ? 0.3 : 1;
+        ctx.beginPath();
+        ctx.arc(boatX, y, 26, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = '34px sans-serif';
+        ctx.fillStyle = '#06384a';
+        ctx.fillText(AVATAR_ICONS[seat], boatX, y + 1);
+      }
   }
   ctx.restore();
 }
@@ -5594,12 +5609,35 @@ function drawRod() {
   const { baseX, tipX, tipY, hookX, hookY } = hookPosition();
   ctx.save();
   ctx.lineCap = 'round';
-  ctx.strokeStyle = '#8d5524';
-  ctx.lineWidth = 12;
-  ctx.beginPath();
-  ctx.moveTo(baseX, ROD_BASE_Y);
-  ctx.lineTo(tipX, tipY);
-  ctx.stroke();
+  if (rodImage?.complete && rodImage.naturalWidth) {
+    const iw = rodImage.naturalWidth;
+    const ih = rodImage.naturalHeight;
+    const w = 110;
+    const s = w / iw;
+    const h = ih * s;
+    // The handle end of the PNG sits near (323, 727); use it as the pivot and
+    // align the PNG's natural screen angle (-0.67 rad) with the computed rod.
+    const hx = 323 * s;
+    const hy = 727 * s;
+    const angle = Math.atan2(tipY - ROD_BASE_Y, tipX - baseX);
+    ctx.save();
+    ctx.translate(baseX, ROD_BASE_Y);
+    ctx.rotate(angle + 0.67);
+    ctx.drawImage(rodImage, -hx, -hy, w, h);
+    ctx.restore();
+  } else {
+    ctx.strokeStyle = '#8d5524';
+    ctx.lineWidth = 12;
+    ctx.beginPath();
+    ctx.moveTo(baseX, ROD_BASE_Y);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+  }
+  if (catBoatImage?.complete && catBoatImage.naturalWidth) {
+    const cw = 150;
+    const ch = cw * catBoatImage.naturalHeight / catBoatImage.naturalWidth;
+    ctx.drawImage(catBoatImage, baseX - cw / 2, ROD_BASE_Y - ch / 2, cw, ch);
+  }
   ctx.strokeStyle = '#e8f4f8';
   ctx.lineWidth = 3;
   ctx.beginPath();
@@ -6890,6 +6928,22 @@ function loadBackground() {
   });
 }
 
+function loadBoatAssets() {
+  const load = (src) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+  return Promise.all([
+    load('assets/icons/cat-on-boat.png?v=1.4.119'),
+    load('assets/icons/fishing-rod.png?v=1.4.119'),
+  ]).then(([cat, rod]) => {
+    catBoatImage = cat;
+    rodImage = rod;
+  });
+}
+
 async function boot() {
   resetMatch(game.matchSetup);
   music.setVolume(game.settings.mainVolume);
@@ -6912,6 +6966,7 @@ async function boot() {
       ui.loadingProgress.textContent = `${done}/${total}`;
     }),
     loadBackground(),
+    loadBoatAssets(),
   ]);
   game.images = loaded.images;
   game.bg = bg;
