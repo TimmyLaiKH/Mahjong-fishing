@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.123';
+} from './rules.js?v=1.4.124';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -5610,7 +5610,7 @@ function drawPlayerAvatars() {
 }
 
 function drawRod() {
-  const { baseX } = hookPosition();
+  const { baseX, hookX, hookY } = hookPosition();
   // The cat holds the handle at the waterline; only the drawing moves, while
   // hook/tip/catch geometry and host sync stay exactly as before.
   const handleY = WATER_TOP;
@@ -5639,8 +5639,16 @@ function drawRod() {
   let perpX = -rodDirY / rodDirLen;
   let perpY = rodDirX / rodDirLen;
   if (perpY < 0) { perpX = -perpX; perpY = -perpY; }
-  const visHookX = visTipX + perpX * (0.8 * rodLen);
-  const visHookY = Math.max(WATER_TOP, visTipY + perpY * (0.8 * rodLen));
+  // Keep the string at a constant ~75° to the rod (15° off perpendicular), and
+  // let its length follow the real hook distance instead of a fixed 80% of the
+  // rod. Gameplay hook/catch/sync geometry is untouched.
+  const ang = 75 * Math.PI / 180;
+  const tilt = Math.PI / 2 - ang;
+  const lineDirX = perpX * Math.cos(tilt) - (rodDirX / rodDirLen) * Math.sin(tilt);
+  const lineDirY = perpY * Math.cos(tilt) - (rodDirY / rodDirLen) * Math.sin(tilt);
+  const lineLen = Math.hypot(hookX - visTipX, hookY - visTipY);
+  const visHookX = visTipX + lineDirX * lineLen;
+  const visHookY = Math.max(WATER_TOP, visTipY + lineDirY * lineLen);
   ctx.save();
   ctx.lineCap = 'round';
   // Fishing line runs from the rod tip to the visual hook near water level.
