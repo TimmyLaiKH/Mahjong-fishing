@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.138/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.138/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.139/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.139/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.138/);
-  assert.match(readme, /\?v=1\.4\.138/);
-  assert.match(changelog, /^## 1\.4\.138/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.139/);
+  assert.match(readme, /\?v=1\.4\.139/);
+  assert.match(changelog, /^## 1\.4\.139/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -463,11 +463,20 @@ test('玩家版本與 cachebust 已更新', () => {
   );
   assert.match(boatFn, /seconds \/ 2/);
   assert.match(boatFn, /view\.width \* 0\.42/);
-  const avatarFn = game.slice(
-    game.indexOf('function drawPlayerAvatars('),
-    game.indexOf('function drawRod('),
+  // 1.4.139: opponents are full transparent cat-on-boats, not small background icons.
+  const ghostFn139 = game.slice(
+    game.indexOf('function drawGhostRod('),
+    game.indexOf('function renderGhostRods('),
   );
-  assert.match(avatarFn, /WATER_TOP/);
+  assert.match(ghostFn139, /catBoatImage/);
+  assert.match(ghostFn139, /rodImage/);
+  assert.match(ghostFn139, /globalAlpha = 0\.3/);
+  assert.match(ghostFn139, /boatOffset\(seat\)/);
+  const drawFn139 = game.slice(
+    game.indexOf('function draw(dt)'),
+    game.indexOf('function gameLoop('),
+  );
+  assert.doesNotMatch(drawFn139, /drawPlayerAvatars\(\)/);
 
   // 1.4.121: rod handle anchored at the cat on the waterline, not sky-top.
   const rodDraw = game.slice(game.indexOf('function drawRod('), game.indexOf('function draw('));
