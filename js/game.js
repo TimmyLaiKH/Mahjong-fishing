@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.128';
+} from './rules.js?v=1.4.129';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -110,7 +110,7 @@ const HOOK_EDGE_MARGIN = 20;
 const TILE_H = 176;
 const ROD_BASE_Y = 4;
 const ROD_LENGTH = 86;
-const AIM_PREVIEW_LEN = 360;
+const AIM_PREVIEW_LEN = 200;
 const MAX_FISH = 12;
 const SPAWN_INTERVAL = 1.2;
 /** About one fish in seven briefly flashes its back as a memory test. */
