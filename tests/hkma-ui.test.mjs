@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.136/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.136/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.137/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.137/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.136/);
-  assert.match(readme, /\?v=1\.4\.136/);
-  assert.match(changelog, /^## 1\.4\.136/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.137/);
+  assert.match(readme, /\?v=1\.4\.137/);
+  assert.match(changelog, /^## 1\.4\.137/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -486,7 +486,7 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(rodDraw128, /game\.state === S\.AWAIT_CAST/);
   // 1.4.133: line attaches to the rod tip; hook swings with the rod to aim.
   // 1.4.134: string+hook pendulum on their own clock, attached to the rod tip.
-  assert.match(rodDraw128, /Math\.sin\(seconds \/ 1\.2\) \* 1\.4/);
+  assert.match(game, /Math\.sin\(seconds \/ 1\.2\) \* 1\.4/);
   assert.match(rodDraw128, /hookX = visTipX \+ Math\.sin\(pendulum\) \* previewLen/);
   assert.match(rodDraw128, /hookY = visTipY \+ Math\.cos\(pendulum\) \* previewLen/);
   assert.match(rodDraw128, /ctx\.moveTo\(visTipX, visTipY\)/);
@@ -498,6 +498,15 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(game, /ROD_HOLD_ANGLE = /);
   assert.match(rodDraw136, /ROD_HOLD_ANGLE/);
   assert.doesNotMatch(rodDraw136, /game\.rodAngle/);
+  // 1.4.137: rod held higher; cast launches along the visible aim direction.
+  assert.match(game, /ROD_HOLD_ANGLE = \(60 \* Math\.PI\) \/ 180/);
+  assert.match(game, /function aimPendulum\(/);
+  assert.match(rodDraw136, /const pendulum = aimPendulum\(\);/);
+  const castFn137 = game.slice(
+    game.indexOf('function startCast('),
+    game.indexOf('function startCast(') + 1200,
+  );
+  assert.match(castFn137, /game\.rodAngle = aimPendulum\(\);/);
   // 1.4.131: hook glyph rotates to follow the fishing line / aim direction.
   assert.match(rodDraw128, /Math\.atan2\(hookY - visTipY, hookX - visTipX\)/);
   assert.match(rodDraw128, /ctx\.translate\(hookX, hookY\)/);
