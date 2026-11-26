@@ -738,7 +738,7 @@ input.switch:focus-visible { outline: 2px solid #ffb300; outline-offset: 2px; }
 .match-setup-title { font-weight: 700; color: #8c1d1d; margin-bottom: 4px; }
 .match-setup .field { margin: 6px 0; }
 
-.score-round-info { color: #555; font-size: 0.9em; }
+.score-round-info { color: #000; font-size: 0.9em; }
 .score-standings { display: grid; gap: 4px; margin: 10px 0; }
 .score-row {
   display: grid;
