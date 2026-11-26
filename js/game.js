@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.121';
+} from './rules.js?v=1.4.122';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -5284,7 +5284,11 @@ function hookPositionFor(angle, hookLen, seat = game.seat) {
     view.width - TILE_W / 2,
     tipX + Math.sin(angle) * hookLen,
   ));
-  return { baseX, tipX, tipY, hookX, hookY: tipY + Math.cos(angle) * hookLen };
+  // Keep the hook at or below the water surface; with the rod lifted above the
+  // cat, the old raw tip could otherwise put the hook floating in the sky while
+  // the rod swings. Fish live below WATER_TOP, so in-water catches are unchanged.
+  const hookY = Math.max(WATER_TOP, tipY + Math.cos(angle) * hookLen);
+  return { baseX, tipX, tipY, hookX, hookY };
 }
 
 function hookPosition() {
@@ -5612,11 +5616,24 @@ function drawRod() {
   const handleY = WATER_TOP;
   const rodScale = 200 / 110;
   const rodLen = ROD_LENGTH * rodScale;
-  const visTipX = baseX + Math.sin(game.rodAngle) * rodLen;
-  const visTipY = handleY - Math.cos(game.rodAngle) * rodLen;
+  const angle = Math.atan2(-Math.cos(game.rodAngle), Math.sin(game.rodAngle)) - Math.PI;
+  const theta = angle + Math.PI + 0.62;
+  // Compute where the PNG rod tip actually renders so the line starts at the
+  // visible tip instead of an off-screen approximation. Gameplay hook/catch
+  // geometry is untouched; only the string's start point follows the rod.
+  let visTipX = baseX + Math.sin(game.rodAngle) * rodLen;
+  let visTipY = handleY - Math.cos(game.rodAngle) * rodLen;
+  let s = 0;
+  if (rodImage?.complete && rodImage.naturalWidth) {
+    s = (110 * rodScale) / rodImage.naturalWidth;
+    const lx = (1180 - 323) * s;
+    const ly = (54 - 727) * s;
+    visTipX = baseX + lx * Math.cos(theta) - ly * Math.sin(theta);
+    visTipY = handleY + lx * Math.sin(theta) + ly * Math.cos(theta);
+  }
   ctx.save();
   ctx.lineCap = 'round';
-  // Fishing line runs from the visual rod tip down to the computed hook.
+  // Fishing line runs from the actual rod tip down to the computed hook.
   ctx.strokeStyle = '#e8f4f8';
   ctx.lineWidth = 3;
   ctx.beginPath();
@@ -5624,19 +5641,13 @@ function drawRod() {
   ctx.lineTo(hookX, hookY);
   ctx.stroke();
   if (rodImage?.complete && rodImage.naturalWidth) {
-    const iw = rodImage.naturalWidth;
-    const ih = rodImage.naturalHeight;
     const w = 110 * rodScale;
-    const s = w / iw;
-    const h = ih * s;
+    const h = rodImage.naturalHeight * s;
     const hx = 323 * s;
     const hy = 727 * s;
-    // Native PNG points up-right (~-0.618 rad). Rotate it so the handle stays
-    // at the cat and the rod rises toward the visual tip.
-    const angle = Math.atan2(-Math.cos(game.rodAngle), Math.sin(game.rodAngle)) - Math.PI;
     ctx.save();
     ctx.translate(baseX, handleY);
-    ctx.rotate(angle + Math.PI + 0.62);
+    ctx.rotate(theta);
     ctx.drawImage(rodImage, -hx, -hy, w, h);
     ctx.restore();
   } else {
