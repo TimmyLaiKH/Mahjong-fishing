@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.140/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.140/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.141/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.141/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.140/);
-  assert.match(readme, /\?v=1\.4\.140/);
-  assert.match(changelog, /^## 1\.4\.140/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.141/);
+  assert.match(readme, /\?v=1\.4\.141/);
+  assert.match(changelog, /^## 1\.4\.141/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -532,6 +532,10 @@ test('玩家版本與 cachebust 已更新', () => {
     assert.ok(game.includes(`id: '${id}'`), `missing character ${id}`);
   }
   assert.match(game, /kind: 'fly'/);
+  // 1.4.141: no ambient sky animals, and multiplayer start carries characters.
+  assert.doesNotMatch(game, /function drawSkyFlyers\(/);
+  assert.doesNotMatch(game, /drawSkyFlyers\(\);/);
+  assert.match(game, /character: player\.character/);
   assert.match(game, /kind: 'boat'/);
   assert.match(game, /function characterFor\(/);
   assert.match(game, /function setPlayerCharacter\(/);

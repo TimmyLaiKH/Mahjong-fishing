@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.140';
+} from './rules.js?v=1.4.141';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -3914,6 +3914,7 @@ function startMultiGame() {
       name: player.name,
       isBot: Boolean(player.isBot),
       playerId: player.playerId,
+      character: player.character,
     })),
   };
   game.pendingMultiStart = msg;
@@ -5810,31 +5811,11 @@ function drawRod() {
   ctx.restore();
 }
 
-/** Sparrow, bee, phoenix and dragon cruise the sky above the sea surface. */
-function drawSkyFlyers() {
-  const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
-  const flyers = CHARACTERS.filter((item) => item.kind === 'fly');
-  ctx.save();
-  flyers.forEach((def, index) => {
-    const img = characterFor(def.id);
-    if (!img?.complete || !img.naturalWidth) return;
-    const span = view.width + 200;
-    const x = ((seconds * (18 + index * 7) + index * span / flyers.length) % span) - 100;
-    const y = WATER_TOP * 0.5 + Math.sin(seconds * 0.8 + index * 1.7) * 12;
-    const h = 64;
-    const w = h * img.naturalWidth / img.naturalHeight;
-    ctx.globalAlpha = 0.9;
-    ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
-  });
-  ctx.restore();
-}
-
 function draw(dt) {
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
   ctx.clearRect(0, 0, canvas.width / view.dpr, canvas.height / view.dpr);
   ctx.setTransform(view.dpr * view.scale, 0, 0, view.dpr * view.scale, 0, 0);
   drawBackground();
-  drawSkyFlyers();
   drawFish();
   renderGhostRods();
   drawRod();
