@@ -297,6 +297,17 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(game, /百搭牌不能打出/);
   assert.match(readFileSync('CREDITS.md', 'utf8'), /wildcard\.png/);
 
+  // 1.4.146 Task 3: passive abilities + settlement money adjustments.
+  assert.match(game, /abilityState\[/);
+  assert.match(game, /applyAbilityMoney\(/);
+  assert.match(game, /bonusFanFor\(/);
+  assert.match(game, /角色能力/);
+  const claimBlock3 = game.slice(
+    game.indexOf('function canDeclareMeld('),
+    game.indexOf('function buildClaimActions('),
+  );
+  assert.match(claimBlock3, /'dragon'/);
+
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
   assert.match(css, /#helpPanel \.modal-head \{[^}]*position: sticky/);

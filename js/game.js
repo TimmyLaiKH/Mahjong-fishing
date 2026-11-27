@@ -15,7 +15,9 @@ import {
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
 } from './rules.js?v=1.4.146';
-import { wildcardWaitTiles } from './abilities.js?v=1.4.146';
+import {
+  wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
+} from './abilities.js?v=1.4.146';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -81,18 +83,18 @@ const AVATAR_ICONS = ['🧍', '🧍‍♂️', '🧍‍♀️', '💃'];
 // 1.4.140: twelve AI-generated transparent characters. Flyers live above the
 // waterline; everyone else rides a boat or raft on the surface.
 const CHARACTERS = [
-  { id: 'cat-boat', name: '招財貓', kind: 'boat' },
-  { id: 'bee', name: '蜜蜂', kind: 'fly' },
-  { id: 'dragon', name: '神龍', kind: 'fly' },
-  { id: 'giraffe-boat', name: '長頸鹿', kind: 'boat' },
-  { id: 'monkey-boat', name: '猴子', kind: 'boat' },
-  { id: 'panda-raft', name: '熊貓', kind: 'boat' },
-  { id: 'penguin-iceberg', name: '企鵝', kind: 'boat' },
-  { id: 'phoenix', name: '鳳凰', kind: 'fly' },
-  { id: 'pig-boat', name: '小豬', kind: 'boat' },
-  { id: 'sparrow', name: '麻雀', kind: 'fly' },
-  { id: 'squid', name: '魷魚', kind: 'boat' },
-  { id: 'turtle', name: '烏龜', kind: 'boat' },
+  { id: 'cat-boat', name: '招財貓', kind: 'boat' , ability: { kind: 'passive', id: 'cat-boat', desc: '胡牌收益 +10~50%' } },
+  { id: 'bee', name: '蜜蜂', kind: 'fly' , ability: { kind: 'passive', id: 'bee', desc: '每 2 張花 +1 番' } },
+  { id: 'dragon', name: '神龍', kind: 'fly' , ability: { kind: 'passive', id: 'dragon', desc: '別人不能碰上槓你的牌' } },
+  { id: 'giraffe-boat', name: '長頸鹿', kind: 'boat' , ability: { kind: 'active', id: 'giraffe', cdSeconds: 60, desc: '偷看指定對手手牌' } },
+  { id: 'monkey-boat', name: '猴子', kind: 'boat' , ability: { kind: 'active', id: 'monkey', cdSeconds: 180, desc: '隨機偷對手 1/20 資金' } },
+  { id: 'panda-raft', name: '熊貓', kind: 'boat' , ability: { kind: 'passive', id: 'panda-raft', desc: '每 3 張索子 +1 番' } },
+  { id: 'penguin-iceberg', name: '企鵝', kind: 'boat' , ability: { kind: 'active', id: 'penguin', cdSeconds: 120, desc: '冰凍對手 3 秒' } },
+  { id: 'phoenix', name: '鳳凰', kind: 'fly' , ability: { kind: 'passive', id: 'phoenix', desc: '破產時 $1 復活，之後收益 +20%' } },
+  { id: 'pig-boat', name: '小豬', kind: 'boat' , ability: { kind: 'passive', id: 'pig', desc: '每局結束資金 +5% 利息' } },
+  { id: 'sparrow', name: '麻雀', kind: 'fly' , ability: { kind: 'passive', id: 'sparrow', desc: '開局多一張百搭牌' } },
+  { id: 'squid', name: '魷魚', kind: 'boat' , ability: { kind: 'active', id: 'squid', cdSeconds: 60, desc: '潑墨遮擋對手視野 5 秒' } },
+  { id: 'turtle', name: '烏龜', kind: 'boat' , ability: { kind: 'passive', id: 'turtle', desc: '輸錢 -10~50%' } },
 ];
 const DEFAULT_CHARACTER = 'cat-boat';
 const characterImages = {};
@@ -114,6 +116,13 @@ function characterFor(id) {
 function randomCharacterId() {
   return CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].id;
 }
+const ABILITY_ID_ALIASES = {
+  'giraffe-boat': 'giraffe',
+  'monkey-boat': 'monkey',
+  'penguin-iceberg': 'penguin',
+  'pig-boat': 'pig',
+};
+function abilityIdFor(id) { return ABILITY_ID_ALIASES[id] ?? id; }
 const EMOJIS = ['😀', '😂', '😍', '😎', '😭', '😡', '😮', '👍', '👏', '🙏', '🎉', '🔥'];
 const AI_DISCARD_EMOJI_CHANCE = 0.3;
 const AI_WIN_EMOJI_CHANCE = 0.3;
@@ -283,7 +292,12 @@ const game = {
   pendingClaim: null,       // { tile: { id, uid }, bot: { name, wind } }
   claimActions: [], claimTimeLeft: 0,
   pendingSelfWin: null,     // { result, kongTile, onDecline } — inline 胡牌／過 prompt
-  declinedFlowerWin: false, // 七花已拒絕；只接受八花，之後手牌胡加上花糊
+  declinedFlowerWin: false,
+  abilityState: {},
+  seenAbilityActions: new Set(),
+  pendingPeek: null,
+  inkUntil: 0,
+  frozenUntil: 0, // 七花已拒絕；只接受八花，之後手牌胡加上花糊
   // Multiplayer (PeerJS room). Devices keep private hands; the host owns the
   // shared fish sea and arbitrates catches/claims.
   mode: 'solo',             // 'solo' | 'multi'
@@ -475,6 +489,12 @@ function resetMatch(setup = game.matchSetup, dealerSeat = null) {
     winner: null,
     active: false,
   };
+  for (let seat = 0; seat < 4; seat += 1) {
+    game.abilityState[seat] = {
+      cooldowns: { squid: 0, giraffe: 0, monkey: 0, penguin: 0 },
+      phoenixRevived: false,
+    };
+  }
   updateScoreUI();
   return game.match;
 }
@@ -1339,6 +1359,19 @@ function waitsForHand(concealed, melds, context) {
   return out;
 }
 
+function applyPassiveBonus(result, characterId, flowerCount, souCount) {
+  const bonus = bonusFanFor(abilityIdFor(characterId), { flowerCount, souCount });
+  if (bonus > 0) {
+    result.bonusFan = bonus;
+    result.totalFan = (result.totalFan ?? 0) + bonus;
+  }
+  return result;
+}
+
+function characterForSeat(seat) {
+  return game.players.find((p) => p?.seat === seat)?.character ?? game.playerCharacter;
+}
+
 function resolveDraw() {
   const firstFish = !game.firstFished.has(game.seat) && game.kongChain === 0
     && game.seat !== game.match?.dealerSeat;
@@ -1353,6 +1386,8 @@ function resolveDraw() {
     flowers: game.flowers,
     seatWind: game.seatWind,
   });
+  const souCount = game.hand.filter((tile) => tile.id.startsWith('s')).length;
+  applyPassiveBonus(result, game.playerCharacter, game.flowers.length, souCount);
   game.pendingResult = result;
   const kongTile = findKongTile();
   if (qualifyingWin(result)) {
@@ -1852,6 +1887,8 @@ function canDeclareClaim() {
 function canDeclareMeld() {
   if (!canDeclareClaim() || game.grabPending || game.state === S.AWAIT_DISCARD) return false;
   if (game.hand.some((tile) => tile.id === 'WILD')) return false;
+  const sourceSeat = game.pendingClaim?.from ?? null;
+  if (sourceSeat !== null && characterAbility(abilityIdFor(characterForSeat(sourceSeat)))?.id === 'dragon') return false;
   return game.melds.length < 4 && game.hand.length >= 4;
 }
 
@@ -2209,6 +2246,8 @@ function finishAiReel(state) {
     flowers: state.flowers,
     seatWind: seatWindOf(seat),
   });
+  const aiSou = state.hand.filter((tile) => tile.id.startsWith('s')).length;
+  applyPassiveBonus(result, characterForSeat(seat), state.flowers.length, aiSou);
   if (qualifyingWin(result)) {
     commitAiWin(seat, result);
     return;
@@ -2684,6 +2723,7 @@ function recordRoundResult({ winner = null, discarder = null, result = null,
   // order; the round key makes settlement idempotent on every device.
   const roundKey = `${match.handNumber}:${match.repeatCount}:${match.dealerSeat}`;
   if (match.lastPayout?.roundKey === roundKey) return match.lastPayout;
+  const beforeMoney = [...match.money];
   const settled = settleRound({
     money: match.money,
     winner,
@@ -2713,6 +2753,24 @@ function recordRoundResult({ winner = null, discarder = null, result = null,
     settled.log.repeatCount = 0;
     settled.log.windIndex = Math.floor(match.handNumber / 4);
   }
+  const characters = [0, 1, 2, 3].map((seat) => abilityIdFor(characterForSeat(seat)));
+  const earnPct = 0.10 + Math.random() * 0.40;
+  const losePct = 0.10 + Math.random() * 0.40;
+  const applied = applyAbilityMoney({
+    before: beforeMoney,
+    settledMoney: settled.money,
+    characters,
+    revived: [0, 1, 2, 3].map((seat) => Boolean(game.abilityState[seat]?.phoenixRevived)),
+    earnPct,
+    losePct,
+  });
+  settled.money = applied.money;
+  settled.log.abilities = { ...applied.changes, earnPct, losePct, revived: applied.revived };
+  if (applied.revived.some(Boolean)) {
+    settled.over = settled.money.some((value) => value <= 0)
+      ? settled.over
+      : false;
+  }
   settled.log.roundKey = roundKey;
   settled.log.kongClaim = Boolean(kongClaim);
   // Keep the finished hand's number for the end-overlay heading (the match
@@ -2739,6 +2797,7 @@ function recordRoundResult({ winner = null, discarder = null, result = null,
 function payoutSummary(log = game.match?.lastPayout) {
   if (!log) return '';
   const lines = [];
+  if (log?.abilities?.bonusFan) lines.push(`角色能力 +${log.abilities.bonusFan} 番`);
   if (log.winner !== null && log.winner !== undefined) {
     if (log.selfDraw) {
       lines.push(`自摸：三家各付 ${moneyText(log.payout.each)}，共得 ${moneyText(log.payout.total)}`);
