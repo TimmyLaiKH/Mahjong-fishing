@@ -14,11 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.153';
+} from './rules.js?v=1.4.154';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
   cooldownReady, startCooldown,
-} from './abilities.js?v=1.4.153';
+} from './abilities.js?v=1.4.154';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -6511,8 +6511,9 @@ function renderAbilityButtons() {
       openGiraffeTargetPicker();
       return;
     }
-    const target = abilitySeats(game.seat)[0] ?? null;
-    requestAbility(myId, target);
+    // Non-giraffe actives have no user-picked target: let the host choose a
+    // random opponent each time (e.g. monkey steals from a different seat).
+    requestAbility(myId, null);
     renderAbilityButtons();
   });
   ui.abilityButtons.appendChild(btn);
@@ -7528,13 +7529,13 @@ async function boot() {
       wildcardImage = new Image();
       wildcardImage.onload = () => resolve();
       wildcardImage.onerror = () => resolve();
-      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.153';
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.154';
     }),
     new Promise((resolve) => {
       inkSplashImage = new Image();
       inkSplashImage.onload = () => resolve();
       inkSplashImage.onerror = () => resolve();
-      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.153';
+      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.154';
     }),
   ]);
   game.images = { ...loaded.images, WILD: wildcardImage };
