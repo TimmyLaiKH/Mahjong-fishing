@@ -14,11 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.158';
+} from './rules.js?v=1.4.159';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
   cooldownReady, startCooldown,
-} from './abilities.js?v=1.4.158';
+} from './abilities.js?v=1.4.159';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -97,7 +97,7 @@ const CHARACTERS = [
   { id: 'pig-boat', name: '小豬', kind: 'boat' , ability: { kind: 'passive', id: 'pig', desc: '每局結束資金 +5% 利息' } },
   { id: 'sparrow', name: '麻雀', kind: 'fly' , ability: { kind: 'passive', id: 'sparrow', desc: '開局多一張百搭牌' } },
   { id: 'squid', name: '墨魚', kind: 'boat' , ability: { kind: 'active', id: 'squid', cdSeconds: 60, desc: '潑墨遮擋對手視野 5 秒' } },
-  { id: 'turtle', name: '烏龜', kind: 'boat' , ability: { kind: 'passive', id: 'turtle', desc: '輸錢 -10~50%' } },
+  { id: 'turtle', name: '玄武', kind: 'boat' , ability: { kind: 'passive', id: 'turtle', desc: '輸錢 -10~50%' } },
 ];
 const DEFAULT_CHARACTER = 'cat-boat';
 const characterImages = {};
@@ -6213,7 +6213,7 @@ function gameLoop(timestamp) {
   // Claim deadlines are wall-clock based and must stay identical on every
   // screen, so they tick even while a tab's animation loop is throttled.
   tickClaimBoxes();
-  renderAbilityButtons(); // refresh cooldown countdown
+  updateAbilityCountdown(); // refresh cooldown countdown
   syncInkOverlay();
   if (!simulationPaused()) {
     if (game.state !== S.WIN && game.state !== S.DRAW_GAME) {
@@ -6572,6 +6572,18 @@ function renderAbilityButtons() {
     renderAbilityButtons();
   });
   ui.abilityButtons.appendChild(btn);
+}
+
+/** 只更新既有技能按鈕的倒數與停用狀態，不重建元素（避免點擊監聽器被移除）。 */
+function updateAbilityCountdown() {
+  const btn = ui.abilityButtons?.querySelector('.ability-btn');
+  if (!btn) return;
+  const myId = btn.dataset.ability;
+  const cd = game.abilityState?.[game.seat]?.cooldowns ?? {};
+  const remain = Math.max(0, Math.ceil((cd[myId] ?? 0) - nowSec()));
+  const label = { squid: '潑墨', giraffe: '偷看', monkey: '偷錢', penguin: '冰凍' }[myId] ?? '技能';
+  btn.textContent = `技能: ${label}${remain ? ` ${remain}s` : ''}`;
+  btn.disabled = isFrozen(game.seat) || cooldownReady(cd, myId, nowSec()) === false;
 }
 
 /** 長頸鹿選目標：列出三位對手，點選後才送出偷看請求。 */
@@ -7571,13 +7583,13 @@ async function boot() {
       wildcardImage = new Image();
       wildcardImage.onload = () => resolve();
       wildcardImage.onerror = () => resolve();
-      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.158';
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.159';
     }),
     new Promise((resolve) => {
       inkSplashImage = new Image();
       inkSplashImage.onload = () => resolve();
       inkSplashImage.onerror = () => resolve();
-      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.158';
+      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.159';
     }),
   ]);
   game.images = { ...loaded.images, WILD: wildcardImage };
