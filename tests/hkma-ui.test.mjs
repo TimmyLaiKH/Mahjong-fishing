@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.156/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.156/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.157/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.157/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.156/);
-  assert.match(readme, /\?v=1\.4\.156/);
-  assert.match(changelog, /^## 1\.4\.156/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.157/);
+  assert.match(readme, /\?v=1\.4\.157/);
+  assert.match(changelog, /^## 1\.4\.157/m);
 
   // 1.4.150: ink splash PNGs replace the flat dim overlay.
   const inkCss150 = readFileSync('css/style.css', 'utf8');
@@ -405,6 +405,13 @@ test('玩家版本與 cachebust 已更新', () => {
   );
   assert.match(applyAbility, /startCooldown\(/);
   assert.match(applyAbility, /renderAbilityButtons\(\)/);
+
+  // 1.4.157: chip-style skill button, no multi restart, money revert on restart, bankruptcy end.
+  assert.match(game, /ability-btn chip/);
+  assert.match(game, /restart\.hidden = game\.mode === 'multi'/);
+  assert.match(game, /soloMoneySnapshot.*\n/);
+  assert.match(game, /破產/);
+  assert.match(game, /stealBankrupt/);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');

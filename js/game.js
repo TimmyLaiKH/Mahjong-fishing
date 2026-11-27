@@ -14,11 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.156';
+} from './rules.js?v=1.4.157';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
   cooldownReady, startCooldown,
-} from './abilities.js?v=1.4.156';
+} from './abilities.js?v=1.4.157';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -3632,6 +3632,21 @@ function abilityStateFor(seat) {
 /** Host validates and applies an active ability, then broadcasts the result.
  *  Replays share an actionId and are deduped; all random decisions happen here
  *  on the host so guests only consume the broadcast values. */
+/** A steal that bankrupts a seat ends the whole match immediately. */
+function showStealBankruptEnd(casterSeat, victimSeat, amount) {
+  const casterPlayer = game.players.find((player) => player?.seat === casterSeat);
+  const victimPlayer = game.players.find((player) => player?.seat === victimSeat);
+  const casterName = characterDef(casterPlayer?.character).name ?? '對手';
+  const victimName = characterDef(victimPlayer?.character).name ?? '對手';
+  const money = moneyText(amount ?? 0);
+  game.stealBankrupt = { caster: casterSeat, victim: victimSeat, amount };
+  if (game.match) game.match.over = true;
+  showHandEndOverlay({
+    title: '破產',
+    message: `${casterName}（${scoreSeatName(casterSeat)}）從${victimName}（${scoreSeatName(victimSeat)}）偷走${money}，${victimName}資金為0或以下，比賽結束！`,
+  });
+}
+
 function resolveAbility({ seat, id, target = null, actionId = null }) {
   if (!actionId || game.seenAbilityActions.has(actionId)) return false;
   game.seenAbilityActions.add(actionId);
@@ -3645,6 +3660,7 @@ function resolveAbility({ seat, id, target = null, actionId = null }) {
   let giraffeTarget = null;
   let monkeyVictim = null;
   let monkeyAmount = 0;
+  let noticeBankrupt = null;
   if (canonical === 'squid') {
     const until = nowSec() + 5;
     for (const other of opponents) game.inkUntil[other] = until;
@@ -3658,6 +3674,10 @@ function resolveAbility({ seat, id, target = null, actionId = null }) {
     game.match.money[seat] = (game.match.money[seat] ?? 0) + monkeyAmount;
     maybeAiEmoji(monkeyVictim, 0.5, ['😡']);
     updateHUD(); // sync money UI after ability
+    if ((game.match?.money?.[monkeyVictim] ?? 1) <= 0) {
+      noticeBankrupt = { caster: seat, victim: monkeyVictim, amount: monkeyAmount };
+      showStealBankruptEnd(seat, monkeyVictim, monkeyAmount);
+    }
   } else if (canonical === 'giraffe') {
     // Human picks a target explicitly; AI targets a random opponent (host-side).
     giraffeTarget = opponents.includes(target) ? target : opponents[Math.floor(Math.random() * opponents.length)];
@@ -3677,7 +3697,7 @@ function resolveAbility({ seat, id, target = null, actionId = null }) {
   state.cooldowns = startCooldown(state.cooldowns, canonical, nowSec());
   const notice = {t:'abilityResult', seat, id: canonical, actionId, target: giraffeTarget };
   if (canonical === 'squid') notice.inkUntil = opponents.map((s) => game.inkUntil[s]);
-  if (canonical === 'monkey') { notice.victim = monkeyVictim; notice.amount = monkeyAmount; }
+  if (canonical === 'monkey') { notice.victim = monkeyVictim; notice.amount = monkeyAmount; if (noticeBankrupt) notice.bankrupt = noticeBankrupt; }
   broadcastOrSend(notice);
   if (game.mode === 'multi' && net.isHost && canonical === 'monkey') {
     net.broadcast({ t: 'match', match: cloneMatch(game.match) });
@@ -3697,6 +3717,7 @@ function applyAbilityResult(msg) {
     showInkToast(msg.seat);
   } else if (id === 'monkey' && Number.isInteger(msg.victim)) {
     showStealToast(msg.seat, msg.victim, msg.amount ?? 0);
+    if (msg.bankrupt) showStealBankruptEnd(msg.seat, msg.victim, msg.amount ?? 0);
     updateHUD(); // sync money UI after ability
   } else if (id === 'penguin') {
     abilitySeats(msg.seat).forEach((s) => { game.frozenUntil[s] = nowSec() + 3; });
@@ -4779,6 +4800,9 @@ function cancelRestartVote() {
 function requestRestart() {
   if (game.mode === 'multi') return false; // no multiplayer restart vote
   if (game.mode !== 'multi') {
+    if (Array.isArray(game.soloMoneySnapshot) && game.match) {
+      game.match.money = [...game.soloMoneySnapshot];
+    }
     startGame({ keepTurn: true });
     return;
   }
@@ -6528,7 +6552,7 @@ function renderAbilityButtons() {
   const frozen = isFrozen(game.seat);
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'ability-btn';
+  btn.className = 'ability-btn chip';
   btn.dataset.ability = myId;
   btn.disabled = frozen || cooldownReady(cd, myId, nowSec()) === false;
   const remain = Math.max(0, Math.ceil((cd[myId] ?? 0) - nowSec()));
@@ -7100,6 +7124,7 @@ function switchHelpTab(name) {
 function openSettingsPanel() {
   const restart = el('restartBtn');
   if (restart) restart.hidden = !game.match?.active;
+  if (restart && game.mode === 'multi') restart.hidden = game.mode === 'multi';
   openModal('settingsPanel');
 }
 
@@ -7545,13 +7570,13 @@ async function boot() {
       wildcardImage = new Image();
       wildcardImage.onload = () => resolve();
       wildcardImage.onerror = () => resolve();
-      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.156';
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.157';
     }),
     new Promise((resolve) => {
       inkSplashImage = new Image();
       inkSplashImage.onload = () => resolve();
       inkSplashImage.onerror = () => resolve();
-      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.156';
+      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.157';
     }),
   ]);
   game.images = { ...loaded.images, WILD: wildcardImage };
