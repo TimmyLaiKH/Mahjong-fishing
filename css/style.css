@@ -860,4 +860,4 @@ body { background-color: #fffaf0; background-image: repeating-linear-gradient(90
 .peek-panel { position: absolute; z-index: 66; left: 50%; transform: translateX(-50%); background: rgba(255,250,240,0.96); border: 2px solid #8c1d1d; border-radius: 8px; padding: 8px; }
 .peek-title { font-size: 12px; margin-bottom: 4px; }
 .peek-tiles { display: flex; flex-wrap: wrap; margin: 2px; }
-#ink-overlay { position: absolute; inset: 0; z-index: 64; background: rgba(10,10,10,0.78); pointer-events: none; }
+#inkOverlay, #ink-overlay { position: absolute; inset: 0; z-index: 64; background: rgba(10,10,10,0.78); pointer-events: none; }
