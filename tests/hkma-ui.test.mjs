@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.141/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.141/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.142/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.142/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.141/);
-  assert.match(readme, /\?v=1\.4\.141/);
-  assert.match(changelog, /^## 1\.4\.141/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.142/);
+  assert.match(readme, /\?v=1\.4\.142/);
+  assert.match(changelog, /^## 1\.4\.142/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -499,7 +499,8 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(game, /game\.aimPreviewLen \+= \(aimTarget - game\.aimPreviewLen\)/);
   // 1.4.133: line attaches to the rod tip; hook swings with the rod to aim.
   // 1.4.134: string+hook pendulum on their own clock, attached to the rod tip.
-  assert.match(game, /Math\.sin\(seconds \/ 1\.2\) \* 1\.4/);
+  assert.match(game, /motionSpeedFactor\(\)/);
+  assert.match(game, /Math\.sin\(.*motionSpeedFactor\(\).*\) \* 1\.4/);
   assert.match(rodDraw128, /hookX = visTipX \+ Math\.sin\(pendulum\) \* previewLen/);
   assert.match(rodDraw128, /hookY = visTipY \+ Math\.cos\(pendulum\) \* previewLen/);
   assert.match(rodDraw128, /ctx\.moveTo\(visTipX, visTipY\)/);
@@ -524,6 +525,27 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(rodDraw128, /Math\.atan2\(hookY - visTipY, hookX - visTipX\)/);
   assert.match(rodDraw128, /ctx\.translate\(hookX, hookY\)/);
   assert.match(rodDraw128, /ctx\.rotate\(lineAngle - Math\.PI \/ 2\)/);
+  // 1.4.142: all characters share one waterline level; room UI simplified.
+  assert.doesNotMatch(game, /WATER_TOP \* 0\.55/);
+  assert.doesNotMatch(html, /id="roomAvatars"/);
+  assert.doesNotMatch(game, /roomAvatars: el\(/);
+  assert.doesNotMatch(html, /id="roomHookSpeed"/);
+  assert.match(game, /HOOK_SPEED_FIXED = 1/);
+  const roomFn142 = game.slice(
+    game.indexOf('function renderRoom('),
+    game.indexOf('function copyRoomLink('),
+  );
+  assert.match(roomFn142, /button\.style\.background = AVATAR_COLORS\[/);
+  assert.match(roomFn142, /Empty seats have no character icon/);
+  const boatFn142 = game.slice(
+    game.indexOf('function boatOffset('),
+    game.indexOf('function hookPositionFor('),
+  );
+  assert.match(boatFn142, /motionSpeedFactor\(\)/);
+  const rules142 = readFileSync('js/rules.js', 'utf8');
+  assert.match(rules142, /萬眾一心/);
+  assert.doesNotMatch(rules142, /一心一意/);
+
   // 1.4.140: twelve selectable characters; flyers live above the waterline.
   assert.match(game, /const CHARACTERS = \[/);
   assert.match(game, /assets\/characters\/\$\{def\.id\}\.png/);

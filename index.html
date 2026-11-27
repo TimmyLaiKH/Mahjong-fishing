@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/style.css?v=1.4.141" />
+<link rel="stylesheet" href="css/style.css?v=1.4.142" />
 </head>
 <body>
 <canvas id="game" aria-label="釣魚遊戲畫面"></canvas>
@@ -123,7 +123,6 @@
     </label>
     <p class="room-picker-label">選擇角色</p>
     <div id="roomCharacters" class="character-picker" aria-label="選擇角色"></div>
-    <div id="roomAvatars" class="room-avatars" aria-label="玩家頭像"></div>
     <div id="roomPlayers" class="room-players"></div>
     <div class="room-emoji-row">
       <button id="roomEmojiBtn" class="secondary" type="button" aria-haspopup="true" aria-expanded="false">表情</button>
@@ -131,12 +130,6 @@
     </div>
     <p id="roomGuestInfo" class="room-guest-info" hidden>(由房主設定)</p>
     <div id="roomHostControls" class="room-host-controls">
-      <label class="field">鉤速
-        <span class="duration-controls">
-          <input id="roomHookSpeed" type="range" min="0.5" max="2" step="0.1" value="1" aria-label="房間鉤子速度" />
-          <b id="roomHookSpeedValue">1.0×</b>
-        </span>
-      </label>
       <label class="field">每局時間
         <span class="duration-controls">
           <input id="roomGameDuration" type="range" min="30" max="1800" step="1" value="300" aria-label="房間每局時間滑桿" />
@@ -363,6 +356,6 @@
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js" onerror="this.onerror=null;this.src='js/vendor/peerjs.min.js'"></script>
-<script type="module" src="js/game.js?v=1.4.141"></script>
+<script type="module" src="js/game.js?v=1.4.142"></script>
 </body>
 </html>

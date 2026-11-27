@@ -70,7 +70,7 @@ export const FAN_VALUES = Object.freeze({
   '三槓子': 3, '三喜臨門': 3, '雙色同刻': 3, '四歸四': 3,
   '萬綠叢中一點紅': 10, '百萬石': 10, '紅孔雀': 10,
   // 創意自訂牌型
-  '一心一意': 13, '九五之尊': 10, '四連刻': 3,
+  '萬眾一心': 13, '九五之尊': 10, '四連刻': 3,
   '三色同順': 2, '三色同刻': 2, '全帶么九': 2, '五門齊': 2,
   '全求人': 1, '斷么九': 1,
 });
@@ -321,7 +321,7 @@ export const PATTERN_TABLE = Object.freeze([
     example: { concealed: ['s1', 's1', 's1', 's5', 's5', 's5', 's7', 's7', 's7', 's9', 's9', 's9', 'C', 'C'], melds: [], context: { customPatterns: true } },
   },
   {
-    id: '一心一意', fan: 13, category: '自訂牌型', desc: '自訂牌型：全部十四張（四槓時十八張）都是同一種牌；不吸收其他牌型，可與清么九、坎坎胡等並計。',
+    id: '萬眾一心', fan: 13, category: '自訂牌型', desc: '自訂牌型：全部十四張（四槓時十八張）都是同一種牌；不吸收其他牌型，可與清么九、坎坎胡等並計。',
     example: { concealed: Array.from({ length: 14 }, () => 'm1'), melds: [], context: { customPatterns: true } },
   },
   {
@@ -758,9 +758,9 @@ export function detectCustomPatterns({
     if (total >= 100) add('百萬石');
   }
 
-  // 一心一意 counts the physical fourth kong tile too: four kongs make 18 tiles.
+  // 萬眾一心 counts the physical fourth kong tile too: four kongs make 18 tiles.
   const fullTiles = [...concealed, ...melds.flatMap((m) => m.tiles)];
-  if (fullTiles.length >= 14 && fullTiles.every((tile) => tile === fullTiles[0])) add('一心一意');
+  if (fullTiles.length >= 14 && fullTiles.every((tile) => tile === fullTiles[0])) add('萬眾一心');
 
   const NOBLE_TILES = new Set(['m5', 'm9', 'p5', 'p9', 's5', 's9']);
   if (allTiles.length && allTiles.every((tile) => NOBLE_TILES.has(tile))) add('九五之尊');
