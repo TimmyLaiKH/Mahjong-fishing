@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.143/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.143/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.144/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.144/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.143/);
-  assert.match(readme, /\?v=1\.4\.143/);
-  assert.match(changelog, /^## 1\.4\.143/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.144/);
+  assert.match(readme, /\?v=1\.4\.144/);
+  assert.match(changelog, /^## 1\.4\.144/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -442,7 +442,7 @@ test('玩家版本與 cachebust 已更新', () => {
     game.indexOf('function boatOffset('),
     game.indexOf('function hookPositionFor('),
   );
-  assert.match(boatCode, /clockOffset/);
+  assert.match(boatCode, /motionPhase\(\)/);
   assert.match(boatCode, /Math\.sin/);
   const hook = game.slice(
     game.indexOf('function hookPositionFor('),
@@ -461,7 +461,7 @@ test('玩家版本與 cachebust 已更新', () => {
     game.indexOf('function boatOffset('),
     game.indexOf('function hookPositionFor('),
   );
-  assert.match(boatFn, /seconds \/ 2/);
+  assert.match(boatFn, /motionPhase\(\) \/ 2/);
   assert.match(boatFn, /view\.width \* 0\.42/);
   // 1.4.139: opponents are full transparent cat-on-boats, not small background icons.
   const ghostFn139 = game.slice(
@@ -500,7 +500,10 @@ test('玩家版本與 cachebust 已更新', () => {
   // 1.4.133: line attaches to the rod tip; hook swings with the rod to aim.
   // 1.4.134: string+hook pendulum on their own clock, attached to the rod tip.
   assert.match(game, /motionSpeedFactor\(\)/);
-  assert.match(game, /Math\.sin\(.*motionSpeedFactor\(\).*\) \* 1\.4/);
+  assert.match(game, /function motionPhase\(\)/);
+  assert.match(game, /MOTION_RAMP_SECONDS = 60/);
+  assert.match(game, /Math\.sin\(motionPhase\(\) \/ 1\.2\) \* 1\.4/);
+  assert.doesNotMatch(game, /seconds \/ 1\.2 \* motionSpeedFactor/);
   assert.match(rodDraw128, /hookX = visTipX \+ Math\.sin\(pendulum\) \* previewLen/);
   assert.match(rodDraw128, /hookY = visTipY \+ Math\.cos\(pendulum\) \* previewLen/);
   assert.match(rodDraw128, /ctx\.moveTo\(visTipX, visTipY\)/);
@@ -541,7 +544,7 @@ test('玩家版本與 cachebust 已更新', () => {
     game.indexOf('function boatOffset('),
     game.indexOf('function hookPositionFor('),
   );
-  assert.match(boatFn142, /motionSpeedFactor\(\)/);
+  assert.match(boatFn142, /motionPhase\(\)/);
   const rules142 = readFileSync('js/rules.js', 'utf8');
   assert.match(rules142, /萬眾一心/);
   assert.doesNotMatch(rules142, /一心一意/);
@@ -616,9 +619,9 @@ test('玩家版本與 cachebust 已更新', () => {
 
 
   // 1.4.143: slower motion, character PNG icons in score/副露, one-row menu tiles.
-  assert.match(game, /return 1 \+ \(\(duration - left\) \/ duration\) \* 0\.5;/);
+  assert.match(game, /return 1 \+ ramp \* 0\.5;/);
   assert.match(game, /meld-row-icon-img/);
-  assert.match(game, /assets\/characters\/\$\{meldCharacter\.id\}\.png\?v=1\.4\.143/);
+  assert.match(game, /assets\/characters\/\$\{meldCharacter\.id\}\.png\?v=1\.4\.144/);
   assert.match(game, /score-seat-icon/);
   const css143 = readFileSync('css/style.css', 'utf8');
   assert.match(css143, /\.menu-tiles \{[^}]*flex-wrap: nowrap/);
