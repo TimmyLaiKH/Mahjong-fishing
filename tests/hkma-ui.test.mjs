@@ -336,6 +336,16 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(abilityCss, /\.ability-btn/);
   assert.doesNotMatch(abilityCss, /#ink-overlay \{[^}]*height:\s*\d+px/);
 
+  // Final review: giraffe peeks the chosen target, and tiles are sent only
+  // to the requester (never attached to the broadcast abilityResult).
+  const giraffeFix = game.slice(
+    game.indexOf("else if (canonical === 'giraffe')"),
+    game.indexOf('  state.cooldowns = startCooldown', game.indexOf("else if (canonical === 'giraffe')")),
+  );
+  assert.match(giraffeFix, /game\.seat === giraffeTarget \? game : game\.aiStates/);
+  assert.match(giraffeFix, /net\.sendToPeer\(/);
+  assert.doesNotMatch(game, /notice\.tiles = game\.pendingPeek/);
+
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
   assert.match(css, /#helpPanel \.modal-head \{[^}]*position: sticky/);

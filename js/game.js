@@ -3611,15 +3611,22 @@ function resolveAbility({ seat, id, target = null, actionId = null }) {
   } else if (canonical === 'giraffe') {
     // Human picks a target explicitly; AI targets a random opponent (host-side).
     giraffeTarget = opponents.includes(target) ? target : opponents[Math.floor(Math.random() * opponents.length)];
-    const source = game.seat === seat ? game : game.aiStates?.[seat];
+    const source = game.seat === giraffeTarget ? game : game.aiStates?.[giraffeTarget];
     const tiles = source ? (source.hand ?? []).map((tile) => tile.id) : [];
-    game.pendingPeek = { seat, target: giraffeTarget, tiles };
+    if (seat === game.seat) game.pendingPeek = { seat, target: giraffeTarget, tiles };
+    else {
+      const requester = game.players.find((player) => player?.seat === seat);
+      if (game.mode === 'multi' && net.isHost && requester?.playerId) {
+        net.sendToPeer(requester.playerId, {
+          t: 'abilityResult', seat, id: canonical, actionId, target: giraffeTarget, tiles,
+        });
+      }
+    }
   }
 
   state.cooldowns = startCooldown(state.cooldowns, canonical, nowSec());
   const notice = {t:'abilityResult', seat, id: canonical, actionId, target: giraffeTarget };
   if (canonical === 'squid') notice.inkUntil = game.inkUntil[seat] ? opponents.map((s) => game.inkUntil[s]) : [];
-  if (canonical === 'giraffe') notice.tiles = game.pendingPeek?.tiles ?? [];
   broadcastOrSend(notice);
   if (game.mode === 'multi' && net.isHost && canonical === 'monkey') {
     net.broadcast({ t: 'match', match: cloneMatch(game.match) });
