@@ -17,6 +17,7 @@ import {
 } from './rules.js?v=1.4.146';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
+  cooldownReady, startCooldown,
 } from './abilities.js?v=1.4.146';
 
 const canvas = document.getElementById('game');
@@ -621,6 +622,12 @@ const keepsSeaMoving = (modal) => MOVING_MODALS.has(modal.id)
 const simulationPaused = () => document.hidden || [...document.querySelectorAll('.modal.show')]
   .some((m) => m !== ui.loading && !keepsSeaMoving(m));
 const paused = () => document.hidden || modalOpen();
+// Active abilities can freeze a seat (penguin) or block its vision (squid).
+// These are wall-clock deadlines derived from the host-synced clock offset.
+const nowSec = () => (Date.now() + (game.clockOffset ?? 0)) / 1000;
+function isFrozen(seat = game.seat) {
+  return (game.frozenUntil?.[seat] ?? 0) > nowSec();
+}
 
 function winContext() {
   return {
@@ -1179,7 +1186,7 @@ function seatHasPendingKong(seat) {
 }
 
 function startCast() {
-  if (game.state !== S.AWAIT_CAST || paused()) return;
+  if (game.state !== S.AWAIT_CAST || paused() || isFrozen()) return;
   if (seatHasPendingKong(game.seat)) {
     setStatus('等待其他玩家是否搶槓…');
     return;
@@ -1440,7 +1447,7 @@ function declareKong(kind, sourceKey = `${game.seat}:kong:${kind}:${game.nextUid
 }
 
 function discard(uid) {
-  if (game.state !== S.AWAIT_DISCARD) return;
+  if (game.state !== S.AWAIT_DISCARD || isFrozen()) return;
   const index = game.hand.findIndex((tile) => tile.uid === uid);
   if (index === -1) return;
   if (game.hand[index].id === 'WILD') { showToast('百搭牌不能打出'); return; }
@@ -1877,6 +1884,7 @@ function handReadyForClaim() {
  *  claim may be made while the rod is out, a kong replacement is owed, or a
  *  forced discard is still pending. */
 function canDeclareClaim() {
+  if (isFrozen()) return false;
   if (game.mustDiscard || game.grabPending || game.lastDraw || game.kongChain > 0) return false;
   if (!handReadyForClaim()) return false;
   return ![S.LOADING, S.RESOLVE_DRAW, S.WIN, S.DRAW_GAME].includes(game.state);
@@ -2572,6 +2580,22 @@ function commitAiWin(seat, result, fanTotal = null, meta = {}) {
 }
 
 function aiTick(dt) {
+  // Each AI with a ready active ability has a small per-second chance to use it.
+  if (!isFrozen() && dt > 0) {
+    for (const player of game.players) {
+      if (!player?.isBot || player.isEmpty) continue;
+      const seat = player.seat;
+      const id = abilityIdFor(player.character);
+      const def = characterAbility(id);
+      if (!def || def.kind !== 'active') continue;
+      if (!cooldownReady(abilityStateFor(seat).cooldowns, id, nowSec())) continue;
+      if (Math.random() < 0.01 * dt) {
+        const targets = abilitySeats(seat);
+        const target = targets[Math.floor(Math.random() * targets.length)];
+        resolveAbility({ seat, id, target, actionId: `${Date.now()}-${seat}-${id}` });
+      }
+    }
+  }
   if (!Object.keys(game.aiStates).length || game.state === S.WIN || game.state === S.DRAW_GAME) return;
   const hookRate = game.hookSpeed * paceFactor();
   for (const state of Object.values(game.aiStates)) {
@@ -3542,6 +3566,81 @@ function refreshMultiBots() {
   game.bots = game.players
     .filter((player) => player && !player.isEmpty && player.seat !== game.seat)
     .map((player) => ({ name: player.name, wind: player.wind, isBot: Boolean(player.isBot) }));
+}
+
+// --- Character active abilities (host-authoritative) -----------------------
+function abilitySeats(seat) {
+  return [0, 1, 2, 3].filter((s) => s !== seat);
+}
+
+function abilityStateFor(seat) {
+  if (!game.abilityState[seat]) {
+    game.abilityState[seat] = { cooldowns: {}, phoenixRevived: false };
+  }
+  if (!game.abilityState[seat].cooldowns) game.abilityState[seat].cooldowns = {};
+  return game.abilityState[seat];
+}
+
+/** Host validates and applies an active ability, then broadcasts the result.
+ *  Replays share an actionId and are deduped; all random decisions happen here
+ *  on the host so guests only consume the broadcast values. */
+function resolveAbility({ seat, id, target = null, actionId = null }) {
+  if (!actionId || game.seenAbilityActions.has(actionId)) return false;
+  game.seenAbilityActions.add(actionId);
+  const canonical = abilityIdFor(id);
+  const def = characterAbility(canonical);
+  if (!def || def.kind !== 'active') return false;
+  const state = abilityStateFor(seat);
+  if (!cooldownReady(state.cooldowns, canonical, nowSec())) return false;
+
+  const opponents = abilitySeats(seat);
+  let giraffeTarget = null;
+  if (canonical === 'squid') {
+    const until = nowSec() + 5;
+    for (const other of opponents) game.inkUntil[other] = until;
+  } else if (canonical === 'penguin') {
+    const until = nowSec() + 3;
+    for (const other of opponents) game.frozenUntil[other] = until;
+  } else if (canonical === 'monkey') {
+    const victim = opponents.includes(target) ? target : opponents[Math.floor(Math.random() * opponents.length)];
+    const amount = Math.max(1, Math.floor((game.match?.money?.[victim] ?? 0) / 20));
+    game.match.money[victim] -= amount;
+    game.match.money[seat] = (game.match.money[seat] ?? 0) + amount;
+  } else if (canonical === 'giraffe') {
+    // Human picks a target explicitly; AI targets a random opponent (host-side).
+    giraffeTarget = opponents.includes(target) ? target : opponents[Math.floor(Math.random() * opponents.length)];
+    const source = game.seat === seat ? game : game.aiStates?.[seat];
+    const tiles = source ? (source.hand ?? []).map((tile) => tile.id) : [];
+    game.pendingPeek = { seat, target: giraffeTarget, tiles };
+  }
+
+  state.cooldowns = startCooldown(state.cooldowns, canonical, nowSec());
+  const notice = {t:'abilityResult', seat, id: canonical, actionId, target: giraffeTarget };
+  if (canonical === 'squid') notice.inkUntil = game.inkUntil[seat] ? opponents.map((s) => game.inkUntil[s]) : [];
+  if (canonical === 'giraffe') notice.tiles = game.pendingPeek?.tiles ?? [];
+  broadcastOrSend(notice);
+  if (game.mode === 'multi' && net.isHost && canonical === 'monkey') {
+    net.broadcast({ t: 'match', match: cloneMatch(game.match) });
+  }
+  if (canonical === 'squid') showToast('魷魚潑墨：對手視野被遮擋 5 秒');
+  if (canonical === 'penguin') showToast('企鵝冰凍：對手 3 秒不能行動');
+  if (canonical === 'monkey') showToast('猴子偷錢成功！');
+  return true;
+}
+
+function applyAbilityResult(msg) {
+  if (!msg || game.seenAbilityActions.has(msg.actionId)) return;
+  game.seenAbilityActions.add(msg.actionId);
+  const id = msg.id;
+  if (id === 'squid' && Array.isArray(msg.inkUntil)) {
+    abilitySeats(msg.seat).forEach((s, i) => { game.inkUntil[s] = msg.inkUntil[i] ?? 0; });
+  } else if (id === 'penguin') {
+    abilitySeats(msg.seat).forEach((s) => { game.frozenUntil[s] = nowSec() + 3; });
+  } else if (id === 'giraffe' && msg.seat === game.seat) {
+    // Tiles are relayed only to the requester (privacy exception accepted).
+    game.pendingPeek = { seat: msg.seat, target: msg.target, tiles: msg.tiles ?? [] };
+    showToast(`偷看 ${scoreSeatName(msg.target)} 的手牌`);
+  }
 }
 
 function broadcastOrSend(msg) {
@@ -5076,6 +5175,12 @@ function wireNetEvents() {
     if (!net.isHost && game.mode === 'multi') ackWin(msg.winId);
   });
 
+  net.on('ability', (msg) => {
+    if (!msg) return;
+    if (net.isHost) resolveAbility(msg);
+    else if (msg.seat === game.seat) broadcastOrSend({t:'ability', ...msg});
+  });
+  net.on('abilityResult', (msg) => applyAbilityResult(msg));
   net.on('match', (msg) => {
     if (net.isHost) return;
     const previousKey = game.match?.lastPayout?.roundKey ?? null;

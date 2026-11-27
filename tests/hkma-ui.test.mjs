@@ -308,6 +308,20 @@ test('玩家版本與 cachebust 已更新', () => {
   );
   assert.match(claimBlock3, /'dragon'/);
 
+  // 1.4.146 Task 4: active abilities + host arbitration messages.
+  assert.match(game, /t:'ability'/);
+  assert.match(game, /t:'abilityResult'/);
+  assert.match(game, /actionId/);
+  assert.match(game, /isFrozen\(/);
+  assert.match(game, /inkUntil\[/);
+  assert.match(game, /frozenUntil\[/);
+  assert.match(game, /giraffeTarget/);
+  const abilityHandler = game.slice(
+    game.indexOf("net.on('abilityResult'"),
+    game.indexOf("net.on('match'"),
+  );
+  assert.doesNotMatch(abilityHandler, /Math\.random\(\)/);
+
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
   assert.match(css, /#helpPanel \.modal-head \{[^}]*position: sticky/);
