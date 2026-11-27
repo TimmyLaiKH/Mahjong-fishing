@@ -14,11 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.151';
+} from './rules.js?v=1.4.152';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
   cooldownReady, startCooldown,
-} from './abilities.js?v=1.4.151';
+} from './abilities.js?v=1.4.152';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -996,10 +996,22 @@ function checkInitialSelfDraw() {
   return true;
 }
 
+/** A fresh hand clears every active-skill cooldown and transient effect. */
+function resetAbilityState() {
+  for (let seat = 0; seat < 4; seat += 1) {
+    abilityStateFor(seat).cooldowns = {};
+  }
+  game.seenAbilityActions = new Set();
+  game.pendingPeek = null;
+  game.inkUntil = {};
+  game.frozenUntil = {};
+}
+
 function startGame({ keepTurn = false, preset = null } = {}) {
   // A fresh hand spawns a fresh sea. Reset the wall-clock sea step so the new
   // fish do not inherit time spent in the lobby or a finished round.
   lastSeaStepAt = Date.now();
+  resetAbilityState();
   const nextTurn = keepTurn ? game.turn : 1;
   if (!game.match) resetMatch();
   // Uids must be allocated before dealing so AI hands and discards never reuse
@@ -3644,6 +3656,11 @@ function applyAbilityResult(msg) {
   const id = msg.id;
   if (id === 'squid' && Array.isArray(msg.inkUntil)) {
     abilitySeats(msg.seat).forEach((s, i) => { game.inkUntil[s] = msg.inkUntil[i] ?? 0; });
+    if (abilitySeats(msg.seat).includes(game.seat)) {
+      const caster = game.players.find((p) => p?.seat === msg.seat);
+      const who = characterDef(caster?.character).name ?? '對手';
+      showToast(`${who}（${scoreSeatName(msg.seat)}）對你潑墨！`);
+    }
   } else if (id === 'penguin') {
     abilitySeats(msg.seat).forEach((s) => { game.frozenUntil[s] = nowSec() + 3; });
   } else if (id === 'giraffe' && msg.seat === game.seat) {
@@ -6514,10 +6531,11 @@ function openGiraffeTargetPicker() {
 function renderInkSplashes() {
   if (!ui.inkOverlay || !inkSplashImage?.complete || ui.inkOverlay.dataset.splashes) return;
   const spots = [
-    [5, 50, 32, -12], [28, 48, 30, 24], [52, 50, 36, 8],
-    [80, 48, 32, -30], [12, 72, 34, 16], [42, 76, 36, -8],
-    [70, 72, 32, 30], [30, 62, 34, -18], [60, 64, 34, 20],
-    [88, 68, 30, -6], [45, 88, 32, 12],
+    [0, 52, 40, -12], [18, 48, 36, 24], [38, 50, 42, 8],
+    [62, 48, 40, -30], [82, 50, 40, 12], [0, 55, 40, -8],
+    [26, 70, 42, 16], [50, 72, 44, -12], [74, 70, 40, 30],
+    [92, 66, 38, -10], [8, 84, 42, 20], [34, 88, 44, -6],
+    [60, 86, 42, 14], [84, 84, 40, -18],
   ];
   for (const [left, top, size, rotate] of spots) {
     const img = document.createElement('img');
@@ -7496,13 +7514,13 @@ async function boot() {
       wildcardImage = new Image();
       wildcardImage.onload = () => resolve();
       wildcardImage.onerror = () => resolve();
-      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.151';
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.152';
     }),
     new Promise((resolve) => {
       inkSplashImage = new Image();
       inkSplashImage.onload = () => resolve();
       inkSplashImage.onerror = () => resolve();
-      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.151';
+      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.152';
     }),
   ]);
   game.images = { ...loaded.images, WILD: wildcardImage };

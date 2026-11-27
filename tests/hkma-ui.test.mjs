@@ -284,22 +284,29 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.151/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.151/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.152/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.152/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.151/);
-  assert.match(readme, /\?v=1\.4\.151/);
-  assert.match(changelog, /^## 1\.4\.151/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.152/);
+  assert.match(readme, /\?v=1\.4\.152/);
+  assert.match(changelog, /^## 1\.4\.152/m);
 
   // 1.4.150: ink splash PNGs replace the flat dim overlay.
   const inkCss150 = readFileSync('css/style.css', 'utf8');
   assert.match(game, /assets\/icons\/ink-splash\.png/);
   assert.match(game, /function renderInkSplashes\(/);
   assert.match(inkCss150, /\.ink-splash/);
+  // 1.4.152: cooldowns reset on every new hand, wider ink, no dim, who-inked toast.
+  assert.match(game, /function resetAbilityState\(/);
+  assert.match(game, /resetAbilityState\(\);/);
+  assert.match(game, /對你潑墨/);
+  assert.match(game, /\[0, 55, 40, -8\]/);
+  const inkCss152 = readFileSync('css/style.css', 'utf8');
+  assert.doesNotMatch(inkCss152.slice(inkCss152.indexOf('#inkOverlay, #ink-overlay'), inkCss152.indexOf('.ink-splash')), /rgba\(10,10,10,0\.28\)/);
   // 1.4.151: ink splashes more opaque, bigger, more numerous to close gaps.
   assert.match(inkCss150, /opacity: 1;/);
   assert.match(game, /const spots = \[/);
-  assert.match(game, /\[5, 50, 32, -12\]/);
+  assert.match(game, /\[0, 52, 40, -12\]/);
 
 
   // 1.4.146: sparrow 百搭牌 (wildcard) integration.
