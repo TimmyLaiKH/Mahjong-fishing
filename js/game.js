@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.144';
+} from './rules.js?v=1.4.145';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -151,6 +151,9 @@ const AIM_PREVIEW_LEN = 80;
 const HOOK_SPEED_FIXED = 1;
 // The drawn rod is held still on the right; the line+hook pendulum is the only motion.
 const ROD_HOLD_ANGLE = (60 * Math.PI) / 180;
+// The rod handle sits at the character's lower-right, so it looks held in hand.
+const ROD_GRIP_DX = 30;
+const ROD_GRIP_DY = 30;
 // Motion speeds up only in the final fixed window, independent of match length.
 // Phase is the integral of that speed so multiplying an epoch timestamp can
 // never produce a runaway jitter.
@@ -5231,7 +5234,7 @@ function renderMeldsPanel() {
     const meldCharacter = characterDef(player?.character);
     const iconImg = document.createElement('img');
     iconImg.className = 'meld-row-icon-img';
-    iconImg.src = `assets/characters/${meldCharacter.id}.png?v=1.4.144`;
+    iconImg.src = `assets/characters/${meldCharacter.id}.png?v=1.4.145`;
     iconImg.alt = '';
     icon.appendChild(iconImg);
     const name = document.createElement('span');
@@ -5612,19 +5615,21 @@ function drawGhostRod(seat, position, phase, caughtTile = null, label = '') {
   // every device agrees on where it is without a new network message.
   const baseX = view.width / 2 + boatOffset(seat);
   const handleY = WATER_TOP;
+  const gripX = baseX + ROD_GRIP_DX;
+  const gripY = handleY + ROD_GRIP_DY;
   const rodScale = 200 / 110;
   const rodLen = ROD_LENGTH * rodScale;
   const angle = Math.atan2(-Math.cos(ROD_HOLD_ANGLE), Math.sin(ROD_HOLD_ANGLE)) - Math.PI;
   const theta = angle + Math.PI + 0.62;
-  let visTipX = baseX + Math.sin(ROD_HOLD_ANGLE) * rodLen;
-  let visTipY = handleY - Math.cos(ROD_HOLD_ANGLE) * rodLen;
+  let visTipX = gripX + Math.sin(ROD_HOLD_ANGLE) * rodLen;
+  let visTipY = gripY - Math.cos(ROD_HOLD_ANGLE) * rodLen;
   let s = 0;
   if (rodImage?.complete && rodImage.naturalWidth) {
     s = (110 * rodScale) / rodImage.naturalWidth;
     const lx = (1180 - 323) * s;
     const ly = (54 - 727) * s;
-    visTipX = baseX + lx * Math.cos(theta) - ly * Math.sin(theta);
-    visTipY = handleY + lx * Math.sin(theta) + ly * Math.cos(theta);
+    visTipX = gripX + lx * Math.cos(theta) - ly * Math.sin(theta);
+    visTipY = gripY + lx * Math.sin(theta) + ly * Math.cos(theta);
   }
   ctx.save();
   ctx.globalAlpha = 0.3;
@@ -5642,7 +5647,7 @@ function drawGhostRod(seat, position, phase, caughtTile = null, label = '') {
     const hx = 323 * s;
     const hy = 727 * s;
     ctx.save();
-    ctx.translate(baseX, handleY);
+    ctx.translate(gripX, gripY);
     ctx.rotate(theta);
     ctx.drawImage(rodImage, -hx, -hy, w, h);
     ctx.restore();
@@ -5650,7 +5655,7 @@ function drawGhostRod(seat, position, phase, caughtTile = null, label = '') {
     ctx.strokeStyle = seat % 2 ? '#ffd27f' : '#a9e5ff';
     ctx.lineWidth = 8;
     ctx.beginPath();
-    ctx.moveTo(baseX, handleY);
+    ctx.moveTo(gripX, gripY);
     ctx.lineTo(visTipX, visTipY);
     ctx.stroke();
   }
@@ -5731,6 +5736,8 @@ function drawRod() {
   // The cat holds the handle at the waterline; only the drawing moves, while
   // hook/tip/catch geometry and host sync stay exactly as before.
   const handleY = WATER_TOP;
+  const gripX = baseX + ROD_GRIP_DX;
+  const gripY = handleY + ROD_GRIP_DY;
   const rodScale = 200 / 110;
   const rodLen = ROD_LENGTH * rodScale;
   const angle = Math.atan2(-Math.cos(ROD_HOLD_ANGLE), Math.sin(ROD_HOLD_ANGLE)) - Math.PI;
@@ -5738,15 +5745,15 @@ function drawRod() {
   // Compute where the PNG rod tip actually renders so the line starts at the
   // visible tip instead of an off-screen approximation. Gameplay hook/catch
   // geometry is untouched; only the string's start point follows the rod.
-  let visTipX = baseX + Math.sin(ROD_HOLD_ANGLE) * rodLen;
-  let visTipY = handleY - Math.cos(ROD_HOLD_ANGLE) * rodLen;
+  let visTipX = gripX + Math.sin(ROD_HOLD_ANGLE) * rodLen;
+  let visTipY = gripY - Math.cos(ROD_HOLD_ANGLE) * rodLen;
   let s = 0;
   if (rodImage?.complete && rodImage.naturalWidth) {
     s = (110 * rodScale) / rodImage.naturalWidth;
     const lx = (1180 - 323) * s;
     const ly = (54 - 727) * s;
-    visTipX = baseX + lx * Math.cos(theta) - ly * Math.sin(theta);
-    visTipY = handleY + lx * Math.sin(theta) + ly * Math.cos(theta);
+    visTipX = gripX + lx * Math.cos(theta) - ly * Math.sin(theta);
+    visTipY = gripY + lx * Math.sin(theta) + ly * Math.cos(theta);
   }
   let hookX = gameHookX;
   let hookY = gameHookY;
@@ -5777,7 +5784,7 @@ function drawRod() {
     const hx = 323 * s;
     const hy = 727 * s;
     ctx.save();
-    ctx.translate(baseX, handleY);
+    ctx.translate(gripX, gripY);
     ctx.rotate(theta);
     ctx.drawImage(rodImage, -hx, -hy, w, h);
     ctx.restore();
@@ -5785,7 +5792,7 @@ function drawRod() {
     ctx.strokeStyle = '#8d5524';
     ctx.lineWidth = 12;
     ctx.beginPath();
-    ctx.moveTo(baseX, handleY);
+    ctx.moveTo(gripX, gripY);
     ctx.lineTo(visTipX, visTipY);
     ctx.stroke();
   }
@@ -6142,7 +6149,7 @@ function renderStandings(container, log = null) {
     const scoreCharacter = characterDef(scorePlayer?.character);
     const scoreImg = document.createElement('img');
     scoreImg.className = 'score-seat-icon';
-    scoreImg.src = `assets/characters/${scoreCharacter.id}.png?v=1.4.144`;
+    scoreImg.src = `assets/characters/${scoreCharacter.id}.png?v=1.4.145`;
     scoreImg.alt = '';
     name.append(scoreImg, document.createTextNode(` ${wind} ${scoreSeatName(seat)}${suffix}`));
     const money = document.createElement('span');

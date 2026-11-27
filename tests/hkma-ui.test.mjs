@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.144/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.144/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.145/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.145/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.144/);
-  assert.match(readme, /\?v=1\.4\.144/);
-  assert.match(changelog, /^## 1\.4\.144/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.145/);
+  assert.match(readme, /\?v=1\.4\.145/);
+  assert.match(changelog, /^## 1\.4\.145/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -507,6 +507,20 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(rodDraw128, /hookX = visTipX \+ Math\.sin\(pendulum\) \* previewLen/);
   assert.match(rodDraw128, /hookY = visTipY \+ Math\.cos\(pendulum\) \* previewLen/);
   assert.match(rodDraw128, /ctx\.moveTo\(visTipX, visTipY\)/);
+
+  // 1.4.145: rod handle shifted toward the bottom-right of the character.
+  assert.match(game, /ROD_GRIP_DX = /);
+  assert.match(game, /ROD_GRIP_DY = /);
+  assert.match(rodDraw128, /gripX = baseX \+ ROD_GRIP_DX/);
+  assert.match(rodDraw128, /gripY = handleY \+ ROD_GRIP_DY/);
+  assert.match(rodDraw128, /ctx\.translate\(gripX, gripY\)/);
+  const ghostFn145 = game.slice(
+    game.indexOf('function drawGhostRod('),
+    game.indexOf('function renderGhostRods('),
+  );
+  assert.match(ghostFn145, /gripX = baseX \+ ROD_GRIP_DX/);
+  assert.match(ghostFn145, /ctx\.translate\(gripX, gripY\)/);
+
   // 1.4.136: rod held still on the right; only line+hook swing from its tip.
   const rodDraw136 = game.slice(
     game.indexOf('function drawRod('),
@@ -621,7 +635,7 @@ test('玩家版本與 cachebust 已更新', () => {
   // 1.4.143: slower motion, character PNG icons in score/副露, one-row menu tiles.
   assert.match(game, /return 1 \+ ramp \* 0\.5;/);
   assert.match(game, /meld-row-icon-img/);
-  assert.match(game, /assets\/characters\/\$\{meldCharacter\.id\}\.png\?v=1\.4\.144/);
+  assert.match(game, /assets\/characters\/\$\{meldCharacter\.id\}\.png\?v=1\.4\.145/);
   assert.match(game, /score-seat-icon/);
   const css143 = readFileSync('css/style.css', 'utf8');
   assert.match(css143, /\.menu-tiles \{[^}]*flex-wrap: nowrap/);
