@@ -14,11 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.150';
+} from './rules.js?v=1.4.151';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
   cooldownReady, startCooldown,
-} from './abilities.js?v=1.4.150';
+} from './abilities.js?v=1.4.151';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -6514,8 +6514,10 @@ function openGiraffeTargetPicker() {
 function renderInkSplashes() {
   if (!ui.inkOverlay || !inkSplashImage?.complete || ui.inkOverlay.dataset.splashes) return;
   const spots = [
-    [5, 55, 22, -12], [28, 52, 20, 24], [52, 56, 26, 8],
-    [80, 52, 22, -30], [12, 76, 24, 16], [42, 80, 26, -8], [70, 78, 22, 30],
+    [5, 50, 32, -12], [28, 48, 30, 24], [52, 50, 36, 8],
+    [80, 48, 32, -30], [12, 72, 34, 16], [42, 76, 36, -8],
+    [70, 72, 32, 30], [30, 62, 34, -18], [60, 64, 34, 20],
+    [88, 68, 30, -6], [45, 88, 32, 12],
   ];
   for (const [left, top, size, rotate] of spots) {
     const img = document.createElement('img');
@@ -7494,13 +7496,13 @@ async function boot() {
       wildcardImage = new Image();
       wildcardImage.onload = () => resolve();
       wildcardImage.onerror = () => resolve();
-      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.150';
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.151';
     }),
     new Promise((resolve) => {
       inkSplashImage = new Image();
       inkSplashImage.onload = () => resolve();
       inkSplashImage.onerror = () => resolve();
-      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.150';
+      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.151';
     }),
   ]);
   game.images = { ...loaded.images, WILD: wildcardImage };
