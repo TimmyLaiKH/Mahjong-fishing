@@ -70,3 +70,4 @@ Background: Olivier Dugornay / Ifremer, CC BY 4.0, via Wikimedia Commons. Tiles:
 ```
 - 主選單招財貓與 favicon：`assets/icons/maneki-neko-gemini.png`，由 Gemini 於 2026-11-26 生成，提示關鍵字為卡通招財貓持釣竿與發牌、繁體「招福」，透明背景；棋牌 PNG 未改動。
 - 示範用貓咪釣魚船與魚竿：`assets/icons/cat-on-boat.png`、`assets/icons/fishing-rod.png`，由 Gemini 於 2026-11-26 生成，透明背景；角色與竿分層，魚線與鉤子仍由程式繪製。
+- 十二隻角色透明 PNG（`assets/characters/`）由 Gemini 於 2026-11-27 生成；招財貓寶船亦為同一批新設計。牌圖 PNG 未改動。
