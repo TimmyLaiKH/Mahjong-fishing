@@ -322,6 +322,20 @@ test('玩家版本與 cachebust 已更新', () => {
   );
   assert.doesNotMatch(abilityHandler, /Math\.random\(\)/);
 
+  // 1.4.146 Task 5: ability UI wiring.
+  assert.match(html, /id="abilityButtons"/);
+  assert.match(html, /id="giraffeTargetPicker"/);
+  assert.match(html, /id="peekPanel"/);
+  assert.match(html, /id="inkOverlay"/);
+  assert.match(game, /ui\.abilityButtons/);
+  assert.match(game, /ui\.giraffeTargetPicker/);
+  assert.match(game, /ui\.peekPanel/);
+  assert.match(game, /ui\.inkOverlay/);
+  const abilityCss = readFileSync('css/style.css', 'utf8');
+  assert.match(abilityCss, /#ink-overlay/);
+  assert.match(abilityCss, /\.ability-btn/);
+  assert.doesNotMatch(abilityCss, /#ink-overlay \{[^}]*height:\s*\d+px/);
+
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
   assert.match(css, /#helpPanel \.modal-head \{[^}]*position: sticky/);

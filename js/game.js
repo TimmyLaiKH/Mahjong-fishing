@@ -26,6 +26,8 @@ const el = (id) => document.getElementById(id);
 const ui = {
   loading: el('loading'), loadingProgress: el('loadingProgress'),
   hud: el('hud'), status: el('status'), toast: el('toast'), hand: el('hand'), target: el('target'),
+  abilityButtons: el('abilityButtons'), giraffeTargetPicker: el('giraffeTargetPicker'),
+  peekPanel: el('peekPanel'), inkOverlay: el('inkOverlay'),
   tilesMeta: el('tilesMeta'), flowers: el('flowers'),
   claimBar: el('claimBar'), claimWho: el('claimWho'), claimTile: el('claimTile'),
   claimTimer: el('claimTimer'), claimActions: el('claimActions'),
@@ -6429,6 +6431,80 @@ function updateScoreUI() {
   renderMeldsPanel();
 }
 
+
+/** 角色技能按鈕：只為玩家角色顯示主動技能，冷卻中或冰凍時停用。 */
+function renderAbilityButtons() {
+  if (!ui.abilityButtons) return;
+  ui.abilityButtons.innerHTML = '';
+  if (game.state === S.LOADING || !game.match?.active) return;
+  const myId = abilityIdFor(game.playerCharacter);
+  const def = characterAbility(myId);
+  if (!def || def.kind !== 'active') return;
+  const cd = game.abilityState?.[game.seat]?.cooldowns ?? {};
+  const frozen = isFrozen(game.seat);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ability-btn';
+  btn.dataset.ability = myId;
+  btn.disabled = frozen || cooldownReady(cd, myId, nowSec()) === false;
+  const remain = Math.max(0, Math.ceil((cd[myId] ?? 0) - nowSec()));
+  const label = { squid: '潑墨', giraffe: '偷看', monkey: '偷錢', penguin: '冰凍' }[myId] ?? def.name ?? '技能';
+  btn.textContent = `${label}${remain ? ` ${remain}s` : ''}`;
+  btn.title = def.desc ?? '';
+  btn.addEventListener('click', () => {
+    if (btn.disabled || paused()) return;
+    if (myId === 'giraffe') {
+      openGiraffeTargetPicker();
+      return;
+    }
+    const target = abilitySeats(game.seat)[0] ?? null;
+    resolveAbility({ seat: game.seat, id: myId, target, actionId: `${Date.now()}-${Math.random()}` });
+  });
+  ui.abilityButtons.appendChild(btn);
+}
+
+/** 長頸鹿選目標：列出三位對手，點選後才送出偷看請求。 */
+function openGiraffeTargetPicker() {
+  if (!ui.giraffeTargetPicker) return;
+  ui.giraffeTargetPicker.innerHTML = '';
+  ui.giraffeTargetPicker.hidden = false;
+  for (const seat of abilitySeats(game.seat)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'giraffe-target-btn';
+    btn.textContent = game.players.find((p) => p?.seat === seat)?.name ?? `座位 ${seat}`;
+    btn.addEventListener('click', () => {
+      ui.giraffeTargetPicker.hidden = true;
+      resolveAbility({ seat: game.seat, id: 'giraffe', target: seat, actionId: `${Date.now()}-${Math.random()}` });
+    });
+    ui.giraffeTargetPicker.appendChild(btn);
+  }
+}
+
+/** 潑墨遮罩與偷看面板：只在本機顯示，pointer-events:none 不阻擋操作。 */
+function renderAbilityOverlays() {
+  if (ui.inkOverlay) {
+    const inked = (game.inkUntil?.[game.seat] ?? 0) > nowSec();
+    ui.inkOverlay.hidden = !inked;
+  }
+  if (ui.peekPanel) {
+    const peek = game.pendingPeek;
+    const show = Boolean(peek && peek.seat === game.seat);
+    ui.peekPanel.hidden = !show;
+    if (show) {
+      ui.peekPanel.innerHTML = '';
+      const head = document.createElement('div');
+      head.className = 'peek-title';
+      head.textContent = `偷看 ${game.players.find((p) => p?.seat === peek.target)?.name ?? '對手'} 的手牌`;
+      ui.peekPanel.appendChild(head);
+      const row = document.createElement('div');
+      row.className = 'peek-tiles';
+      for (const id of peek.tiles ?? []) row.appendChild(createTileElement(id, { images: game.images }));
+      ui.peekPanel.appendChild(row);
+    }
+  }
+}
+
 function updateHUD() {
   updateScoreUI();
   if (ui.seatWind) ui.seatWind.textContent = TILE_INFO[game.seatWind]?.name ?? '';
@@ -6441,6 +6517,8 @@ function updateHUD() {
   // A newly fished tile can unlock 碰／上／胡 on a discard that is still inside
   // the five-second window, so recompute which boxes are actionable here.
   renderClaimBoxes();
+  renderAbilityButtons();
+  renderAbilityOverlays();
 }
 
 /** Five-second claim panel beside the rod: tile image, discarder and actions. */
