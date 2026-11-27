@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.142';
+} from './rules.js?v=1.4.143';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -155,7 +155,7 @@ const ROD_HOLD_ANGLE = (60 * Math.PI) / 180;
 function motionSpeedFactor() {
   const duration = Math.max(1, game.settings?.gameSeconds || 300);
   const left = Math.max(0, Math.min(duration, game.timeLeft ?? duration));
-  return 1 + ((duration - left) / duration) * 1.5;
+  return 1 + ((duration - left) / duration) * 0.5;
 }
 function aimPendulum() {
   const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
@@ -5217,7 +5217,12 @@ function renderMeldsPanel() {
     // ICON · ID · current 門風, in that order, for every opponent.
     const icon = document.createElement('span');
     icon.className = 'meld-row-icon';
-    icon.textContent = AVATAR_ICONS[seat] ?? '🧍';
+    const meldCharacter = characterDef(player?.character);
+    const iconImg = document.createElement('img');
+    iconImg.className = 'meld-row-icon-img';
+    iconImg.src = `assets/characters/${meldCharacter.id}.png?v=1.4.143`;
+    iconImg.alt = '';
+    icon.appendChild(iconImg);
     const name = document.createElement('span');
     name.className = 'meld-row-name';
     name.textContent = playerDisplayName(player);
@@ -6122,7 +6127,14 @@ function renderStandings(container, log = null) {
     name.className = 'score-seat';
     const wind = TILE_INFO[seatWindOf(seat)]?.name ?? '';
     const suffix = seat === game.seat ? '（你）' : '';
-    name.textContent = `${AVATAR_ICONS[seat] ?? '🧍'} ${wind} ${scoreSeatName(seat)}${suffix}`;
+    const scorePlayer = game.players.find((item) => item?.seat === seat)
+      ?? makeBotPlayer(seat);
+    const scoreCharacter = characterDef(scorePlayer?.character);
+    const scoreImg = document.createElement('img');
+    scoreImg.className = 'score-seat-icon';
+    scoreImg.src = `assets/characters/${scoreCharacter.id}.png?v=1.4.143`;
+    scoreImg.alt = '';
+    name.append(scoreImg, document.createTextNode(` ${wind} ${scoreSeatName(seat)}${suffix}`));
     const money = document.createElement('span');
     money.className = 'score-money';
     money.textContent = moneyText(value);

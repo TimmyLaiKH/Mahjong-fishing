@@ -335,6 +335,9 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
 .meld-rows { display: grid; gap: 3px; margin-top: 4px; }
 .meld-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .meld-row-icon { font-size: 20px; line-height: 1; }
+.meld-row-icon-img { width: 20px; height: 20px; object-fit: contain; vertical-align: middle; }
+.score-seat { display: inline-flex; align-items: center; }
+.score-seat-icon { width: 20px; height: 20px; object-fit: contain; vertical-align: middle; margin-right: 3px; }
 .meld-row-name { min-width: 4em; font-weight: 700; color: #d7f5ff; }
 .meld-row-money { color: #a9e5ff; font-weight: 700; }
 .meld-row-wind { color: #ffe58f; font-weight: 700; }
@@ -583,12 +586,12 @@ button:focus-visible { outline: 2px solid #ffe58f; outline-offset: 2px; }
 .menu-subtitle { margin: 8px 0 4px; color: #555; }
 .menu-tiles {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
   margin: 16px 0;
 }
-.menu-tiles .tile-img img { height: clamp(38px, 8vw, 64px); width: auto; }
+.menu-tiles .tile-img img { height: clamp(22px, 5vw, 40px); width: auto; }
 .menu-actions { display: grid; gap: 8px; margin-top: 6px; }
 .menu-actions button { padding: 10px 16px; font-size: 1em; font-weight: 700; }
 .menu-actions button.primary { background: #c62828; color: #fff; border-color: #ffcdd2; }
