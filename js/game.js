@@ -14,11 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.157';
+} from './rules.js?v=1.4.158';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
   cooldownReady, startCooldown,
-} from './abilities.js?v=1.4.157';
+} from './abilities.js?v=1.4.158';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -3602,7 +3602,7 @@ function showInkToast(casterSeat) {
   if (!abilitySeats(casterSeat).includes(game.seat)) return;
   const caster = game.players.find((player) => player?.seat === casterSeat);
   const who = characterDef(caster?.character).name ?? '對手';
-  showToast(`${who}（${scoreSeatName(casterSeat)}）對你潑墨！`);
+  showToast(`${scoreSeatName(casterSeat)}(${who})對你潑墨！`);
 }
 
 /** Per-device steal message: caster, victim and bystanders each see their role. */
@@ -3613,11 +3613,11 @@ function showStealToast(casterSeat, victimSeat, amount) {
   const victimName = characterDef(victimPlayer?.character).name ?? '對手';
   const money = moneyText(amount ?? 0);
   if (game.seat === casterSeat) {
-    showToast(`成功從${victimName}${scoreSeatName(victimSeat)}偷到${money}`);
+    showToast(`成功從${scoreSeatName(victimSeat)}(${victimName})偷到${money}`);
   } else if (game.seat === victimSeat) {
-    showToast(`${casterName}（${scoreSeatName(casterSeat)}）從你偷走${money}`);
+    showToast(`${scoreSeatName(casterSeat)}(${casterName})從你偷走${money}`);
   } else {
-    showToast(`${casterName}（${scoreSeatName(casterSeat)}）從${victimName}${scoreSeatName(victimSeat)}偷走${money}`);
+    showToast(`${scoreSeatName(casterSeat)}(${casterName})從${scoreSeatName(victimSeat)}(${victimName})偷走${money}`);
   }
 }
 
@@ -3643,7 +3643,7 @@ function showStealBankruptEnd(casterSeat, victimSeat, amount) {
   if (game.match) game.match.over = true;
   showHandEndOverlay({
     title: '破產',
-    message: `${casterName}（${scoreSeatName(casterSeat)}）從${victimName}（${scoreSeatName(victimSeat)}）偷走${money}，${victimName}資金為0或以下，比賽結束！`,
+    message: `${scoreSeatName(casterSeat)}(${casterName})從${scoreSeatName(victimSeat)}(${victimName})偷走${money}，${scoreSeatName(victimSeat)}資金為0或以下，比賽結束！`,
   });
 }
 
@@ -6213,6 +6213,7 @@ function gameLoop(timestamp) {
   // Claim deadlines are wall-clock based and must stay identical on every
   // screen, so they tick even while a tab's animation loop is throttled.
   tickClaimBoxes();
+  renderAbilityButtons(); // refresh cooldown countdown
   syncInkOverlay();
   if (!simulationPaused()) {
     if (game.state !== S.WIN && game.state !== S.DRAW_GAME) {
@@ -7570,13 +7571,13 @@ async function boot() {
       wildcardImage = new Image();
       wildcardImage.onload = () => resolve();
       wildcardImage.onerror = () => resolve();
-      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.157';
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.158';
     }),
     new Promise((resolve) => {
       inkSplashImage = new Image();
       inkSplashImage.onload = () => resolve();
       inkSplashImage.onerror = () => resolve();
-      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.157';
+      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.158';
     }),
   ]);
   game.images = { ...loaded.images, WILD: wildcardImage };
