@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.143';
+} from './rules.js?v=1.4.144';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -151,15 +151,26 @@ const AIM_PREVIEW_LEN = 80;
 const HOOK_SPEED_FIXED = 1;
 // The drawn rod is held still on the right; the line+hook pendulum is the only motion.
 const ROD_HOLD_ANGLE = (60 * Math.PI) / 180;
-// Boat drift and the string pendulum accelerate smoothly as the clock runs out.
+// Motion speeds up only in the final fixed window, independent of match length.
+// Phase is the integral of that speed so multiplying an epoch timestamp can
+// never produce a runaway jitter.
+const MOTION_RAMP_SECONDS = 60;
 function motionSpeedFactor() {
+  const left = Math.max(0, game.timeLeft ?? 0);
+  const ramp = Math.max(0, Math.min(1, (MOTION_RAMP_SECONDS - left) / MOTION_RAMP_SECONDS));
+  return 1 + ramp * 0.5;
+}
+function motionPhase() {
+  const left = Math.max(0, game.timeLeft ?? 0);
   const duration = Math.max(1, game.settings?.gameSeconds || 300);
-  const left = Math.max(0, Math.min(duration, game.timeLeft ?? duration));
-  return 1 + ((duration - left) / duration) * 0.5;
+  const ramp = MOTION_RAMP_SECONDS;
+  const integral = (L) => (L >= ramp
+    ? L + ramp * 0.25
+    : 1.5 * L - (L * L) / (4 * ramp));
+  return integral(duration) - integral(left);
 }
 function aimPendulum() {
-  const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
-  return Math.sin(seconds / 1.2 * motionSpeedFactor()) * 1.4;
+  return Math.sin(motionPhase() / 1.2) * 1.4;
 }
 const MAX_FISH = 12;
 const SPAWN_INTERVAL = 1.2;
@@ -5220,7 +5231,7 @@ function renderMeldsPanel() {
     const meldCharacter = characterDef(player?.character);
     const iconImg = document.createElement('img');
     iconImg.className = 'meld-row-icon-img';
-    iconImg.src = `assets/characters/${meldCharacter.id}.png?v=1.4.143`;
+    iconImg.src = `assets/characters/${meldCharacter.id}.png?v=1.4.144`;
     iconImg.alt = '';
     icon.appendChild(iconImg);
     const name = document.createElement('span');
@@ -5365,8 +5376,7 @@ function swingLimit() {
 }
 
 function boatOffset(seat = game.seat) {
-  const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
-  return Math.sin(seconds / 2 * motionSpeedFactor() + seat * 1.7) * view.width * 0.42;
+  return Math.sin(motionPhase() / 2 + seat * 1.7) * view.width * 0.42;
 }
 
 function hookPositionFor(angle, hookLen, seat = game.seat) {
@@ -6132,7 +6142,7 @@ function renderStandings(container, log = null) {
     const scoreCharacter = characterDef(scorePlayer?.character);
     const scoreImg = document.createElement('img');
     scoreImg.className = 'score-seat-icon';
-    scoreImg.src = `assets/characters/${scoreCharacter.id}.png?v=1.4.143`;
+    scoreImg.src = `assets/characters/${scoreCharacter.id}.png?v=1.4.144`;
     scoreImg.alt = '';
     name.append(scoreImg, document.createTextNode(` ${wind} ${scoreSeatName(seat)}${suffix}`));
     const money = document.createElement('span');
