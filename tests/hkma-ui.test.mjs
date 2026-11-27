@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.160/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.160/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.161/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.161/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.160/);
-  assert.match(readme, /\?v=1\.4\.160/);
-  assert.match(changelog, /^## 1\.4\.160/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.161/);
+  assert.match(readme, /\?v=1\.4\.161/);
+  assert.match(changelog, /^## 1\.4\.161/m);
 
   // 1.4.150: ink splash PNGs replace the flat dim overlay.
   const inkCss150 = readFileSync('css/style.css', 'utf8');
@@ -418,6 +418,10 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(game, /\$\{scoreSeatName\(victimSeat\)\}資金為0或以下/);
   // 1.4.159: updated character art, turtle rename, clickable skill button, iOS pointer fix.
   assert.match(game, /name: '玄武'/);
+  // 1.4.161: new dragon design + new favicon/menu cat.
+  assert.match(html, /rel="icon" href="assets\/icons\/cat-fishing-boat\.png"/);
+  assert.match(html, /src="assets\/icons\/cat-fishing-boat\.png" alt="招財貓"/);
+  assert.doesNotMatch(html, /maneki-neko-gemini\.png/);
   assert.match(game, /function updateAbilityCountdown\(/);
   assert.match(game, /updateAbilityCountdown\(\); \/\/ refresh cooldown countdown/);
   const abilityCss159 = readFileSync('css/style.css', 'utf8');
@@ -552,9 +556,9 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(css114, /\.score-match-info \{[^}]*color: #000/);
 
   // 1.4.117: AI-generated lucky cat as favicon and menu mascot, no incense.
-  assert.match(html, /rel="icon" href="assets\/icons\/maneki-neko-gemini\.png"/);
+  assert.match(html, /rel="icon" href="assets\/icons\/cat-fishing-boat\.png"/);
   assert.match(html, /class="lucky-cat"/);
-  assert.match(html, /src="assets\/icons\/maneki-neko-gemini\.png"/);
+  assert.match(html, /src="assets\/icons\/cat-fishing-boat\.png"/);
   assert.doesNotMatch(html, /id="incense"/);
   const css117 = readFileSync('css/style.css', 'utf8');
   assert.match(css117, /@keyframes lucky-cat-wave/);
