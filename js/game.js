@@ -14,11 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.154';
+} from './rules.js?v=1.4.155';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
   cooldownReady, startCooldown,
-} from './abilities.js?v=1.4.154';
+} from './abilities.js?v=1.4.155';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -3600,6 +3600,22 @@ function showInkToast(casterSeat) {
   showToast(`${who}（${scoreSeatName(casterSeat)}）對你潑墨！`);
 }
 
+/** Per-device steal message: caster, victim and bystanders each see their role. */
+function showStealToast(casterSeat, victimSeat, amount) {
+  const casterPlayer = game.players.find((player) => player?.seat === casterSeat);
+  const victimPlayer = game.players.find((player) => player?.seat === victimSeat);
+  const casterName = characterDef(casterPlayer?.character).name ?? '對手';
+  const victimName = characterDef(victimPlayer?.character).name ?? '對手';
+  const money = moneyText(amount ?? 0);
+  if (game.seat === casterSeat) {
+    showToast(`成功從${victimName}${scoreSeatName(victimSeat)}偷到${money}`);
+  } else if (game.seat === victimSeat) {
+    showToast(`${casterName}（${scoreSeatName(casterSeat)}）從你偷走${money}`);
+  } else {
+    showToast(`${casterName}（${scoreSeatName(casterSeat)}）從${victimName}${scoreSeatName(victimSeat)}偷走${money}`);
+  }
+}
+
 function abilityStateFor(seat) {
   if (!game.abilityState[seat]) {
     game.abilityState[seat] = { cooldowns: {}, phoenixRevived: false };
@@ -3622,6 +3638,8 @@ function resolveAbility({ seat, id, target = null, actionId = null }) {
 
   const opponents = abilitySeats(seat);
   let giraffeTarget = null;
+  let monkeyVictim = null;
+  let monkeyAmount = 0;
   if (canonical === 'squid') {
     const until = nowSec() + 5;
     for (const other of opponents) game.inkUntil[other] = until;
@@ -3629,10 +3647,11 @@ function resolveAbility({ seat, id, target = null, actionId = null }) {
     const until = nowSec() + 3;
     for (const other of opponents) game.frozenUntil[other] = until;
   } else if (canonical === 'monkey') {
-    const victim = opponents.includes(target) ? target : opponents[Math.floor(Math.random() * opponents.length)];
-    const amount = Math.max(1, Math.floor((game.match?.money?.[victim] ?? 0) / 20));
-    game.match.money[victim] -= amount;
-    game.match.money[seat] = (game.match.money[seat] ?? 0) + amount;
+    monkeyVictim = opponents.includes(target) ? target : opponents[Math.floor(Math.random() * opponents.length)];
+    monkeyAmount = Math.max(1, Math.floor((game.match?.money?.[monkeyVictim] ?? 0) / 20));
+    game.match.money[monkeyVictim] -= monkeyAmount;
+    game.match.money[seat] = (game.match.money[seat] ?? 0) + monkeyAmount;
+    maybeAiEmoji(monkeyVictim, 0.5, ['😡']);
   } else if (canonical === 'giraffe') {
     // Human picks a target explicitly; AI targets a random opponent (host-side).
     giraffeTarget = opponents.includes(target) ? target : opponents[Math.floor(Math.random() * opponents.length)];
@@ -3652,13 +3671,14 @@ function resolveAbility({ seat, id, target = null, actionId = null }) {
   state.cooldowns = startCooldown(state.cooldowns, canonical, nowSec());
   const notice = {t:'abilityResult', seat, id: canonical, actionId, target: giraffeTarget };
   if (canonical === 'squid') notice.inkUntil = opponents.map((s) => game.inkUntil[s]);
+  if (canonical === 'monkey') { notice.victim = monkeyVictim; notice.amount = monkeyAmount; }
   broadcastOrSend(notice);
   if (game.mode === 'multi' && net.isHost && canonical === 'monkey') {
     net.broadcast({ t: 'match', match: cloneMatch(game.match) });
   }
   if (canonical === 'squid') showInkToast(seat);
   if (canonical === 'penguin') showToast('企鵝冰凍：對手 3 秒不能行動');
-  if (canonical === 'monkey') showToast('猴子偷錢成功！');
+  if (canonical === 'monkey') showStealToast(seat, monkeyVictim, monkeyAmount);
   return true;
 }
 
@@ -3669,6 +3689,8 @@ function applyAbilityResult(msg) {
   if (id === 'squid' && Array.isArray(msg.inkUntil)) {
     abilitySeats(msg.seat).forEach((s, i) => { game.inkUntil[s] = msg.inkUntil[i] ?? 0; });
     showInkToast(msg.seat);
+  } else if (id === 'monkey' && Number.isInteger(msg.victim)) {
+    showStealToast(msg.seat, msg.victim, msg.amount ?? 0);
   } else if (id === 'penguin') {
     abilitySeats(msg.seat).forEach((s) => { game.frozenUntil[s] = nowSec() + 3; });
   } else if (id === 'giraffe' && msg.seat === game.seat) {
@@ -6540,28 +6562,15 @@ function openGiraffeTargetPicker() {
 /** 在潑墨遮罩內放數個潑墨圖案，只建立一次，避免逐幀重繪造成閃爍。 */
 function renderInkSplashes() {
   if (!ui.inkOverlay || !inkSplashImage?.complete || ui.inkOverlay.dataset.splashes) return;
-  const spots = [
-    [0, 52, 40, -12], [18, 48, 36, 24], [38, 50, 42, 8],
-    [62, 48, 40, -30], [82, 50, 40, 12], [96, 52, 38, -10],
-    [0, 55, 40, -8], [16, 64, 40, 16], [36, 66, 42, -12],
-    [56, 64, 42, 20], [76, 66, 40, -6], [94, 68, 38, 14],
-    [4, 80, 40, 20], [24, 82, 42, -14], [44, 80, 44, 8],
-    [64, 82, 42, -18], [84, 80, 40, 16], [98, 82, 36, -8],
-    [8, 90, 40, -6], [28, 92, 42, 14], [48, 90, 44, -10],
-    [68, 92, 42, 20], [88, 90, 40, -14], [0, 94, 38, 8],
-    [12, 58, 34, -20], [32, 58, 34, 18], [52, 58, 36, -4],
-    [72, 58, 34, 22], [88, 60, 34, -12], [96, 92, 36, -12],
-  ];
-  for (const [left, top, size, rotate] of spots) {
-    const img = document.createElement('img');
-    img.className = 'ink-splash';
-    img.src = inkSplashImage.src;
-    img.style.left = `${left}%`;
-    img.style.top = `${top}%`;
-    img.style.width = `${size}%`;
-    img.style.setProperty('--ink-rotate', `${rotate}deg`);
-    ui.inkOverlay.appendChild(img);
-  }
+  // One large splash covers the sea instead of many small ones.
+  const img = document.createElement('img');
+  img.className = 'ink-splash';
+  img.src = inkSplashImage.src;
+  img.style.left = '0';
+  img.style.top = '0';
+  img.style.width = '100%';
+  img.style.height = '100%';
+  ui.inkOverlay.appendChild(img);
   ui.inkOverlay.dataset.splashes = '1';
 }
 
@@ -7529,13 +7538,13 @@ async function boot() {
       wildcardImage = new Image();
       wildcardImage.onload = () => resolve();
       wildcardImage.onerror = () => resolve();
-      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.154';
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.155';
     }),
     new Promise((resolve) => {
       inkSplashImage = new Image();
       inkSplashImage.onload = () => resolve();
       inkSplashImage.onerror = () => resolve();
-      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.154';
+      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.155';
     }),
   ]);
   game.images = { ...loaded.images, WILD: wildcardImage };
