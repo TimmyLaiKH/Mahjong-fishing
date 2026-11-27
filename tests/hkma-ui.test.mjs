@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.148/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.148/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.149/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.149/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.148/);
-  assert.match(readme, /\?v=1\.4\.148/);
-  assert.match(changelog, /^## 1\.4\.148/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.149/);
+  assert.match(readme, /\?v=1\.4\.149/);
+  assert.match(changelog, /^## 1\.4\.149/m);
 
   // 1.4.146: sparrow 百搭牌 (wildcard) integration.
   assert.match(game, /wildcardWaitTiles\(/);
@@ -334,6 +334,9 @@ test('玩家版本與 cachebust 已更新', () => {
   const abilityCss = readFileSync('css/style.css', 'utf8');
   assert.match(abilityCss, /#ink-overlay/);
   assert.match(abilityCss, /\.ability-btn/);
+  // 1.4.149: the ink overlay CSS must target the REAL html id (#inkOverlay),
+  // not the stale hyphenated (#ink-overlay) which never matched anything.
+  assert.match(abilityCss, /#inkOverlay/);
   assert.doesNotMatch(abilityCss, /#ink-overlay \{[^}]*height:\s*\d+px/);
 
   // Final review: giraffe peeks the chosen target, and tiles are sent only
