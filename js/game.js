@@ -14,11 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.147';
+} from './rules.js?v=1.4.148';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
   cooldownReady, startCooldown,
-} from './abilities.js?v=1.4.147';
+} from './abilities.js?v=1.4.148';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -3650,6 +3650,14 @@ function applyAbilityResult(msg) {
     game.pendingPeek = { seat: msg.seat, target: msg.target, tiles: msg.tiles ?? [] };
     showToast(`偷看 ${scoreSeatName(msg.target)} 的手牌`);
   }
+  // The host owns cooldowns; guests only learn them from the authoritative result.
+  const used = characterAbility(id);
+  if (used?.kind === 'active') {
+    const st = abilityStateFor(msg.seat);
+    st.cooldowns = startCooldown(st.cooldowns, id, nowSec());
+  }
+  renderAbilityButtons();
+  syncInkOverlay();
 }
 
 function broadcastOrSend(msg) {
@@ -6125,6 +6133,7 @@ function gameLoop(timestamp) {
   // Claim deadlines are wall-clock based and must stay identical on every
   // screen, so they tick even while a tab's animation loop is throttled.
   tickClaimBoxes();
+  syncInkOverlay();
   if (!simulationPaused()) {
     if (game.state !== S.WIN && game.state !== S.DRAW_GAME) {
       if (game.mode !== 'multi') updateClaimTimer(dt);
@@ -6439,6 +6448,17 @@ function updateScoreUI() {
 }
 
 
+/** 技能請求：單機／房主直接結算；賓客先送房主仲裁，讓效果（如潑墨）送到所有對手。 */
+function requestAbility(id, target = null) {
+  const actionId = `${Date.now()}-${Math.random()}`;
+  if (game.mode === 'multi' && !net.isHost) {
+    net.sendToHost({t:'ability', seat: game.seat, id, target, actionId});
+  } else {
+    resolveAbility({ seat: game.seat, id, target, actionId });
+  }
+  return actionId;
+}
+
 /** 角色技能按鈕：只為玩家角色顯示主動技能，冷卻中或冰凍時停用。 */
 function renderAbilityButtons() {
   if (!ui.abilityButtons) return;
@@ -6465,7 +6485,7 @@ function renderAbilityButtons() {
       return;
     }
     const target = abilitySeats(game.seat)[0] ?? null;
-    resolveAbility({ seat: game.seat, id: myId, target, actionId: `${Date.now()}-${Math.random()}` });
+    requestAbility(myId, target);
     renderAbilityButtons();
   });
   ui.abilityButtons.appendChild(btn);
@@ -6483,18 +6503,22 @@ function openGiraffeTargetPicker() {
     btn.textContent = game.players.find((p) => p?.seat === seat)?.name ?? `座位 ${seat}`;
     btn.addEventListener('click', () => {
       ui.giraffeTargetPicker.hidden = true;
-      resolveAbility({ seat: game.seat, id: 'giraffe', target: seat, actionId: `${Date.now()}-${Math.random()}` });
+      requestAbility('giraffe', seat);
     });
     ui.giraffeTargetPicker.appendChild(btn);
   }
 }
 
+/** 潑墨遮罩依 host 同步的到期時間逐幀開關，不依賴 HUD 重繪。 */
+function syncInkOverlay() {
+  if (ui.inkOverlay) {
+    ui.inkOverlay.hidden = !((game.inkUntil?.[game.seat] ?? 0) > nowSec());
+  }
+}
+
 /** 潑墨遮罩與偷看面板：只在本機顯示，pointer-events:none 不阻擋操作。 */
 function renderAbilityOverlays() {
-  if (ui.inkOverlay) {
-    const inked = (game.inkUntil?.[game.seat] ?? 0) > nowSec();
-    ui.inkOverlay.hidden = !inked;
-  }
+  syncInkOverlay();
   if (ui.peekPanel) {
     const peek = game.pendingPeek;
     const show = Boolean(peek && peek.seat === game.seat);
@@ -7447,7 +7471,7 @@ async function boot() {
       wildcardImage = new Image();
       wildcardImage.onload = () => resolve();
       wildcardImage.onerror = () => resolve();
-      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.147';
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.148';
     }),
   ]);
   game.images = { ...loaded.images, WILD: wildcardImage };

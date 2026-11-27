@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.147/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.147/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.148/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.148/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.147/);
-  assert.match(readme, /\?v=1\.4\.147/);
-  assert.match(changelog, /^## 1\.4\.147/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.148/);
+  assert.match(readme, /\?v=1\.4\.148/);
+  assert.match(changelog, /^## 1\.4\.148/m);
 
   // 1.4.146: sparrow 百搭牌 (wildcard) integration.
   assert.match(game, /wildcardWaitTiles\(/);
@@ -352,6 +352,16 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(game, /inkUntil: \{\}/);
   assert.match(game, /frozenUntil: \{\}/);
   assert.match(game, /notice\.inkUntil = opponents\.map\(\(s\) => game\.inkUntil\[s\]\)/);
+
+  // 1.4.148: guest abilities are arbitrated by the host so ink reaches all opponents.
+  assert.match(game, /function requestAbility\(/);
+  assert.match(game, /net\.sendToHost\(\{t:'ability'/);
+  const applyAbility = game.slice(
+    game.indexOf('function applyAbilityResult('),
+    game.indexOf('function broadcastOrSend('),
+  );
+  assert.match(applyAbility, /startCooldown\(/);
+  assert.match(applyAbility, /renderAbilityButtons\(\)/);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
