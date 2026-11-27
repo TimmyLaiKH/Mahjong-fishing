@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.139';
+} from './rules.js?v=1.4.140';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -50,6 +50,7 @@ const ui = {
   exitConfirm: el('exitConfirm'), exitConfirmBack: el('exitConfirmBack'),
   roomPlayerName: el('roomPlayerName'), settingsPlayerName: el('settingsPlayerName'),
   roomCopy: el('roomCopy'), roomPlayers: el('roomPlayers'), roomAvatars: el('roomAvatars'),
+  roomCharacters: el('roomCharacters'),
   roomHostControls: el('roomHostControls'), roomGuestInfo: el('roomGuestInfo'),
   roomHookSpeed: el('roomHookSpeed'), roomHookSpeedValue: el('roomHookSpeedValue'),
   roomGameDuration: el('roomGameDuration'), roomGameDurationValue: el('roomGameDurationValue'),
@@ -76,6 +77,43 @@ const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const AVATAR_COLORS = ['#a9e5ff', '#ffd27f', '#c8a9ff', '#ff9b9b'];
 // Full-body icons: neutral player, male 允行, female 一心, female 念慈.
 const AVATAR_ICONS = ['🧍', '🧍‍♂️', '🧍‍♀️', '💃'];
+
+// 1.4.140: twelve AI-generated transparent characters. Flyers live above the
+// waterline; everyone else rides a boat or raft on the surface.
+const CHARACTERS = [
+  { id: 'cat-boat', name: '招財貓', kind: 'boat' },
+  { id: 'bee', name: '蜜蜂', kind: 'fly' },
+  { id: 'dragon', name: '神龍', kind: 'fly' },
+  { id: 'giraffe-boat', name: '長頸鹿', kind: 'boat' },
+  { id: 'monkey-boat', name: '猴子', kind: 'boat' },
+  { id: 'panda-raft', name: '熊貓', kind: 'boat' },
+  { id: 'penguin-iceberg', name: '企鵝', kind: 'boat' },
+  { id: 'phoenix', name: '鳳凰', kind: 'fly' },
+  { id: 'pig-boat', name: '小豬', kind: 'boat' },
+  { id: 'sparrow', name: '麻雀', kind: 'fly' },
+  { id: 'squid', name: '魷魚', kind: 'boat' },
+  { id: 'turtle', name: '烏龜', kind: 'boat' },
+];
+const DEFAULT_CHARACTER = 'cat-boat';
+const characterImages = {};
+
+function characterDef(id) {
+  return CHARACTERS.find((item) => item.id === id) ?? CHARACTERS[0];
+}
+
+function characterFor(id) {
+  const def = characterDef(id);
+  if (!characterImages[def.id]) {
+    const img = new Image();
+    img.src = `assets/characters/${def.id}.png?v=1.4.140`;
+    characterImages[def.id] = img;
+  }
+  return characterImages[def.id];
+}
+
+function randomCharacterId() {
+  return CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].id;
+}
 const EMOJIS = ['😀', '😂', '😍', '😎', '😭', '😡', '😮', '👍', '👏', '🙏', '🎉', '🔥'];
 const AI_DISCARD_EMOJI_CHANCE = 0.3;
 const AI_WIN_EMOJI_CHANCE = 0.3;
@@ -231,6 +269,7 @@ const game = {
   role: 'none',             // 'host' | 'guest'
   seat: 0,                  // 0 = room host, 1–3 = guests / AI fill-ins
   playerName: DEFAULT_PLAYER_NAME,
+  playerCharacter: DEFAULT_CHARACTER,
   playerCustomName: false,
   playerId: null,
   roomCode: null,
@@ -974,9 +1013,11 @@ function startGame({ keepTurn = false, preset = null } = {}) {
     }));
   } else {
     game.players = [
-      { seat: 0, name: game.playerName, wind: seatZeroWindName, isBot: false, playerId: game.playerId },
+      { seat: 0, name: game.playerName, wind: seatZeroWindName, isBot: false, playerId: game.playerId,
+        character: game.playerCharacter },
       ...createBots().map((bot, index) => ({
         seat: index + 1, name: bot.name, wind: bot.wind, isBot: true, playerId: null,
+        character: game.players.find((p) => p.seat === index + 1)?.character ?? randomCharacterId(),
       })),
     ];
   }
@@ -3215,6 +3256,7 @@ function makeBotPlayer(seat) {
     isBot: true,
     isEmpty: false,
     playerId: null,
+    character: randomCharacterId(),
   };
 }
 
@@ -3226,12 +3268,13 @@ function makeEmptyPlayer(seat) {
     isBot: false,
     isEmpty: true,
     playerId: null,
+    character: DEFAULT_CHARACTER,
   };
 }
 
 function defaultRoomPlayers() {
   return [
-    { seat: 0, name: game.playerName, wind: game.seatWind ?? 'E', isBot: false, isEmpty: false, playerId: game.playerId },
+    { seat: 0, name: game.playerName, wind: game.seatWind ?? 'E', isBot: false, isEmpty: false, playerId: game.playerId, character: game.playerCharacter },
     ...[1, 2, 3].map(makeEmptyPlayer),
   ];
 }
@@ -3319,7 +3362,7 @@ function setPlayerName(value, notify = true) {
     if (input) input.value = name;
   }
   if (game.mode === 'multi' && notify) {
-    broadcastOrSend({ t: 'name', seat: game.seat, name });
+    broadcastOrSend({ t: 'name', seat: game.seat, name, character: game.playerCharacter });
   }
   renderRoom();
   renderMeldsPanel();
@@ -3330,12 +3373,25 @@ function commitPlayerNameInput(event) {
   setPlayerName(event.target.value);
 }
 
+function setPlayerCharacter(character) {
+  const def = CHARACTERS.find((item) => item.id === character);
+  if (!def) return;
+  game.playerCharacter = def.id;
+  const me = game.players.find((player) => player.seat === game.seat);
+  if (me) me.character = def.id;
+  if (game.mode === 'multi') {
+    broadcastOrSend({ t: 'name', seat: game.seat, name: game.playerName, character: def.id });
+  }
+  renderRoom();
+}
+
 /** Guests adopt the name assigned by the host, or their own edited name once relayed. */
 function adoptPlayersList(players) {
   game.players = players.map((player) => ({ ...player }));
   const me = game.players.find((player) => player.seat === game.seat);
   if (me) {
     game.playerName = me.name;
+    if (CHARACTERS.some((item) => item.id === me.character)) game.playerCharacter = me.character;
     for (const input of [ui.menuPlayerName, ui.roomPlayerName, ui.settingsPlayerName]) {
       if (input) input.value = me.name;
     }
@@ -3678,6 +3734,23 @@ function renderRoom() {
     ui.customPatternsToggle.disabled = !isHost;
     if (ui.customPatternsValue) ui.customPatternsValue.textContent = ui.customPatternsToggle.checked ? '開' : '關';
   }
+  if (ui.roomCharacters) {
+    ui.roomCharacters.innerHTML = '';
+    for (const def of CHARACTERS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `character-choice${def.id === game.playerCharacter ? ' selected' : ''}`;
+      button.dataset.character = def.id;
+      button.title = def.name;
+      button.setAttribute('aria-label', def.name);
+      const img = document.createElement('img');
+      img.src = `assets/characters/${def.id}.png?v=1.4.140`;
+      img.alt = def.name;
+      button.appendChild(img);
+      button.addEventListener('click', () => setPlayerCharacter(def.id));
+      ui.roomCharacters.appendChild(button);
+    }
+  }
   if (ui.roomAvatars) {
     ui.roomAvatars.innerHTML = '';
     const players = game.players.length ? game.players : defaultRoomPlayers();
@@ -3687,7 +3760,10 @@ function renderRoom() {
       avatar.className = 'room-avatar';
       avatar.style.background = AVATAR_COLORS[seat];
       if (!player || player.isEmpty) avatar.classList.add('empty');
-      avatar.textContent = AVATAR_ICONS[seat];
+      const pic = document.createElement('img');
+      pic.src = `assets/characters/${characterDef(player?.character).id}.png?v=1.4.140`;
+      pic.alt = characterDef(player?.character).name;
+      avatar.appendChild(pic);
       ui.roomAvatars.appendChild(avatar);
     }
   }
@@ -3698,7 +3774,12 @@ function renderRoom() {
       const row = document.createElement('div');
       row.className = `room-player${player.seat === game.seat ? ' you' : ''}`;
       const label = document.createElement('span');
-      label.textContent = `${playerDisplayName(player)}（${player.wind ?? ''}）`;
+      label.className = 'room-player-label';
+      const pic = document.createElement('img');
+      pic.className = 'room-player-character';
+      pic.src = `assets/characters/${characterDef(player.character).id}.png?v=1.4.140`;
+      pic.alt = characterDef(player.character).name;
+      label.append(pic, document.createTextNode(`${playerDisplayName(player)}（${player.wind ?? ''}）`));
       const role = document.createElement('span');
       role.className = 'room-player-role';
       role.textContent = player.isEmpty ? '等待加入'
@@ -4667,6 +4748,7 @@ function wireNetEvents() {
       const player = game.players.find((item) => item.seat === msg.seat && item.playerId === conn.peer);
       if (!player || typeof msg.name !== 'string') return;
       player.name = normalizePlayerName(msg.name);
+      if (CHARACTERS.some((item) => item.id === msg.character)) player.character = msg.character;
       net.broadcast({ t: 'players', players: game.players });
       refreshMultiBots();
       renderRoom();
@@ -4676,7 +4758,9 @@ function wireNetEvents() {
     const player = game.players.find((item) => item.seat === msg.seat);
     if (player && typeof msg.name === 'string') {
       adoptPlayersList(game.players.map((item) => item.seat === msg.seat
-        ? { ...item, name: normalizePlayerName(msg.name) } : item));
+        ? { ...item, name: normalizePlayerName(msg.name),
+            character: CHARACTERS.some((c) => c.id === msg.character) ? msg.character : (item.character ?? DEFAULT_CHARACTER) }
+        : item));
       renderRoom();
     }
   });
@@ -4980,6 +5064,7 @@ function wireNetEvents() {
     player.isBot = true;
     player.playerId = null;
     player.name = BOT_NAMES[player.seat - 1] ?? `好友${player.seat}`;
+    player.character = randomCharacterId();
     net.broadcast({ t: 'players', players: game.players });
     refreshMultiBots();
     renderRoom();
@@ -5520,7 +5605,8 @@ function drawGhostRod(seat, position, phase, caughtTile = null, label = '') {
   // drawn transparent. Their boat rides the seat's own host-clock drift, so
   // every device agrees on where it is without a new network message.
   const baseX = view.width / 2 + boatOffset(seat);
-  const handleY = WATER_TOP;
+  const handleY = characterDef(game.players.find((p) => p.seat === seat)?.character).kind === 'fly'
+    ? WATER_TOP * 0.55 : WATER_TOP;
   const rodScale = 200 / 110;
   const rodLen = ROD_LENGTH * rodScale;
   const angle = Math.atan2(-Math.cos(ROD_HOLD_ANGLE), Math.sin(ROD_HOLD_ANGLE)) - Math.PI;
@@ -5563,11 +5649,12 @@ function drawGhostRod(seat, position, phase, caughtTile = null, label = '') {
     ctx.lineTo(visTipX, visTipY);
     ctx.stroke();
   }
-  // Draw the cat last so the rod appears tucked into its paws, like the player.
-  if (catBoatImage?.complete && catBoatImage.naturalWidth) {
+  // Draw the chosen character last so the rod appears tucked into its paws.
+  const ghostCharacter = characterFor(game.players.find((p) => p.seat === seat)?.character);
+  if (ghostCharacter?.complete && ghostCharacter.naturalWidth) {
     const cw = 150;
-    const ch = cw * catBoatImage.naturalHeight / catBoatImage.naturalWidth;
-    ctx.drawImage(catBoatImage, baseX - cw / 2, handleY - ch / 2, cw, ch);
+    const ch = cw * ghostCharacter.naturalHeight / ghostCharacter.naturalWidth;
+    ctx.drawImage(ghostCharacter, baseX - cw / 2, handleY - ch / 2, cw, ch);
   }
   ctx.font = '56px sans-serif';
   ctx.textAlign = 'center';
@@ -5638,7 +5725,7 @@ function drawRod() {
   const previewLen = game.state === S.AWAIT_CAST ? game.aimPreviewLen : game.hookLen;
   // The cat holds the handle at the waterline; only the drawing moves, while
   // hook/tip/catch geometry and host sync stay exactly as before.
-  const handleY = WATER_TOP;
+  const handleY = characterDef(game.playerCharacter).kind === 'fly' ? WATER_TOP * 0.55 : WATER_TOP;
   const rodScale = 200 / 110;
   const rodLen = ROD_LENGTH * rodScale;
   const angle = Math.atan2(-Math.cos(ROD_HOLD_ANGLE), Math.sin(ROD_HOLD_ANGLE)) - Math.PI;
@@ -5697,11 +5784,12 @@ function drawRod() {
     ctx.lineTo(visTipX, visTipY);
     ctx.stroke();
   }
-  // Draw the cat last so the rod appears tucked into its paws.
-  if (catBoatImage?.complete && catBoatImage.naturalWidth) {
+  // Draw the chosen character last so the rod appears tucked into its paws.
+  const localCharacter = characterFor(game.playerCharacter);
+  if (localCharacter?.complete && localCharacter.naturalWidth) {
     const cw = 150;
-    const ch = cw * catBoatImage.naturalHeight / catBoatImage.naturalWidth;
-    ctx.drawImage(catBoatImage, baseX - cw / 2, handleY - ch / 2, cw, ch);
+    const ch = cw * localCharacter.naturalHeight / localCharacter.naturalWidth;
+    ctx.drawImage(localCharacter, baseX - cw / 2, handleY - ch / 2, cw, ch);
   }
   ctx.font = '56px sans-serif';
   ctx.textAlign = 'center';
@@ -5722,11 +5810,31 @@ function drawRod() {
   ctx.restore();
 }
 
+/** Sparrow, bee, phoenix and dragon cruise the sky above the sea surface. */
+function drawSkyFlyers() {
+  const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
+  const flyers = CHARACTERS.filter((item) => item.kind === 'fly');
+  ctx.save();
+  flyers.forEach((def, index) => {
+    const img = characterFor(def.id);
+    if (!img?.complete || !img.naturalWidth) return;
+    const span = view.width + 200;
+    const x = ((seconds * (18 + index * 7) + index * span / flyers.length) % span) - 100;
+    const y = WATER_TOP * 0.5 + Math.sin(seconds * 0.8 + index * 1.7) * 12;
+    const h = 64;
+    const w = h * img.naturalWidth / img.naturalHeight;
+    ctx.globalAlpha = 0.9;
+    ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
+  });
+  ctx.restore();
+}
+
 function draw(dt) {
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
   ctx.clearRect(0, 0, canvas.width / view.dpr, canvas.height / view.dpr);
   ctx.setTransform(view.dpr * view.scale, 0, 0, view.dpr * view.scale, 0, 0);
   drawBackground();
+  drawSkyFlyers();
   drawFish();
   renderGhostRods();
   drawRod();
@@ -7082,6 +7190,7 @@ if (new URLSearchParams(location.search).has('test')) {
     canDeclareClaim, canDeclareMeld, handReadyForClaim, claimFromBox, passClaimBox, handleClaim, aiClaimStillValid,
     addClaimBox, tickClaimBoxes, hostTimeLeft, guestTimeLeft, syncRemoteTime, broadcastHostTime,
     updateRemoteFish, showToast, rejectJoin, clearJoinWatchdog, broadcastHookState,
+    CHARACTERS, characterFor, setPlayerCharacter,
     EMOJIS, sendEmoji, showEmojiBubble, aiEmoji, maybeAiEmoji, maybeReplyToHumanEmoji, emitAiReactions,
     toggleEmojiPanel, closeEmojiPanel,
     fanInCantonese, speakCantonese, speakVoiceNow, speakRoundStart, speakAction, speakWin, speakDraw,

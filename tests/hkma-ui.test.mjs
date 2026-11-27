@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.139/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.139/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.140/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.140/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.139/);
-  assert.match(readme, /\?v=1\.4\.139/);
-  assert.match(changelog, /^## 1\.4\.139/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.140/);
+  assert.match(readme, /\?v=1\.4\.140/);
+  assert.match(changelog, /^## 1\.4\.140/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -468,7 +468,7 @@ test('玩家版本與 cachebust 已更新', () => {
     game.indexOf('function drawGhostRod('),
     game.indexOf('function renderGhostRods('),
   );
-  assert.match(ghostFn139, /catBoatImage/);
+  assert.match(ghostFn139, /ghostCharacter = characterFor\(/);
   assert.match(ghostFn139, /rodImage/);
   assert.match(ghostFn139, /globalAlpha = 0\.3/);
   assert.match(ghostFn139, /boatOffset\(seat\)/);
@@ -524,6 +524,27 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(rodDraw128, /Math\.atan2\(hookY - visTipY, hookX - visTipX\)/);
   assert.match(rodDraw128, /ctx\.translate\(hookX, hookY\)/);
   assert.match(rodDraw128, /ctx\.rotate\(lineAngle - Math\.PI \/ 2\)/);
+  // 1.4.140: twelve selectable characters; flyers live above the waterline.
+  assert.match(game, /const CHARACTERS = \[/);
+  assert.match(game, /assets\/characters\/\$\{def\.id\}\.png/);
+  for (const id of ['bee', 'cat-boat', 'dragon', 'giraffe-boat', 'monkey-boat',
+    'panda-raft', 'penguin-iceberg', 'phoenix', 'pig-boat', 'sparrow', 'squid', 'turtle']) {
+    assert.ok(game.includes(`id: '${id}'`), `missing character ${id}`);
+  }
+  assert.match(game, /kind: 'fly'/);
+  assert.match(game, /kind: 'boat'/);
+  assert.match(game, /function characterFor\(/);
+  assert.match(game, /function setPlayerCharacter\(/);
+  assert.match(html, /id="roomCharacters"/);
+  assert.match(game, /roomCharacters: el\('roomCharacters'\)/);
+  const roomFn140 = game.slice(
+    game.indexOf('function renderRoom('),
+    game.indexOf('function copyRoomLink('),
+  );
+  assert.match(roomFn140, /room-player-character/);
+  assert.match(roomFn140, /characterDef\(/);
+  assert.match(ghostFn139, /ghostCharacter = characterFor\(/);
+
 
 
   const rodDraw122 = game.slice(
