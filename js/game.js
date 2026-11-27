@@ -14,7 +14,8 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.145';
+} from './rules.js?v=1.4.146';
+import { wildcardWaitTiles } from './abilities.js?v=1.4.146';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -333,6 +334,7 @@ const resetUnloadNotice = () => { unloadNotified = false; };
 let hudRoundInfo = '';
 let catBoatImage = null;
 let rodImage = null;
+let wildcardImage = null;
 
 function readNumber(key) {
   try { return Number(localStorage.getItem(key)) || 0; } catch { return 0; }
@@ -1057,6 +1059,15 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   for (const seat of Object.keys(game.aiStates)) {
     syncSeatFlowers(Number(seat), game.aiStates[seat].flowers);
   }
+  // The sparrow starts each hand with one 百搭牌 in its private hand.
+  game.wildcardSeat = game.players.find(
+    (player) => player && !player.isEmpty && player.character === 'sparrow',
+  )?.seat ?? null;
+  if (game.wildcardSeat !== null) {
+    const wild = newTile('WILD');
+    if (game.wildcardSeat === game.seat) game.hand.push(wild);
+    else if (game.aiStates[game.wildcardSeat]) game.aiStates[game.wildcardSeat].hand.push(wild);
+  }
   let openingFlowerWin = null;
   if (game.flowers.length) {
     openingFlowerWin = flowerWinResult(
@@ -1298,18 +1309,50 @@ function finishReel() {
   }
 }
 
+/** Wildcard helpers: the sparrow's 百搭牌 can stand for any of the 34 tile
+ * kinds. Every substitution is tried; the first legal, qualifying result wins. */
+function evaluateWithWildcard({ concealed, melds, winningTile, context, flowers, seatWind }) {
+  const normal = withFlowers(evaluateHand({
+    concealed, melds, winningTile, context,
+  }), flowers, seatWind, game.settings.fanCap, context);
+  if (qualifyingWin(normal) || !concealed.includes('WILD')) return normal;
+  for (const substitute of wildcardWaitTiles(concealed, melds, context)) {
+    const replaced = concealed.map((id) => (id === 'WILD' ? substitute : id));
+    const result = withFlowers(evaluateHand({
+      concealed: replaced, melds, winningTile, context,
+    }), flowers, seatWind, game.settings.fanCap, context);
+    if (qualifyingWin(result)) return result;
+  }
+  return normal;
+}
+
+function waitsForHand(concealed, melds, context) {
+  if (!concealed.includes('WILD')) return findWaits(concealed, melds, context, null);
+  const seen = new Set();
+  const out = [];
+  for (const substitute of wildcardWaitTiles(concealed, melds, context)) {
+    const replaced = concealed.map((id) => (id === 'WILD' ? substitute : id));
+    for (const id of findWaits(replaced, melds, context, null)) {
+      if (!seen.has(id)) { seen.add(id); out.push(id); }
+    }
+  }
+  return out;
+}
+
 function resolveDraw() {
   const firstFish = !game.firstFished.has(game.seat) && game.kongChain === 0
     && game.seat !== game.match?.dealerSeat;
   game.firstFished.add(game.seat);
   const context = winContext();
   if (firstFish) context.renhu = true;
-  const result = withFlowers(evaluateHand({
+  const result = evaluateWithWildcard({
     concealed: concealedIds(),
     melds: game.melds,
     winningTile: game.lastDraw?.id ?? null,
     context,
-  }), game.flowers, game.seatWind, game.settings.fanCap, context);
+    flowers: game.flowers,
+    seatWind: game.seatWind,
+  });
   game.pendingResult = result;
   const kongTile = findKongTile();
   if (qualifyingWin(result)) {
@@ -1365,6 +1408,7 @@ function discard(uid) {
   if (game.state !== S.AWAIT_DISCARD) return;
   const index = game.hand.findIndex((tile) => tile.uid === uid);
   if (index === -1) return;
+  if (game.hand[index].id === 'WILD') { showToast('百搭牌不能打出'); return; }
   const [tile] = game.hand.splice(index, 1);
   game.river.push(tile);
   game.lastDraw = null;
@@ -1807,6 +1851,7 @@ function canDeclareClaim() {
  *  fourth set; a hand can never hold more than four melds plus a pair. */
 function canDeclareMeld() {
   if (!canDeclareClaim() || game.grabPending || game.state === S.AWAIT_DISCARD) return false;
+  if (game.hand.some((tile) => tile.id === 'WILD')) return false;
   return game.melds.length < 4 && game.hand.length >= 4;
 }
 
@@ -2156,12 +2201,14 @@ function finishAiReel(state) {
     kongReplacementChain: state.kongChain,
     renhu: firstFish,
   });
-  const result = withFlowers(evaluateHand({
+  const result = evaluateWithWildcard({
     concealed: state.hand.map((tile) => tile.id),
     melds: state.melds,
     winningTile: tileId,
     context,
-  }), state.flowers, seatWindOf(seat), game.settings.fanCap, context);
+    flowers: state.flowers,
+    seatWind: seatWindOf(seat),
+  });
   if (qualifyingWin(result)) {
     commitAiWin(seat, result);
     return;
@@ -6531,7 +6578,7 @@ function analyzeDiscards() {
   // The shared pool is endless, so wait hints are not limited by tile counts.
   for (const tile of game.hand) {
     const after = game.hand.filter((t) => t.uid !== tile.uid).map((t) => t.id);
-    const waits = findWaits(after, game.melds, winContext(), null);
+    const waits = waitsForHand(after, game.melds, winContext());
     game.discardInfo.set(tile.uid, {
       good: waits.length > 0,
       waits: waits.map((id) => hintWaitInfo(after, id)),
@@ -6547,25 +6594,29 @@ function appendHintText(text) {
   ui.target.appendChild(Object.assign(document.createElement('span'), { textContent: text }));
 }
 
+function renderDiscardPreview() {
+  const tile = game.hand[game.selectedDiscard];
+  if (!tile) { ui.target.textContent = '暫無聽牌'; return; }
+  appendHintText('打出 ');
+  addTileTo(ui.target, tile.id);
+  const info = game.discardInfo.get(tile.uid);
+  if (info?.waits.length) {
+    appendHintText(' → 聽 ');
+    info.waits.forEach((wait, index) => {
+      if (index) appendHintText('、');
+      addTileTo(ui.target, wait.id);
+      if (wait.note) appendHintText(wait.note);
+    });
+  } else {
+    appendHintText(' → 暫無聽牌');
+  }
+}
+
 function renderTarget() {
   ui.target.innerHTML = '';
 
   if (game.state === S.AWAIT_DISCARD) {
-    const tile = game.hand[game.selectedDiscard];
-    if (!tile) { ui.target.textContent = '暫無聽牌'; return; }
-    appendHintText('打出 ');
-    addTileTo(ui.target, tile.id);
-    const info = game.discardInfo.get(tile.uid);
-    if (info?.waits.length) {
-      appendHintText(' → 聽 ');
-      info.waits.forEach((wait, index) => {
-        if (index) appendHintText('、');
-        addTileTo(ui.target, wait.id);
-        if (wait.note) appendHintText(wait.note);
-      });
-    } else {
-      appendHintText(' → 暫無聽牌');
-    }
+    renderDiscardPreview();
     return;
   }
 
@@ -7142,8 +7193,14 @@ async function boot() {
     }),
     loadBackground(),
     loadBoatAssets(),
+    new Promise((resolve) => {
+      wildcardImage = new Image();
+      wildcardImage.onload = () => resolve();
+      wildcardImage.onerror = () => resolve();
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.146';
+    }),
   ]);
-  game.images = loaded.images;
+  game.images = { ...loaded.images, WILD: wildcardImage };
   game.bg = bg;
   if (loaded.failed.length) console.warn('牌面圖片載入失敗，將顯示文字替代：', loaded.failed);
   buildPatternTable();
