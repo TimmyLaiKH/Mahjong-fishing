@@ -14,11 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.152';
+} from './rules.js?v=1.4.153';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
   cooldownReady, startCooldown,
-} from './abilities.js?v=1.4.152';
+} from './abilities.js?v=1.4.153';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -96,7 +96,7 @@ const CHARACTERS = [
   { id: 'phoenix', name: '鳳凰', kind: 'fly' , ability: { kind: 'passive', id: 'phoenix', desc: '破產時 $1 復活，之後收益 +20%' } },
   { id: 'pig-boat', name: '小豬', kind: 'boat' , ability: { kind: 'passive', id: 'pig', desc: '每局結束資金 +5% 利息' } },
   { id: 'sparrow', name: '麻雀', kind: 'fly' , ability: { kind: 'passive', id: 'sparrow', desc: '開局多一張百搭牌' } },
-  { id: 'squid', name: '魷魚', kind: 'boat' , ability: { kind: 'active', id: 'squid', cdSeconds: 60, desc: '潑墨遮擋對手視野 5 秒' } },
+  { id: 'squid', name: '墨魚', kind: 'boat' , ability: { kind: 'active', id: 'squid', cdSeconds: 60, desc: '潑墨遮擋對手視野 5 秒' } },
   { id: 'turtle', name: '烏龜', kind: 'boat' , ability: { kind: 'passive', id: 'turtle', desc: '輸錢 -10~50%' } },
 ];
 const DEFAULT_CHARACTER = 'cat-boat';
@@ -3588,6 +3588,18 @@ function abilitySeats(seat) {
   return [0, 1, 2, 3].filter((s) => s !== seat);
 }
 
+/** Caster sees a confirmation; every opponent sees who inked them. */
+function showInkToast(casterSeat) {
+  if (casterSeat === game.seat) {
+    showToast('墨魚潑墨：對手視野被遮擋 5 秒');
+    return;
+  }
+  if (!abilitySeats(casterSeat).includes(game.seat)) return;
+  const caster = game.players.find((player) => player?.seat === casterSeat);
+  const who = characterDef(caster?.character).name ?? '對手';
+  showToast(`${who}（${scoreSeatName(casterSeat)}）對你潑墨！`);
+}
+
 function abilityStateFor(seat) {
   if (!game.abilityState[seat]) {
     game.abilityState[seat] = { cooldowns: {}, phoenixRevived: false };
@@ -3644,7 +3656,7 @@ function resolveAbility({ seat, id, target = null, actionId = null }) {
   if (game.mode === 'multi' && net.isHost && canonical === 'monkey') {
     net.broadcast({ t: 'match', match: cloneMatch(game.match) });
   }
-  if (canonical === 'squid') showToast('魷魚潑墨：對手視野被遮擋 5 秒');
+  if (canonical === 'squid') showInkToast(seat);
   if (canonical === 'penguin') showToast('企鵝冰凍：對手 3 秒不能行動');
   if (canonical === 'monkey') showToast('猴子偷錢成功！');
   return true;
@@ -3656,11 +3668,7 @@ function applyAbilityResult(msg) {
   const id = msg.id;
   if (id === 'squid' && Array.isArray(msg.inkUntil)) {
     abilitySeats(msg.seat).forEach((s, i) => { game.inkUntil[s] = msg.inkUntil[i] ?? 0; });
-    if (abilitySeats(msg.seat).includes(game.seat)) {
-      const caster = game.players.find((p) => p?.seat === msg.seat);
-      const who = characterDef(caster?.character).name ?? '對手';
-      showToast(`${who}（${scoreSeatName(msg.seat)}）對你潑墨！`);
-    }
+    showInkToast(msg.seat);
   } else if (id === 'penguin') {
     abilitySeats(msg.seat).forEach((s) => { game.frozenUntil[s] = nowSec() + 3; });
   } else if (id === 'giraffe' && msg.seat === game.seat) {
@@ -6471,6 +6479,7 @@ function requestAbility(id, target = null) {
   const actionId = `${Date.now()}-${Math.random()}`;
   if (game.mode === 'multi' && !net.isHost) {
     net.sendToHost({t:'ability', seat: game.seat, id, target, actionId});
+    if (id === 'squid') showInkToast(game.seat);
   } else {
     resolveAbility({ seat: game.seat, id, target, actionId });
   }
@@ -6532,10 +6541,15 @@ function renderInkSplashes() {
   if (!ui.inkOverlay || !inkSplashImage?.complete || ui.inkOverlay.dataset.splashes) return;
   const spots = [
     [0, 52, 40, -12], [18, 48, 36, 24], [38, 50, 42, 8],
-    [62, 48, 40, -30], [82, 50, 40, 12], [0, 55, 40, -8],
-    [26, 70, 42, 16], [50, 72, 44, -12], [74, 70, 40, 30],
-    [92, 66, 38, -10], [8, 84, 42, 20], [34, 88, 44, -6],
-    [60, 86, 42, 14], [84, 84, 40, -18],
+    [62, 48, 40, -30], [82, 50, 40, 12], [96, 52, 38, -10],
+    [0, 55, 40, -8], [16, 64, 40, 16], [36, 66, 42, -12],
+    [56, 64, 42, 20], [76, 66, 40, -6], [94, 68, 38, 14],
+    [4, 80, 40, 20], [24, 82, 42, -14], [44, 80, 44, 8],
+    [64, 82, 42, -18], [84, 80, 40, 16], [98, 82, 36, -8],
+    [8, 90, 40, -6], [28, 92, 42, 14], [48, 90, 44, -10],
+    [68, 92, 42, 20], [88, 90, 40, -14], [0, 94, 38, 8],
+    [12, 58, 34, -20], [32, 58, 34, 18], [52, 58, 36, -4],
+    [72, 58, 34, 22], [88, 60, 34, -12], [96, 92, 36, -12],
   ];
   for (const [left, top, size, rotate] of spots) {
     const img = document.createElement('img');
@@ -7514,13 +7528,13 @@ async function boot() {
       wildcardImage = new Image();
       wildcardImage.onload = () => resolve();
       wildcardImage.onerror = () => resolve();
-      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.152';
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.153';
     }),
     new Promise((resolve) => {
       inkSplashImage = new Image();
       inkSplashImage.onload = () => resolve();
       inkSplashImage.onerror = () => resolve();
-      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.152';
+      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.153';
     }),
   ]);
   game.images = { ...loaded.images, WILD: wildcardImage };
