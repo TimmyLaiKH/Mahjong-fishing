@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.142/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.142/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.143/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.143/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.142/);
-  assert.match(readme, /\?v=1\.4\.142/);
-  assert.match(changelog, /^## 1\.4\.142/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.143/);
+  assert.match(readme, /\?v=1\.4\.143/);
+  assert.match(changelog, /^## 1\.4\.143/m);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');
@@ -614,6 +614,14 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(loopCast, /hook\.hookX <= HOOK_EDGE_MARGIN/);
   assert.doesNotMatch(hookFn, /Math\.max\(TILE_W \/ 2,/);
 
+
+  // 1.4.143: slower motion, character PNG icons in score/副露, one-row menu tiles.
+  assert.match(game, /return 1 \+ \(\(duration - left\) \/ duration\) \* 0\.5;/);
+  assert.match(game, /meld-row-icon-img/);
+  assert.match(game, /assets\/characters\/\$\{meldCharacter\.id\}\.png\?v=1\.4\.143/);
+  assert.match(game, /score-seat-icon/);
+  const css143 = readFileSync('css/style.css', 'utf8');
+  assert.match(css143, /\.menu-tiles \{[^}]*flex-wrap: nowrap/);
 
   const restyle = readFileSync('scripts/restyle_tiles.py', 'utf8');
   assert.doesNotMatch(restyle, /add_shadow/);
