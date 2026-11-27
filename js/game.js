@@ -14,11 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.146';
+} from './rules.js?v=1.4.147';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
   cooldownReady, startCooldown,
-} from './abilities.js?v=1.4.146';
+} from './abilities.js?v=1.4.147';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -299,8 +299,8 @@ const game = {
   abilityState: {},
   seenAbilityActions: new Set(),
   pendingPeek: null,
-  inkUntil: 0,
-  frozenUntil: 0, // 七花已拒絕；只接受八花，之後手牌胡加上花糊
+  inkUntil: {},
+  frozenUntil: {}, // per-seat ability deadlines (seconds, host-synced clock)
   // Multiplayer (PeerJS room). Devices keep private hands; the host owns the
   // shared fish sea and arbitrates catches/claims.
   mode: 'solo',             // 'solo' | 'multi'
@@ -3626,7 +3626,7 @@ function resolveAbility({ seat, id, target = null, actionId = null }) {
 
   state.cooldowns = startCooldown(state.cooldowns, canonical, nowSec());
   const notice = {t:'abilityResult', seat, id: canonical, actionId, target: giraffeTarget };
-  if (canonical === 'squid') notice.inkUntil = game.inkUntil[seat] ? opponents.map((s) => game.inkUntil[s]) : [];
+  if (canonical === 'squid') notice.inkUntil = opponents.map((s) => game.inkUntil[s]);
   broadcastOrSend(notice);
   if (game.mode === 'multi' && net.isHost && canonical === 'monkey') {
     net.broadcast({ t: 'match', match: cloneMatch(game.match) });
@@ -6466,6 +6466,7 @@ function renderAbilityButtons() {
     }
     const target = abilitySeats(game.seat)[0] ?? null;
     resolveAbility({ seat: game.seat, id: myId, target, actionId: `${Date.now()}-${Math.random()}` });
+    renderAbilityButtons();
   });
   ui.abilityButtons.appendChild(btn);
 }
@@ -7446,7 +7447,7 @@ async function boot() {
       wildcardImage = new Image();
       wildcardImage.onload = () => resolve();
       wildcardImage.onerror = () => resolve();
-      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.146';
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.147';
     }),
   ]);
   game.images = { ...loaded.images, WILD: wildcardImage };
