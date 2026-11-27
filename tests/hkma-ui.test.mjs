@@ -284,12 +284,67 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.145/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.145/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.146/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.146/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.145/);
-  assert.match(readme, /\?v=1\.4\.145/);
-  assert.match(changelog, /^## 1\.4\.145/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.146/);
+  assert.match(readme, /\?v=1\.4\.146/);
+  assert.match(changelog, /^## 1\.4\.146/m);
+
+  // 1.4.146: sparrow 百搭牌 (wildcard) integration.
+  assert.match(game, /wildcardWaitTiles\(/);
+  assert.match(game, /'WILD'/);
+  assert.match(game, /百搭牌不能打出/);
+  assert.match(readFileSync('CREDITS.md', 'utf8'), /wildcard\.png/);
+
+  // 1.4.146 Task 3: passive abilities + settlement money adjustments.
+  assert.match(game, /abilityState\[/);
+  assert.match(game, /applyAbilityMoney\(/);
+  assert.match(game, /bonusFanFor\(/);
+  assert.match(game, /角色能力/);
+  const claimBlock3 = game.slice(
+    game.indexOf('function canDeclareMeld('),
+    game.indexOf('function buildClaimActions('),
+  );
+  assert.match(claimBlock3, /'dragon'/);
+
+  // 1.4.146 Task 4: active abilities + host arbitration messages.
+  assert.match(game, /t:'ability'/);
+  assert.match(game, /t:'abilityResult'/);
+  assert.match(game, /actionId/);
+  assert.match(game, /isFrozen\(/);
+  assert.match(game, /inkUntil\[/);
+  assert.match(game, /frozenUntil\[/);
+  assert.match(game, /giraffeTarget/);
+  const abilityHandler = game.slice(
+    game.indexOf("net.on('abilityResult'"),
+    game.indexOf("net.on('match'"),
+  );
+  assert.doesNotMatch(abilityHandler, /Math\.random\(\)/);
+
+  // 1.4.146 Task 5: ability UI wiring.
+  assert.match(html, /id="abilityButtons"/);
+  assert.match(html, /id="giraffeTargetPicker"/);
+  assert.match(html, /id="peekPanel"/);
+  assert.match(html, /id="inkOverlay"/);
+  assert.match(game, /ui\.abilityButtons/);
+  assert.match(game, /ui\.giraffeTargetPicker/);
+  assert.match(game, /ui\.peekPanel/);
+  assert.match(game, /ui\.inkOverlay/);
+  const abilityCss = readFileSync('css/style.css', 'utf8');
+  assert.match(abilityCss, /#ink-overlay/);
+  assert.match(abilityCss, /\.ability-btn/);
+  assert.doesNotMatch(abilityCss, /#ink-overlay \{[^}]*height:\s*\d+px/);
+
+  // Final review: giraffe peeks the chosen target, and tiles are sent only
+  // to the requester (never attached to the broadcast abilityResult).
+  const giraffeFix = game.slice(
+    game.indexOf("else if (canonical === 'giraffe')"),
+    game.indexOf('  state.cooldowns = startCooldown', game.indexOf("else if (canonical === 'giraffe')")),
+  );
+  assert.match(giraffeFix, /game\.seat === giraffeTarget \? game : game\.aiStates/);
+  assert.match(giraffeFix, /net\.sendToPeer\(/);
+  assert.doesNotMatch(game, /notice\.tiles = game\.pendingPeek/);
 
   // 玩法說明: pinned close button and updated source notes.
   const css = readFileSync('css/style.css', 'utf8');

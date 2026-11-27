@@ -14,7 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.145';
+} from './rules.js?v=1.4.146';
+import {
+  wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
+  cooldownReady, startCooldown,
+} from './abilities.js?v=1.4.146';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -22,6 +26,8 @@ const el = (id) => document.getElementById(id);
 const ui = {
   loading: el('loading'), loadingProgress: el('loadingProgress'),
   hud: el('hud'), status: el('status'), toast: el('toast'), hand: el('hand'), target: el('target'),
+  abilityButtons: el('abilityButtons'), giraffeTargetPicker: el('giraffeTargetPicker'),
+  peekPanel: el('peekPanel'), inkOverlay: el('inkOverlay'),
   tilesMeta: el('tilesMeta'), flowers: el('flowers'),
   claimBar: el('claimBar'), claimWho: el('claimWho'), claimTile: el('claimTile'),
   claimTimer: el('claimTimer'), claimActions: el('claimActions'),
@@ -80,18 +86,18 @@ const AVATAR_ICONS = ['🧍', '🧍‍♂️', '🧍‍♀️', '💃'];
 // 1.4.140: twelve AI-generated transparent characters. Flyers live above the
 // waterline; everyone else rides a boat or raft on the surface.
 const CHARACTERS = [
-  { id: 'cat-boat', name: '招財貓', kind: 'boat' },
-  { id: 'bee', name: '蜜蜂', kind: 'fly' },
-  { id: 'dragon', name: '神龍', kind: 'fly' },
-  { id: 'giraffe-boat', name: '長頸鹿', kind: 'boat' },
-  { id: 'monkey-boat', name: '猴子', kind: 'boat' },
-  { id: 'panda-raft', name: '熊貓', kind: 'boat' },
-  { id: 'penguin-iceberg', name: '企鵝', kind: 'boat' },
-  { id: 'phoenix', name: '鳳凰', kind: 'fly' },
-  { id: 'pig-boat', name: '小豬', kind: 'boat' },
-  { id: 'sparrow', name: '麻雀', kind: 'fly' },
-  { id: 'squid', name: '魷魚', kind: 'boat' },
-  { id: 'turtle', name: '烏龜', kind: 'boat' },
+  { id: 'cat-boat', name: '招財貓', kind: 'boat' , ability: { kind: 'passive', id: 'cat-boat', desc: '胡牌收益 +10~50%' } },
+  { id: 'bee', name: '蜜蜂', kind: 'fly' , ability: { kind: 'passive', id: 'bee', desc: '每 2 張花 +1 番' } },
+  { id: 'dragon', name: '神龍', kind: 'fly' , ability: { kind: 'passive', id: 'dragon', desc: '別人不能碰上槓你的牌' } },
+  { id: 'giraffe-boat', name: '長頸鹿', kind: 'boat' , ability: { kind: 'active', id: 'giraffe', cdSeconds: 60, desc: '偷看指定對手手牌' } },
+  { id: 'monkey-boat', name: '猴子', kind: 'boat' , ability: { kind: 'active', id: 'monkey', cdSeconds: 180, desc: '隨機偷對手 1/20 資金' } },
+  { id: 'panda-raft', name: '熊貓', kind: 'boat' , ability: { kind: 'passive', id: 'panda-raft', desc: '每 3 張索子 +1 番' } },
+  { id: 'penguin-iceberg', name: '企鵝', kind: 'boat' , ability: { kind: 'active', id: 'penguin', cdSeconds: 120, desc: '冰凍對手 3 秒' } },
+  { id: 'phoenix', name: '鳳凰', kind: 'fly' , ability: { kind: 'passive', id: 'phoenix', desc: '破產時 $1 復活，之後收益 +20%' } },
+  { id: 'pig-boat', name: '小豬', kind: 'boat' , ability: { kind: 'passive', id: 'pig', desc: '每局結束資金 +5% 利息' } },
+  { id: 'sparrow', name: '麻雀', kind: 'fly' , ability: { kind: 'passive', id: 'sparrow', desc: '開局多一張百搭牌' } },
+  { id: 'squid', name: '魷魚', kind: 'boat' , ability: { kind: 'active', id: 'squid', cdSeconds: 60, desc: '潑墨遮擋對手視野 5 秒' } },
+  { id: 'turtle', name: '烏龜', kind: 'boat' , ability: { kind: 'passive', id: 'turtle', desc: '輸錢 -10~50%' } },
 ];
 const DEFAULT_CHARACTER = 'cat-boat';
 const characterImages = {};
@@ -113,6 +119,13 @@ function characterFor(id) {
 function randomCharacterId() {
   return CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].id;
 }
+const ABILITY_ID_ALIASES = {
+  'giraffe-boat': 'giraffe',
+  'monkey-boat': 'monkey',
+  'penguin-iceberg': 'penguin',
+  'pig-boat': 'pig',
+};
+function abilityIdFor(id) { return ABILITY_ID_ALIASES[id] ?? id; }
 const EMOJIS = ['😀', '😂', '😍', '😎', '😭', '😡', '😮', '👍', '👏', '🙏', '🎉', '🔥'];
 const AI_DISCARD_EMOJI_CHANCE = 0.3;
 const AI_WIN_EMOJI_CHANCE = 0.3;
@@ -282,7 +295,12 @@ const game = {
   pendingClaim: null,       // { tile: { id, uid }, bot: { name, wind } }
   claimActions: [], claimTimeLeft: 0,
   pendingSelfWin: null,     // { result, kongTile, onDecline } — inline 胡牌／過 prompt
-  declinedFlowerWin: false, // 七花已拒絕；只接受八花，之後手牌胡加上花糊
+  declinedFlowerWin: false,
+  abilityState: {},
+  seenAbilityActions: new Set(),
+  pendingPeek: null,
+  inkUntil: 0,
+  frozenUntil: 0, // 七花已拒絕；只接受八花，之後手牌胡加上花糊
   // Multiplayer (PeerJS room). Devices keep private hands; the host owns the
   // shared fish sea and arbitrates catches/claims.
   mode: 'solo',             // 'solo' | 'multi'
@@ -333,6 +351,7 @@ const resetUnloadNotice = () => { unloadNotified = false; };
 let hudRoundInfo = '';
 let catBoatImage = null;
 let rodImage = null;
+let wildcardImage = null;
 
 function readNumber(key) {
   try { return Number(localStorage.getItem(key)) || 0; } catch { return 0; }
@@ -473,6 +492,12 @@ function resetMatch(setup = game.matchSetup, dealerSeat = null) {
     winner: null,
     active: false,
   };
+  for (let seat = 0; seat < 4; seat += 1) {
+    game.abilityState[seat] = {
+      cooldowns: { squid: 0, giraffe: 0, monkey: 0, penguin: 0 },
+      phoenixRevived: false,
+    };
+  }
   updateScoreUI();
   return game.match;
 }
@@ -599,6 +624,12 @@ const keepsSeaMoving = (modal) => MOVING_MODALS.has(modal.id)
 const simulationPaused = () => document.hidden || [...document.querySelectorAll('.modal.show')]
   .some((m) => m !== ui.loading && !keepsSeaMoving(m));
 const paused = () => document.hidden || modalOpen();
+// Active abilities can freeze a seat (penguin) or block its vision (squid).
+// These are wall-clock deadlines derived from the host-synced clock offset.
+const nowSec = () => (Date.now() + (game.clockOffset ?? 0)) / 1000;
+function isFrozen(seat = game.seat) {
+  return (game.frozenUntil?.[seat] ?? 0) > nowSec();
+}
 
 function winContext() {
   return {
@@ -1057,6 +1088,15 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   for (const seat of Object.keys(game.aiStates)) {
     syncSeatFlowers(Number(seat), game.aiStates[seat].flowers);
   }
+  // The sparrow starts each hand with one 百搭牌 in its private hand.
+  game.wildcardSeat = game.players.find(
+    (player) => player && !player.isEmpty && player.character === 'sparrow',
+  )?.seat ?? null;
+  if (game.wildcardSeat !== null) {
+    const wild = newTile('WILD');
+    if (game.wildcardSeat === game.seat) game.hand.push(wild);
+    else if (game.aiStates[game.wildcardSeat]) game.aiStates[game.wildcardSeat].hand.push(wild);
+  }
   let openingFlowerWin = null;
   if (game.flowers.length) {
     openingFlowerWin = flowerWinResult(
@@ -1148,7 +1188,7 @@ function seatHasPendingKong(seat) {
 }
 
 function startCast() {
-  if (game.state !== S.AWAIT_CAST || paused()) return;
+  if (game.state !== S.AWAIT_CAST || paused() || isFrozen()) return;
   if (seatHasPendingKong(game.seat)) {
     setStatus('等待其他玩家是否搶槓…');
     return;
@@ -1298,18 +1338,65 @@ function finishReel() {
   }
 }
 
+/** Wildcard helpers: the sparrow's 百搭牌 can stand for any of the 34 tile
+ * kinds. Every substitution is tried; the first legal, qualifying result wins. */
+function evaluateWithWildcard({ concealed, melds, winningTile, context, flowers, seatWind }) {
+  const normal = withFlowers(evaluateHand({
+    concealed, melds, winningTile, context,
+  }), flowers, seatWind, game.settings.fanCap, context);
+  if (qualifyingWin(normal) || !concealed.includes('WILD')) return normal;
+  for (const substitute of wildcardWaitTiles(concealed, melds, context)) {
+    const replaced = concealed.map((id) => (id === 'WILD' ? substitute : id));
+    const result = withFlowers(evaluateHand({
+      concealed: replaced, melds, winningTile, context,
+    }), flowers, seatWind, game.settings.fanCap, context);
+    if (qualifyingWin(result)) return result;
+  }
+  return normal;
+}
+
+function waitsForHand(concealed, melds, context) {
+  if (!concealed.includes('WILD')) return findWaits(concealed, melds, context, null);
+  const seen = new Set();
+  const out = [];
+  for (const substitute of wildcardWaitTiles(concealed, melds, context)) {
+    const replaced = concealed.map((id) => (id === 'WILD' ? substitute : id));
+    for (const id of findWaits(replaced, melds, context, null)) {
+      if (!seen.has(id)) { seen.add(id); out.push(id); }
+    }
+  }
+  return out;
+}
+
+function applyPassiveBonus(result, characterId, flowerCount, souCount) {
+  const bonus = bonusFanFor(abilityIdFor(characterId), { flowerCount, souCount });
+  if (bonus > 0) {
+    result.bonusFan = bonus;
+    result.totalFan = (result.totalFan ?? 0) + bonus;
+  }
+  return result;
+}
+
+function characterForSeat(seat) {
+  return game.players.find((p) => p?.seat === seat)?.character ?? game.playerCharacter;
+}
+
 function resolveDraw() {
   const firstFish = !game.firstFished.has(game.seat) && game.kongChain === 0
     && game.seat !== game.match?.dealerSeat;
   game.firstFished.add(game.seat);
   const context = winContext();
   if (firstFish) context.renhu = true;
-  const result = withFlowers(evaluateHand({
+  const result = evaluateWithWildcard({
     concealed: concealedIds(),
     melds: game.melds,
     winningTile: game.lastDraw?.id ?? null,
     context,
-  }), game.flowers, game.seatWind, game.settings.fanCap, context);
+    flowers: game.flowers,
+    seatWind: game.seatWind,
+  });
+  const souCount = game.hand.filter((tile) => tile.id.startsWith('s')).length;
+  applyPassiveBonus(result, game.playerCharacter, game.flowers.length, souCount);
   game.pendingResult = result;
   const kongTile = findKongTile();
   if (qualifyingWin(result)) {
@@ -1362,9 +1449,10 @@ function declareKong(kind, sourceKey = `${game.seat}:kong:${kind}:${game.nextUid
 }
 
 function discard(uid) {
-  if (game.state !== S.AWAIT_DISCARD) return;
+  if (game.state !== S.AWAIT_DISCARD || isFrozen()) return;
   const index = game.hand.findIndex((tile) => tile.uid === uid);
   if (index === -1) return;
+  if (game.hand[index].id === 'WILD') { showToast('百搭牌不能打出'); return; }
   const [tile] = game.hand.splice(index, 1);
   game.river.push(tile);
   game.lastDraw = null;
@@ -1798,6 +1886,7 @@ function handReadyForClaim() {
  *  claim may be made while the rod is out, a kong replacement is owed, or a
  *  forced discard is still pending. */
 function canDeclareClaim() {
+  if (isFrozen()) return false;
   if (game.mustDiscard || game.grabPending || game.lastDraw || game.kongChain > 0) return false;
   if (!handReadyForClaim()) return false;
   return ![S.LOADING, S.RESOLVE_DRAW, S.WIN, S.DRAW_GAME].includes(game.state);
@@ -1807,6 +1896,9 @@ function canDeclareClaim() {
  *  fourth set; a hand can never hold more than four melds plus a pair. */
 function canDeclareMeld() {
   if (!canDeclareClaim() || game.grabPending || game.state === S.AWAIT_DISCARD) return false;
+  if (game.hand.some((tile) => tile.id === 'WILD')) return false;
+  const sourceSeat = game.pendingClaim?.from ?? null;
+  if (sourceSeat !== null && characterAbility(abilityIdFor(characterForSeat(sourceSeat)))?.id === 'dragon') return false;
   return game.melds.length < 4 && game.hand.length >= 4;
 }
 
@@ -2156,12 +2248,16 @@ function finishAiReel(state) {
     kongReplacementChain: state.kongChain,
     renhu: firstFish,
   });
-  const result = withFlowers(evaluateHand({
+  const result = evaluateWithWildcard({
     concealed: state.hand.map((tile) => tile.id),
     melds: state.melds,
     winningTile: tileId,
     context,
-  }), state.flowers, seatWindOf(seat), game.settings.fanCap, context);
+    flowers: state.flowers,
+    seatWind: seatWindOf(seat),
+  });
+  const aiSou = state.hand.filter((tile) => tile.id.startsWith('s')).length;
+  applyPassiveBonus(result, characterForSeat(seat), state.flowers.length, aiSou);
   if (qualifyingWin(result)) {
     commitAiWin(seat, result);
     return;
@@ -2486,6 +2582,22 @@ function commitAiWin(seat, result, fanTotal = null, meta = {}) {
 }
 
 function aiTick(dt) {
+  // Each AI with a ready active ability has a small per-second chance to use it.
+  if (!isFrozen() && dt > 0) {
+    for (const player of game.players) {
+      if (!player?.isBot || player.isEmpty) continue;
+      const seat = player.seat;
+      const id = abilityIdFor(player.character);
+      const def = characterAbility(id);
+      if (!def || def.kind !== 'active') continue;
+      if (!cooldownReady(abilityStateFor(seat).cooldowns, id, nowSec())) continue;
+      if (Math.random() < 0.01 * dt) {
+        const targets = abilitySeats(seat);
+        const target = targets[Math.floor(Math.random() * targets.length)];
+        resolveAbility({ seat, id, target, actionId: `${Date.now()}-${seat}-${id}` });
+      }
+    }
+  }
   if (!Object.keys(game.aiStates).length || game.state === S.WIN || game.state === S.DRAW_GAME) return;
   const hookRate = game.hookSpeed * paceFactor();
   for (const state of Object.values(game.aiStates)) {
@@ -2637,6 +2749,7 @@ function recordRoundResult({ winner = null, discarder = null, result = null,
   // order; the round key makes settlement idempotent on every device.
   const roundKey = `${match.handNumber}:${match.repeatCount}:${match.dealerSeat}`;
   if (match.lastPayout?.roundKey === roundKey) return match.lastPayout;
+  const beforeMoney = [...match.money];
   const settled = settleRound({
     money: match.money,
     winner,
@@ -2666,6 +2779,24 @@ function recordRoundResult({ winner = null, discarder = null, result = null,
     settled.log.repeatCount = 0;
     settled.log.windIndex = Math.floor(match.handNumber / 4);
   }
+  const characters = [0, 1, 2, 3].map((seat) => abilityIdFor(characterForSeat(seat)));
+  const earnPct = 0.10 + Math.random() * 0.40;
+  const losePct = 0.10 + Math.random() * 0.40;
+  const applied = applyAbilityMoney({
+    before: beforeMoney,
+    settledMoney: settled.money,
+    characters,
+    revived: [0, 1, 2, 3].map((seat) => Boolean(game.abilityState[seat]?.phoenixRevived)),
+    earnPct,
+    losePct,
+  });
+  settled.money = applied.money;
+  settled.log.abilities = { ...applied.changes, earnPct, losePct, revived: applied.revived };
+  if (applied.revived.some(Boolean)) {
+    settled.over = settled.money.some((value) => value <= 0)
+      ? settled.over
+      : false;
+  }
   settled.log.roundKey = roundKey;
   settled.log.kongClaim = Boolean(kongClaim);
   // Keep the finished hand's number for the end-overlay heading (the match
@@ -2692,6 +2823,7 @@ function recordRoundResult({ winner = null, discarder = null, result = null,
 function payoutSummary(log = game.match?.lastPayout) {
   if (!log) return '';
   const lines = [];
+  if (log?.abilities?.bonusFan) lines.push(`角色能力 +${log.abilities.bonusFan} 番`);
   if (log.winner !== null && log.winner !== undefined) {
     if (log.selfDraw) {
       lines.push(`自摸：三家各付 ${moneyText(log.payout.each)}，共得 ${moneyText(log.payout.total)}`);
@@ -3436,6 +3568,88 @@ function refreshMultiBots() {
   game.bots = game.players
     .filter((player) => player && !player.isEmpty && player.seat !== game.seat)
     .map((player) => ({ name: player.name, wind: player.wind, isBot: Boolean(player.isBot) }));
+}
+
+// --- Character active abilities (host-authoritative) -----------------------
+function abilitySeats(seat) {
+  return [0, 1, 2, 3].filter((s) => s !== seat);
+}
+
+function abilityStateFor(seat) {
+  if (!game.abilityState[seat]) {
+    game.abilityState[seat] = { cooldowns: {}, phoenixRevived: false };
+  }
+  if (!game.abilityState[seat].cooldowns) game.abilityState[seat].cooldowns = {};
+  return game.abilityState[seat];
+}
+
+/** Host validates and applies an active ability, then broadcasts the result.
+ *  Replays share an actionId and are deduped; all random decisions happen here
+ *  on the host so guests only consume the broadcast values. */
+function resolveAbility({ seat, id, target = null, actionId = null }) {
+  if (!actionId || game.seenAbilityActions.has(actionId)) return false;
+  game.seenAbilityActions.add(actionId);
+  const canonical = abilityIdFor(id);
+  const def = characterAbility(canonical);
+  if (!def || def.kind !== 'active') return false;
+  const state = abilityStateFor(seat);
+  if (!cooldownReady(state.cooldowns, canonical, nowSec())) return false;
+
+  const opponents = abilitySeats(seat);
+  let giraffeTarget = null;
+  if (canonical === 'squid') {
+    const until = nowSec() + 5;
+    for (const other of opponents) game.inkUntil[other] = until;
+  } else if (canonical === 'penguin') {
+    const until = nowSec() + 3;
+    for (const other of opponents) game.frozenUntil[other] = until;
+  } else if (canonical === 'monkey') {
+    const victim = opponents.includes(target) ? target : opponents[Math.floor(Math.random() * opponents.length)];
+    const amount = Math.max(1, Math.floor((game.match?.money?.[victim] ?? 0) / 20));
+    game.match.money[victim] -= amount;
+    game.match.money[seat] = (game.match.money[seat] ?? 0) + amount;
+  } else if (canonical === 'giraffe') {
+    // Human picks a target explicitly; AI targets a random opponent (host-side).
+    giraffeTarget = opponents.includes(target) ? target : opponents[Math.floor(Math.random() * opponents.length)];
+    const source = game.seat === giraffeTarget ? game : game.aiStates?.[giraffeTarget];
+    const tiles = source ? (source.hand ?? []).map((tile) => tile.id) : [];
+    if (seat === game.seat) game.pendingPeek = { seat, target: giraffeTarget, tiles };
+    else {
+      const requester = game.players.find((player) => player?.seat === seat);
+      if (game.mode === 'multi' && net.isHost && requester?.playerId) {
+        net.sendToPeer(requester.playerId, {
+          t: 'abilityResult', seat, id: canonical, actionId, target: giraffeTarget, tiles,
+        });
+      }
+    }
+  }
+
+  state.cooldowns = startCooldown(state.cooldowns, canonical, nowSec());
+  const notice = {t:'abilityResult', seat, id: canonical, actionId, target: giraffeTarget };
+  if (canonical === 'squid') notice.inkUntil = game.inkUntil[seat] ? opponents.map((s) => game.inkUntil[s]) : [];
+  broadcastOrSend(notice);
+  if (game.mode === 'multi' && net.isHost && canonical === 'monkey') {
+    net.broadcast({ t: 'match', match: cloneMatch(game.match) });
+  }
+  if (canonical === 'squid') showToast('魷魚潑墨：對手視野被遮擋 5 秒');
+  if (canonical === 'penguin') showToast('企鵝冰凍：對手 3 秒不能行動');
+  if (canonical === 'monkey') showToast('猴子偷錢成功！');
+  return true;
+}
+
+function applyAbilityResult(msg) {
+  if (!msg || game.seenAbilityActions.has(msg.actionId)) return;
+  game.seenAbilityActions.add(msg.actionId);
+  const id = msg.id;
+  if (id === 'squid' && Array.isArray(msg.inkUntil)) {
+    abilitySeats(msg.seat).forEach((s, i) => { game.inkUntil[s] = msg.inkUntil[i] ?? 0; });
+  } else if (id === 'penguin') {
+    abilitySeats(msg.seat).forEach((s) => { game.frozenUntil[s] = nowSec() + 3; });
+  } else if (id === 'giraffe' && msg.seat === game.seat) {
+    // Tiles are relayed only to the requester (privacy exception accepted).
+    game.pendingPeek = { seat: msg.seat, target: msg.target, tiles: msg.tiles ?? [] };
+    showToast(`偷看 ${scoreSeatName(msg.target)} 的手牌`);
+  }
 }
 
 function broadcastOrSend(msg) {
@@ -4970,6 +5184,12 @@ function wireNetEvents() {
     if (!net.isHost && game.mode === 'multi') ackWin(msg.winId);
   });
 
+  net.on('ability', (msg) => {
+    if (!msg) return;
+    if (net.isHost) resolveAbility(msg);
+    else if (msg.seat === game.seat) broadcastOrSend({t:'ability', ...msg});
+  });
+  net.on('abilityResult', (msg) => applyAbilityResult(msg));
   net.on('match', (msg) => {
     if (net.isHost) return;
     const previousKey = game.match?.lastPayout?.roundKey ?? null;
@@ -6218,6 +6438,80 @@ function updateScoreUI() {
   renderMeldsPanel();
 }
 
+
+/** 角色技能按鈕：只為玩家角色顯示主動技能，冷卻中或冰凍時停用。 */
+function renderAbilityButtons() {
+  if (!ui.abilityButtons) return;
+  ui.abilityButtons.innerHTML = '';
+  if (game.state === S.LOADING || !game.match?.active) return;
+  const myId = abilityIdFor(game.playerCharacter);
+  const def = characterAbility(myId);
+  if (!def || def.kind !== 'active') return;
+  const cd = game.abilityState?.[game.seat]?.cooldowns ?? {};
+  const frozen = isFrozen(game.seat);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ability-btn';
+  btn.dataset.ability = myId;
+  btn.disabled = frozen || cooldownReady(cd, myId, nowSec()) === false;
+  const remain = Math.max(0, Math.ceil((cd[myId] ?? 0) - nowSec()));
+  const label = { squid: '潑墨', giraffe: '偷看', monkey: '偷錢', penguin: '冰凍' }[myId] ?? def.name ?? '技能';
+  btn.textContent = `${label}${remain ? ` ${remain}s` : ''}`;
+  btn.title = def.desc ?? '';
+  btn.addEventListener('click', () => {
+    if (btn.disabled || paused()) return;
+    if (myId === 'giraffe') {
+      openGiraffeTargetPicker();
+      return;
+    }
+    const target = abilitySeats(game.seat)[0] ?? null;
+    resolveAbility({ seat: game.seat, id: myId, target, actionId: `${Date.now()}-${Math.random()}` });
+  });
+  ui.abilityButtons.appendChild(btn);
+}
+
+/** 長頸鹿選目標：列出三位對手，點選後才送出偷看請求。 */
+function openGiraffeTargetPicker() {
+  if (!ui.giraffeTargetPicker) return;
+  ui.giraffeTargetPicker.innerHTML = '';
+  ui.giraffeTargetPicker.hidden = false;
+  for (const seat of abilitySeats(game.seat)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'giraffe-target-btn';
+    btn.textContent = game.players.find((p) => p?.seat === seat)?.name ?? `座位 ${seat}`;
+    btn.addEventListener('click', () => {
+      ui.giraffeTargetPicker.hidden = true;
+      resolveAbility({ seat: game.seat, id: 'giraffe', target: seat, actionId: `${Date.now()}-${Math.random()}` });
+    });
+    ui.giraffeTargetPicker.appendChild(btn);
+  }
+}
+
+/** 潑墨遮罩與偷看面板：只在本機顯示，pointer-events:none 不阻擋操作。 */
+function renderAbilityOverlays() {
+  if (ui.inkOverlay) {
+    const inked = (game.inkUntil?.[game.seat] ?? 0) > nowSec();
+    ui.inkOverlay.hidden = !inked;
+  }
+  if (ui.peekPanel) {
+    const peek = game.pendingPeek;
+    const show = Boolean(peek && peek.seat === game.seat);
+    ui.peekPanel.hidden = !show;
+    if (show) {
+      ui.peekPanel.innerHTML = '';
+      const head = document.createElement('div');
+      head.className = 'peek-title';
+      head.textContent = `偷看 ${game.players.find((p) => p?.seat === peek.target)?.name ?? '對手'} 的手牌`;
+      ui.peekPanel.appendChild(head);
+      const row = document.createElement('div');
+      row.className = 'peek-tiles';
+      for (const id of peek.tiles ?? []) row.appendChild(createTileElement(id, { images: game.images }));
+      ui.peekPanel.appendChild(row);
+    }
+  }
+}
+
 function updateHUD() {
   updateScoreUI();
   if (ui.seatWind) ui.seatWind.textContent = TILE_INFO[game.seatWind]?.name ?? '';
@@ -6230,6 +6524,8 @@ function updateHUD() {
   // A newly fished tile can unlock 碰／上／胡 on a discard that is still inside
   // the five-second window, so recompute which boxes are actionable here.
   renderClaimBoxes();
+  renderAbilityButtons();
+  renderAbilityOverlays();
 }
 
 /** Five-second claim panel beside the rod: tile image, discarder and actions. */
@@ -6531,7 +6827,7 @@ function analyzeDiscards() {
   // The shared pool is endless, so wait hints are not limited by tile counts.
   for (const tile of game.hand) {
     const after = game.hand.filter((t) => t.uid !== tile.uid).map((t) => t.id);
-    const waits = findWaits(after, game.melds, winContext(), null);
+    const waits = waitsForHand(after, game.melds, winContext());
     game.discardInfo.set(tile.uid, {
       good: waits.length > 0,
       waits: waits.map((id) => hintWaitInfo(after, id)),
@@ -6547,25 +6843,29 @@ function appendHintText(text) {
   ui.target.appendChild(Object.assign(document.createElement('span'), { textContent: text }));
 }
 
+function renderDiscardPreview() {
+  const tile = game.hand[game.selectedDiscard];
+  if (!tile) { ui.target.textContent = '暫無聽牌'; return; }
+  appendHintText('打出 ');
+  addTileTo(ui.target, tile.id);
+  const info = game.discardInfo.get(tile.uid);
+  if (info?.waits.length) {
+    appendHintText(' → 聽 ');
+    info.waits.forEach((wait, index) => {
+      if (index) appendHintText('、');
+      addTileTo(ui.target, wait.id);
+      if (wait.note) appendHintText(wait.note);
+    });
+  } else {
+    appendHintText(' → 暫無聽牌');
+  }
+}
+
 function renderTarget() {
   ui.target.innerHTML = '';
 
   if (game.state === S.AWAIT_DISCARD) {
-    const tile = game.hand[game.selectedDiscard];
-    if (!tile) { ui.target.textContent = '暫無聽牌'; return; }
-    appendHintText('打出 ');
-    addTileTo(ui.target, tile.id);
-    const info = game.discardInfo.get(tile.uid);
-    if (info?.waits.length) {
-      appendHintText(' → 聽 ');
-      info.waits.forEach((wait, index) => {
-        if (index) appendHintText('、');
-        addTileTo(ui.target, wait.id);
-        if (wait.note) appendHintText(wait.note);
-      });
-    } else {
-      appendHintText(' → 暫無聽牌');
-    }
+    renderDiscardPreview();
     return;
   }
 
@@ -7142,8 +7442,14 @@ async function boot() {
     }),
     loadBackground(),
     loadBoatAssets(),
+    new Promise((resolve) => {
+      wildcardImage = new Image();
+      wildcardImage.onload = () => resolve();
+      wildcardImage.onerror = () => resolve();
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.146';
+    }),
   ]);
-  game.images = loaded.images;
+  game.images = { ...loaded.images, WILD: wildcardImage };
   game.bg = bg;
   if (loaded.failed.length) console.warn('牌面圖片載入失敗，將顯示文字替代：', loaded.failed);
   buildPatternTable();
