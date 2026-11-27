@@ -14,7 +14,7 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.141';
+} from './rules.js?v=1.4.142';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -49,8 +49,7 @@ const ui = {
   roomShareBlock: el('roomShareBlock'), roomCode: el('roomCode'), roomLink: el('roomLink'),
   exitConfirm: el('exitConfirm'), exitConfirmBack: el('exitConfirmBack'),
   roomPlayerName: el('roomPlayerName'), settingsPlayerName: el('settingsPlayerName'),
-  roomCopy: el('roomCopy'), roomPlayers: el('roomPlayers'), roomAvatars: el('roomAvatars'),
-  roomCharacters: el('roomCharacters'),
+  roomCopy: el('roomCopy'), roomPlayers: el('roomPlayers'), roomCharacters: el('roomCharacters'),
   roomHostControls: el('roomHostControls'), roomGuestInfo: el('roomGuestInfo'),
   roomHookSpeed: el('roomHookSpeed'), roomHookSpeedValue: el('roomHookSpeedValue'),
   roomGameDuration: el('roomGameDuration'), roomGameDurationValue: el('roomGameDurationValue'),
@@ -149,11 +148,18 @@ const TILE_H = 176;
 const ROD_BASE_Y = 4;
 const ROD_LENGTH = 86;
 const AIM_PREVIEW_LEN = 80;
+const HOOK_SPEED_FIXED = 1;
 // The drawn rod is held still on the right; the line+hook pendulum is the only motion.
 const ROD_HOLD_ANGLE = (60 * Math.PI) / 180;
+// Boat drift and the string pendulum accelerate smoothly as the clock runs out.
+function motionSpeedFactor() {
+  const duration = Math.max(1, game.settings?.gameSeconds || 300);
+  const left = Math.max(0, Math.min(duration, game.timeLeft ?? duration));
+  return 1 + ((duration - left) / duration) * 1.5;
+}
 function aimPendulum() {
   const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
-  return Math.sin(seconds / 1.2) * 1.4;
+  return Math.sin(seconds / 1.2 * motionSpeedFactor()) * 1.4;
 }
 const MAX_FISH = 12;
 const SPAWN_INTERVAL = 1.2;
@@ -248,7 +254,7 @@ const game = {
     fanCap: fanCapFromSetup({ fanCapTen: DEFAULT_FAN_CAP_TEN }),
     gameSeconds: readGameSeconds(),
   },
-  hookSpeed: Math.min(2, Math.max(0.5, readNumberWithDefault('mf-hookspeed', 1))),
+  hookSpeed: HOOK_SPEED_FIXED,
   aimPreviewLen: 0,         // eased drawn aim length, avoids hook teleport on discard
   lastDraw: null,           // { uid, id, source: 'fish' | 'flower' | 'kong', fromKong? }
   kongChain: 0,
@@ -664,7 +670,8 @@ function showEmojiBubble(seat, emoji) {
   const stagger = active % 4;
   bubble.style.zIndex = String(stagger + 1);
   const roomAvatar = document.body.classList.contains('waiting-room')
-    && ui.room?.classList.contains('show') ? ui.roomAvatars?.children[seat] : null;
+    && ui.room?.classList.contains('show')
+    ? ui.roomPlayers?.querySelectorAll('.room-player-character')[seat] : null;
   if (roomAvatar) {
     const rect = roomAvatar.getBoundingClientRect();
     bubble.style.left = `${rect.left + rect.width / 2 + (stagger - 1.5) * 18}px`;
@@ -3699,10 +3706,6 @@ function renderRoom() {
     ui.roomStart.disabled = !isHost;
   }
   if (ui.roomGuestInfo) ui.roomGuestInfo.hidden = isHost;
-  if (ui.roomHookSpeed) {
-    ui.roomHookSpeed.value = String(game.roomSettings.hookSpeed);
-    ui.roomHookSpeedValue.textContent = `${Number(game.roomSettings.hookSpeed).toFixed(1)}×`;
-  }
   if (ui.roomGameDuration) {
     ui.roomGameDuration.value = String(game.roomSettings.gameSeconds);
     ui.roomGameDurationValue.textContent = formatClock(game.roomSettings.gameSeconds);
@@ -3736,10 +3739,11 @@ function renderRoom() {
   }
   if (ui.roomCharacters) {
     ui.roomCharacters.innerHTML = '';
-    for (const def of CHARACTERS) {
+    CHARACTERS.forEach((def, index) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = `character-choice${def.id === game.playerCharacter ? ' selected' : ''}`;
+      button.style.background = AVATAR_COLORS[index % AVATAR_COLORS.length];
       button.dataset.character = def.id;
       button.title = def.name;
       button.setAttribute('aria-label', def.name);
@@ -3749,23 +3753,7 @@ function renderRoom() {
       button.appendChild(img);
       button.addEventListener('click', () => setPlayerCharacter(def.id));
       ui.roomCharacters.appendChild(button);
-    }
-  }
-  if (ui.roomAvatars) {
-    ui.roomAvatars.innerHTML = '';
-    const players = game.players.length ? game.players : defaultRoomPlayers();
-    for (let seat = 0; seat < 4; seat += 1) {
-      const player = players.find((item) => item?.seat === seat);
-      const avatar = document.createElement('span');
-      avatar.className = 'room-avatar';
-      avatar.style.background = AVATAR_COLORS[seat];
-      if (!player || player.isEmpty) avatar.classList.add('empty');
-      const pic = document.createElement('img');
-      pic.src = `assets/characters/${characterDef(player?.character).id}.png?v=1.4.140`;
-      pic.alt = characterDef(player?.character).name;
-      avatar.appendChild(pic);
-      ui.roomAvatars.appendChild(avatar);
-    }
+    });
   }
   if (ui.roomPlayers) {
     ui.roomPlayers.innerHTML = '';
@@ -3775,11 +3763,15 @@ function renderRoom() {
       row.className = `room-player${player.seat === game.seat ? ' you' : ''}`;
       const label = document.createElement('span');
       label.className = 'room-player-label';
-      const pic = document.createElement('img');
-      pic.className = 'room-player-character';
-      pic.src = `assets/characters/${characterDef(player.character).id}.png?v=1.4.140`;
-      pic.alt = characterDef(player.character).name;
-      label.append(pic, document.createTextNode(`${playerDisplayName(player)}（${player.wind ?? ''}）`));
+      // Empty seats have no character icon.
+      if (!player.isEmpty) {
+        const pic = document.createElement('img');
+        pic.className = 'room-player-character';
+        pic.src = `assets/characters/${characterDef(player.character).id}.png?v=1.4.140`;
+        pic.alt = characterDef(player.character).name;
+        label.append(pic);
+      }
+      label.appendChild(document.createTextNode(`${playerDisplayName(player)}（${player.wind ?? ''}）`));
       const role = document.createElement('span');
       role.className = 'room-player-role';
       role.textContent = player.isEmpty ? '等待加入'
@@ -3827,11 +3819,10 @@ function updateRoomSettings() {
   if (!canEditRoomSettings()) return;
   const setup = currentRoomMatchSetup();
   game.roomSettings = {
-    hookSpeed: Number(ui.roomHookSpeed.value),
+    hookSpeed: HOOK_SPEED_FIXED,
     gameSeconds: Number(ui.roomGameDuration.value),
     ...setup,
   };
-  save('mf-hookspeed', game.roomSettings.hookSpeed);
   save('mf-gameseconds', game.roomSettings.gameSeconds);
   applyMatchSetup(setup);
   if (game.mode === 'multi') net.broadcast({ t: 'settings', settings: game.roomSettings });
@@ -3878,11 +3869,10 @@ function startRoomGame() {
   if (game.mode !== 'solo') return;
   const setup = currentRoomMatchSetup();
   game.roomSettings = {
-    hookSpeed: Number(ui.roomHookSpeed.value),
+    hookSpeed: HOOK_SPEED_FIXED,
     gameSeconds: Number(ui.roomGameDuration.value),
     ...setup,
   };
-  save('mf-hookspeed', game.roomSettings.hookSpeed);
   save('mf-gameseconds', game.roomSettings.gameSeconds);
   game.hookSpeed = game.roomSettings.hookSpeed;
   game.settings.gameSeconds = game.roomSettings.gameSeconds;
@@ -5371,7 +5361,7 @@ function swingLimit() {
 
 function boatOffset(seat = game.seat) {
   const seconds = (Date.now() + (game.clockOffset ?? 0)) / 1000;
-  return Math.sin(seconds / 2 + seat * 1.7) * view.width * 0.42;
+  return Math.sin(seconds / 2 * motionSpeedFactor() + seat * 1.7) * view.width * 0.42;
 }
 
 function hookPositionFor(angle, hookLen, seat = game.seat) {
@@ -5606,8 +5596,7 @@ function drawGhostRod(seat, position, phase, caughtTile = null, label = '') {
   // drawn transparent. Their boat rides the seat's own host-clock drift, so
   // every device agrees on where it is without a new network message.
   const baseX = view.width / 2 + boatOffset(seat);
-  const handleY = characterDef(game.players.find((p) => p.seat === seat)?.character).kind === 'fly'
-    ? WATER_TOP * 0.55 : WATER_TOP;
+  const handleY = WATER_TOP;
   const rodScale = 200 / 110;
   const rodLen = ROD_LENGTH * rodScale;
   const angle = Math.atan2(-Math.cos(ROD_HOLD_ANGLE), Math.sin(ROD_HOLD_ANGLE)) - Math.PI;
@@ -5726,7 +5715,7 @@ function drawRod() {
   const previewLen = game.state === S.AWAIT_CAST ? game.aimPreviewLen : game.hookLen;
   // The cat holds the handle at the waterline; only the drawing moves, while
   // hook/tip/catch geometry and host sync stay exactly as before.
-  const handleY = characterDef(game.playerCharacter).kind === 'fly' ? WATER_TOP * 0.55 : WATER_TOP;
+  const handleY = WATER_TOP;
   const rodScale = 200 / 110;
   const rodLen = ROD_LENGTH * rodScale;
   const angle = Math.atan2(-Math.cos(ROD_HOLD_ANGLE), Math.sin(ROD_HOLD_ANGLE)) - Math.PI;
@@ -6959,7 +6948,6 @@ function wireInput() {
   ui.roomStart.addEventListener('click', startRoomGame);
   ui.roomLeave.addEventListener('click', leaveRoom);
   ui.roomCopy.addEventListener('click', copyRoomLink);
-  ui.roomHookSpeed.addEventListener('input', updateRoomSettings);
   ui.roomGameDuration.addEventListener('input', updateRoomSettings);
   ui.roomStartingMoney?.addEventListener('input', updateRoomSettings);
   ui.roomWinds?.addEventListener('change', updateRoomSettings);

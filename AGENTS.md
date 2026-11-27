@@ -160,7 +160,7 @@ or tile drawing helpers change so players do not keep stale sounds, scoring or t
   `FLOWER_PATTERN_TABLE`; every pattern needs a validated `example` there. HKMA《香港麻雀總例》is the
   sole fan authority; `花么九` is 4 番 (花么). Patterns carrying `category: '自訂牌型'`
   (all custom patterns above) get a small 自訂牌型 tag in the name cell only; settlement and speech
-  never show it. The creative custom list is also `自訂牌型`: 一心一意 13 (全部同一種牌；四槓共 18 張；不吸收其他
+  never show it. The creative custom list is also `自訂牌型`: 萬眾一心 13 (全部同一種牌；四槓共 18 張；不吸收其他
   牌型), 九五之尊 10 (只有 5 與 9), 四連刻 3, 三色同順／三色同刻／全帶么九／五門齊 2, 全求人／斷么九 1.
   13 番在預設 10 番房間只被派彩上限限制，不改變引擎番數。The host-only `customPatternsToggle` room switch (default OFF) disables their scoring, but the
   牌型一覽 always shows these rows at the bottom; guests see a read-only `(由房主設定)` note. The closing footnote says

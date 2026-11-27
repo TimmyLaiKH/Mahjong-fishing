@@ -27,7 +27,7 @@ const EXPECTED_FAN = Object.freeze({
   三槓子: 3, 三喜臨門: 3, 雙色同刻: 3, 四歸四: 3,
   萬綠叢中一點紅: 10, 百萬石: 10, 紅孔雀: 10,
   七對子: 3, 人胡: 10, 綠一色: 10, 藍一色: 10,
-  一心一意: 13, 九五之尊: 10, 四連刻: 3,
+  萬眾一心: 13, 九五之尊: 10, 四連刻: 3,
   三色同順: 2, 三色同刻: 2, 全帶么九: 2, 五門齊: 2,
   全求人: 1, 斷么九: 1,
 });
@@ -113,9 +113,9 @@ test('creative custom patterns honour toggle and kong tile count', () => {
     })),
     context: { customPatterns: true },
   };
-  assert.ok(names(evaluateHand(fourKongs)).includes('一心一意'));
+  assert.ok(names(evaluateHand(fourKongs)).includes('萬眾一心'));
   const off = evaluateHand({ ...fourKongs, context: { customPatterns: false } });
-  assert.ok(!names(off).includes('一心一意'));
+  assert.ok(!names(off).includes('萬眾一心'));
 
   const pairs = [
     ['m1 m2 m3 p1 p2 p3 s1 s2 s3 m4 m5 m6 p9 p9', '三色同順', '鏡糊糊'],
