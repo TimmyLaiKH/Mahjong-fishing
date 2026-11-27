@@ -852,7 +852,7 @@ body { background-color: #fffaf0; background-image: repeating-linear-gradient(90
 .room-player-character { width: 26px; height: 26px; object-fit: contain; margin-right: 6px; }
 
 /* Character ability UI: compact circular skill buttons and transient overlays. */
-.ability-buttons { display: flex; gap: 6px; justify-content: center; min-height: 30px; }
+.ability-buttons { display: flex; gap: 6px; justify-content: center; min-height: 30px; position: fixed; right: 8px; bottom: max(6px, env(safe-area-inset-bottom)); z-index: 66; }
 .ability-btn { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #8c1d1d; background: #fffaf0; color: #1a1a1a; font-size: 10px; line-height: 1; padding: 0; cursor: pointer; }
 .ability-btn:disabled { opacity: 0.45; cursor: default; }
 .giraffe-target-picker { display: flex; gap: 6px; justify-content: center; }

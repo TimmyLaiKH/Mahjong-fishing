@@ -14,11 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.155';
+} from './rules.js?v=1.4.156';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
   cooldownReady, startCooldown,
-} from './abilities.js?v=1.4.155';
+} from './abilities.js?v=1.4.156';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -331,6 +331,7 @@ const game = {
   rematchMessage: '',
   restartActive: false,     // mid-game restart vote opened by any human seat
   restartVotes: [],
+  soloMoneySnapshot: null,
   restartRequired: [],
   restartRequester: null,
   restartMessage: '',
@@ -1017,6 +1018,7 @@ function startGame({ keepTurn = false, preset = null } = {}) {
   // Uids must be allocated before dealing so AI hands and discards never reuse
   // a human tile's uid (claim ids and click handlers depend on uniqueness).
   game.nextUid = 1;
+  if (game.mode === 'solo' && game.match) game.soloMoneySnapshot = [...game.match.money];
   const dealt = dealTiles(openingTileCount(game.seat));
   game.hand = dealt.hand;
   game.flowers = dealt.flowers;
@@ -1182,6 +1184,9 @@ function restartGame() {
     if (net.isHost) startMultiGame();
     else setStatus('請等待房主重新開始。');
     return;
+  }
+  if (Array.isArray(game.soloMoneySnapshot) && game.match) {
+    game.match.money = [...game.soloMoneySnapshot];
   }
   startGame({ keepTurn: true });
 }
@@ -3652,6 +3657,7 @@ function resolveAbility({ seat, id, target = null, actionId = null }) {
     game.match.money[monkeyVictim] -= monkeyAmount;
     game.match.money[seat] = (game.match.money[seat] ?? 0) + monkeyAmount;
     maybeAiEmoji(monkeyVictim, 0.5, ['😡']);
+    updateHUD(); // sync money UI after ability
   } else if (canonical === 'giraffe') {
     // Human picks a target explicitly; AI targets a random opponent (host-side).
     giraffeTarget = opponents.includes(target) ? target : opponents[Math.floor(Math.random() * opponents.length)];
@@ -3691,6 +3697,7 @@ function applyAbilityResult(msg) {
     showInkToast(msg.seat);
   } else if (id === 'monkey' && Number.isInteger(msg.victim)) {
     showStealToast(msg.seat, msg.victim, msg.amount ?? 0);
+    updateHUD(); // sync money UI after ability
   } else if (id === 'penguin') {
     abilitySeats(msg.seat).forEach((s) => { game.frozenUntil[s] = nowSec() + 3; });
   } else if (id === 'giraffe' && msg.seat === game.seat) {
@@ -4770,6 +4777,7 @@ function cancelRestartVote() {
 
 /** HUD 重來這局: solo restarts immediately; multiplayer opens a vote. */
 function requestRestart() {
+  if (game.mode === 'multi') return false; // no multiplayer restart vote
   if (game.mode !== 'multi') {
     startGame({ keepTurn: true });
     return;
@@ -6525,7 +6533,7 @@ function renderAbilityButtons() {
   btn.disabled = frozen || cooldownReady(cd, myId, nowSec()) === false;
   const remain = Math.max(0, Math.ceil((cd[myId] ?? 0) - nowSec()));
   const label = { squid: '潑墨', giraffe: '偷看', monkey: '偷錢', penguin: '冰凍' }[myId] ?? def.name ?? '技能';
-  btn.textContent = `${label}${remain ? ` ${remain}s` : ''}`;
+  btn.textContent = `技能: ${label}${remain ? ` ${remain}s` : ''}`;
   btn.title = def.desc ?? '';
   btn.addEventListener('click', () => {
     if (btn.disabled || paused()) return;
@@ -6566,10 +6574,10 @@ function renderInkSplashes() {
   const img = document.createElement('img');
   img.className = 'ink-splash';
   img.src = inkSplashImage.src;
-  img.style.left = '0';
-  img.style.top = '0';
-  img.style.width = '100%';
-  img.style.height = '100%';
+  img.style.left = '16%';
+  img.style.top = '20%';
+  img.style.width = '68%';
+  img.style.height = '60%';
   ui.inkOverlay.appendChild(img);
   ui.inkOverlay.dataset.splashes = '1';
 }
@@ -7415,7 +7423,6 @@ function wireInput() {
       || ui.roomEmojiBtn?.contains(event.target)) return;
     closeEmojiPanel();
   });
-  el('creditsBtn').addEventListener('click', () => openModal('creditsPanel'));
   ui.scoreBtn?.addEventListener('click', () => {
     updateScoreUI();
     openModal('scorePanel');
@@ -7538,13 +7545,13 @@ async function boot() {
       wildcardImage = new Image();
       wildcardImage.onload = () => resolve();
       wildcardImage.onerror = () => resolve();
-      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.155';
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.156';
     }),
     new Promise((resolve) => {
       inkSplashImage = new Image();
       inkSplashImage.onload = () => resolve();
       inkSplashImage.onerror = () => resolve();
-      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.155';
+      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.156';
     }),
   ]);
   game.images = { ...loaded.images, WILD: wildcardImage };

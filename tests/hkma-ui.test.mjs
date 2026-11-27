@@ -284,12 +284,12 @@ test('玩家版本與 cachebust 已更新', () => {
   const game = readFileSync('js/game.js', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
   const changelog = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(html, /css\/style\.css\?v=1\.4\.155/);
-  assert.match(html, /js\/game\.js\?v=1\.4\.155/);
+  assert.match(html, /css\/style\.css\?v=1\.4\.156/);
+  assert.match(html, /js\/game\.js\?v=1\.4\.156/);
   assert.match(game, /\.\/tiles\.js\?v=1\.4\.99/);
-  assert.match(game, /\.\/rules\.js\?v=1\.4\.155/);
-  assert.match(readme, /\?v=1\.4\.155/);
-  assert.match(changelog, /^## 1\.4\.155/m);
+  assert.match(game, /\.\/rules\.js\?v=1\.4\.156/);
+  assert.match(readme, /\?v=1\.4\.156/);
+  assert.match(changelog, /^## 1\.4\.156/m);
 
   // 1.4.150: ink splash PNGs replace the flat dim overlay.
   const inkCss150 = readFileSync('css/style.css', 'utf8');
@@ -308,8 +308,8 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(game, /name: '墨魚'/);
   assert.match(game, /function showInkToast\(/);
   // 1.4.155: one full-sea ink PNG; per-device steal toasts; AI angry emoji.
-  assert.match(game, /img\.style\.width = '100%'/);
-  assert.match(game, /img\.style\.height = '100%'/);
+  assert.match(game, /img\.style\.width = '68%'/);
+  assert.match(game, /img\.style\.height = '60%'/);
   assert.doesNotMatch(game, /const spots = \[/);
   assert.match(game, /function showStealToast\(/);
   assert.match(game, /成功從/);
@@ -320,6 +320,15 @@ test('玩家版本與 cachebust 已更新', () => {
   assert.match(abilityClick154, /requestAbility\(myId, null\)/);
   assert.doesNotMatch(abilityClick154, /abilitySeats\(game\.seat\)\[0\]/);
   assert.doesNotMatch(game, /name: '魷魚'/);
+  // 1.4.156: live money UI, skill button bottom-right, no multi restart, solo money snapshot, smaller ink.
+  assert.match(game, /updateHUD\(\); \/\/ sync money UI after ability/);
+  assert.match(game, /技能: \$\{label\}/);
+  assert.doesNotMatch(html, /id="creditsBtn"/);
+  assert.match(game, /soloMoneySnapshot/);
+  assert.match(game, /if \(game\.mode === 'multi'\) return false; \/\/ no multiplayer restart vote/);
+  assert.match(game, /style\.width = '68%'/);
+  const inkCss156 = readFileSync('css/style.css', 'utf8');
+  assert.match(inkCss156, /\.ability-buttons[^}]*bottom/);
 
 
   // 1.4.146: sparrow 百搭牌 (wildcard) integration.
