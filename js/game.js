@@ -14,11 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.149';
+} from './rules.js?v=1.4.150';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
   cooldownReady, startCooldown,
-} from './abilities.js?v=1.4.149';
+} from './abilities.js?v=1.4.150';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -352,6 +352,7 @@ let hudRoundInfo = '';
 let catBoatImage = null;
 let rodImage = null;
 let wildcardImage = null;
+let inkSplashImage = null;
 
 function readNumber(key) {
   try { return Number(localStorage.getItem(key)) || 0; } catch { return 0; }
@@ -6509,10 +6510,32 @@ function openGiraffeTargetPicker() {
   }
 }
 
+/** 在潑墨遮罩內放數個潑墨圖案，只建立一次，避免逐幀重繪造成閃爍。 */
+function renderInkSplashes() {
+  if (!ui.inkOverlay || !inkSplashImage?.complete || ui.inkOverlay.dataset.splashes) return;
+  const spots = [
+    [5, 55, 22, -12], [28, 52, 20, 24], [52, 56, 26, 8],
+    [80, 52, 22, -30], [12, 76, 24, 16], [42, 80, 26, -8], [70, 78, 22, 30],
+  ];
+  for (const [left, top, size, rotate] of spots) {
+    const img = document.createElement('img');
+    img.className = 'ink-splash';
+    img.src = inkSplashImage.src;
+    img.style.left = `${left}%`;
+    img.style.top = `${top}%`;
+    img.style.width = `${size}%`;
+    img.style.setProperty('--ink-rotate', `${rotate}deg`);
+    ui.inkOverlay.appendChild(img);
+  }
+  ui.inkOverlay.dataset.splashes = '1';
+}
+
 /** 潑墨遮罩依 host 同步的到期時間逐幀開關，不依賴 HUD 重繪。 */
 function syncInkOverlay() {
   if (ui.inkOverlay) {
-    ui.inkOverlay.hidden = !((game.inkUntil?.[game.seat] ?? 0) > nowSec());
+    const inked = (game.inkUntil?.[game.seat] ?? 0) > nowSec();
+    ui.inkOverlay.hidden = !inked;
+    if (inked) renderInkSplashes();
   }
 }
 
@@ -7471,7 +7494,13 @@ async function boot() {
       wildcardImage = new Image();
       wildcardImage.onload = () => resolve();
       wildcardImage.onerror = () => resolve();
-      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.149';
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.150';
+    }),
+    new Promise((resolve) => {
+      inkSplashImage = new Image();
+      inkSplashImage.onload = () => resolve();
+      inkSplashImage.onerror = () => resolve();
+      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.150';
     }),
   ]);
   game.images = { ...loaded.images, WILD: wildcardImage };
