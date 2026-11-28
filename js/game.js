@@ -14,11 +14,11 @@ import {
   WINDS, ORPHANS, PATTERN_TABLE, FLOWER_PATTERN_TABLE, countTiles, randomTileKind,
   evaluateHand, findWaits, formatWinBreakdown, isThirteenOrphans,
   withFlowers, flowerWin, flowerWinResult, sortPatternRows,
-} from './rules.js?v=1.4.162';
+} from './rules.js?v=1.4.163';
 import {
   wildcardWaitTiles, characterAbility, bonusFanFor, applyAbilityMoney,
   cooldownReady, startCooldown,
-} from './abilities.js?v=1.4.162';
+} from './abilities.js?v=1.4.163';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -7583,13 +7583,13 @@ async function boot() {
       wildcardImage = new Image();
       wildcardImage.onload = () => resolve();
       wildcardImage.onerror = () => resolve();
-      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.162';
+      wildcardImage.src = 'assets/tiles/wildcard.png?v=1.4.163';
     }),
     new Promise((resolve) => {
       inkSplashImage = new Image();
       inkSplashImage.onload = () => resolve();
       inkSplashImage.onerror = () => resolve();
-      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.162';
+      inkSplashImage.src = 'assets/icons/ink-splash.png?v=1.4.163';
     }),
   ]);
   game.images = { ...loaded.images, WILD: wildcardImage };
